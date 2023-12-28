@@ -9,6 +9,7 @@ add_executable (jnlive
     source/utils.cpp
     source/jackutils.cpp
     source/lilvutils.cpp
+    source/lv2_evbuf.c
     source/lilvjacklink.cpp
 )
 

@@ -76,6 +76,10 @@
         "ios": "cpp",
         "locale": "cpp",
         "any": "cpp",
-        "deque": "cpp"
+        "deque": "cpp",
+        "span": "cpp",
+        "valarray": "cpp",
+        "queue": "cpp",
+        "stack": "cpp"
     }
 }

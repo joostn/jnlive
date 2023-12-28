@@ -1,6 +1,7 @@
 #include <iostream>
 #include <lilv/lilv.h>
 #include <jack/jack.h>
+#include <thread>
 
 #include "utils.h"
 #include "lilvutils.h"
@@ -8,11 +9,7 @@
 #include "lilvjacklink.h"
 
 using namespace std::string_literals;
-
-int jack_process(jack_nframes_t nframes, void* arg)
-{
-    return 0;
-}
+using namespace std::chrono_literals;
 
 int main()
 {
@@ -21,11 +18,15 @@ int main()
     lilvjacklink::Global lilvjacklinkglobal;
 
     lilvutils::Plugin plugin("http://tytel.org/helm"s);
-    LV2_Feature* host_featuresp[] = {
-        nullptr
-    };    
-    lilvutils::Instance instance(plugin, 48000.0, host_featuresp);
+    auto samplerate = jack_get_sample_rate(jackutils::Client::Static().get());
+    lilvutils::Instance instance(plugin, samplerate);
+    lilvjacklink::LinkedPluginInstance linkedplugininstance(instance, "helmpje");
+    jack_activate(jackutils::Client::Static().get());
 
     std::cout << "Hello World!" << std::endl;
+    while(true)
+    {
+        std::this_thread::sleep_for(1s);
+    }
     return 0;
 }

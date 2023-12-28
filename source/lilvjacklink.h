@@ -7,23 +7,33 @@
 #include "lv2/port-props/port-props.h"
 #include "lv2/atom/atom.h"
 #include "lv2/resize-port/resize-port.h"
+#include "lv2_evbuf.h"
+#include "lv2/midi/midi.h"
 
-namespace lilvjacklink
-{
-    class Link
+namespace lilvjacklink {
+    class LinkedPluginInstance;
+    class PortLink
     {
     public:
-        Link(const Link&) = delete;
-        Link& operator=(const Link&) = delete;
-        Link(Link&&) = delete;
-        Link& operator=(Link&&) = delete;
-        Link();
-        ~Link();
-        int process(jack_nframes_t nframes);
+        PortLink(const PortLink&) = delete;
+        PortLink& operator=(const PortLink&) = delete;
+        PortLink(PortLink&&) = delete;
+        PortLink& operator=(PortLink&&) = delete;
+        PortLink(std::unique_ptr<jackutils::Port> &&jackport, lilvutils::Instance &instance, uint32_t portindex);
+        ~PortLink();
+        int process1(jack_nframes_t nframes);
+        int process2(jack_nframes_t nframes);
+    private:
+        std::unique_ptr<jackutils::Port> m_JackPort;
+        lilvutils::Instance &m_Instance;
+        LV2_Evbuf* m_Evbuf = nullptr;
+        uint32_t m_PortIndex;
+        LV2_URID m_UridMidiEvent;
     };
     class Global
     {
-        friend Link;
+        friend PortLink;
+        friend LinkedPluginInstance;
     public:
         Global(const Global&) = delete;
         Global& operator=(const Global&) = delete;
@@ -63,7 +73,8 @@ namespace lilvjacklink
         }
 
     private:
-        std::vector<std::unique_ptr<Link>> m_Links;
+        std::vector<PortLink*> m_PortLinks;
+        std::vector<LinkedPluginInstance*> m_InstanceLinks;
     };
 
     class LinkedPluginInstance
@@ -73,52 +84,13 @@ namespace lilvjacklink
         LinkedPluginInstance& operator=(LinkedPluginInstance&&) = delete;
         LinkedPluginInstance(const LinkedPluginInstance&) = delete;
         LinkedPluginInstance& operator=(const LinkedPluginInstance&) = delete;
-        LinkedPluginInstance(const lilvutils::Instance &instance) : m_Instance(instance)
-        {
-            auto lilvplugin = instance.plugin().get();
-            uint32_t numports = lilv_plugin_get_num_ports(lilvplugin);
-            lilvutils::Uri uri_connectionOptional(LV2_CORE__connectionOptional);
-            lilvutils::Uri uri_InputPort(LV2_CORE__InputPort);
-            lilvutils::Uri uri_OutputPort(LV2_CORE__OutputPort);
-            lilvutils::Uri uri_notOnGUI(LV2_PORT_PROPS__notOnGUI);
-            lilvutils::Uri uri_ControlPort(LV2_CORE__ControlPort);
-            lilvutils::Uri uri_AudioPort(LV2_CORE__AudioPort);
-            lilvutils::Uri uri_CVPort(LV2_CORE__CVPort);
-            lilvutils::Uri uri_AtomPort(LV2_ATOM__AtomPort);
-            lilvutils::Uri uri_minimumSize(LV2_RESIZE_PORT__minimumSize);
-            for(uint32_t portindex = 0; portindex < numports; portindex++)
-            {
-                auto port = lilv_plugin_get_port_by_index(lilvplugin, portindex);
-                auto optional = lilv_port_has_property(lilvplugin, port, uri_connectionOptional.get());
-                auto notongui = lilv_port_has_property(lilvplugin, port, uri_notOnGUI.get());
-                bool isinput = lilv_port_is_a(lilvplugin, port, uri_InputPort.get());
-                bool isoutput = lilv_port_is_a(lilvplugin, port, uri_OutputPort.get());
-                bool isoutput = lilv_port_is_a(lilvplugin, port, uri_OutputPort.get());
-                bool iscontrolport = lilv_port_is_a(lilvplugin, port, uri_ControlPort.get());
-                bool iscvport = lilv_port_is_a(lilvplugin, port, uri_CVPort.get());
-                bool isatomport = lilv_port_is_a(lilvplugin, port, uri_AtomPort.get());
-                if( (!isinput) && (!isoutput) )
-                {
-                    throw std::runtime_error("port is neither input nor output");
-                }
-                std::optional<uint32_t> buf_size;
-                {
-                    auto min_size = lilv_port_get(lilvplugin, port, uri_minimumSize.get());
-                    if (min_size && lilv_node_is_int(min_size)) {
-                        buf_size = lilv_node_as_int(min_size);
-                    }
-                    lilv_node_free(min_size);
-                }
+        LinkedPluginInstance(lilvutils::Instance &instance, const std::string &instancename);
+        ~LinkedPluginInstance();
+        int process(jack_nframes_t nframes);
 
-
-
-
-            }
-
-        }
     private:
-        const lilvutils::Instance &m_Instance;
-        std::vector<std::unique_ptr<Link>> m_Links;
+        lilvutils::Instance &m_Instance;
+        std::vector<std::unique_ptr<PortLink>> m_PortLinks;
     };
 
 

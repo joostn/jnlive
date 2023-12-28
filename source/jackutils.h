@@ -2,12 +2,15 @@
 #include <stdexcept>	
 #include <jack/jack.h>
 #include <string>
+#include <atomic>
 #include "utils.h"
 
 namespace jackutils
 {
+    class ProcessBlocker;
     class Client
     {
+        friend ProcessBlocker;
     public:
         Client(const Client&) = delete;
         Client& operator=(const Client&) = delete;
@@ -29,13 +32,7 @@ namespace jackutils
                     jack_client_close(jackclient); 
                 }
             });
-            jack_set_process_callback(jackclient, [](jack_nframes_t nframes, void* arg){
-                auto theclient = (Client*)arg;
-                if (!theclient) {
-                    throw std::runtime_error("Failed to open JACK client.");
-                }
-                return theclient->process(nframes);
-            }, this);
+            jack_set_process_callback(jackclient, &Client::processStatic, this);
             m_Client = jackclient;
             jackclient = nullptr;
             staticptr() = this;
@@ -49,6 +46,8 @@ namespace jackutils
         {
             return m_Client;
         }
+        static int processStatic(jack_nframes_t nframes, void* arg);
+        static int processStaticDummy(jack_nframes_t nframes, void* arg);
         int process(jack_nframes_t nframes);
         static Client& Static()
         {
@@ -65,9 +64,29 @@ namespace jackutils
             static Client *s_Client = nullptr;
             return s_Client;
         }
+        void BlockProcess();
+        void UnblockProcess();
 
     private:
         jack_client_t *m_Client = nullptr;
+        std::atomic<bool> m_Processing{false};
+        int m_ProcessBlockCount = 0;
+    };
+    class ProcessBlocker
+    {
+    public:
+        ProcessBlocker(ProcessBlocker&&) = delete;
+        ProcessBlocker& operator=(ProcessBlocker&&) = delete;
+        ProcessBlocker(const ProcessBlocker&) = delete;
+        ProcessBlocker& operator=(const ProcessBlocker&) = delete;
+        ProcessBlocker()
+        {
+            Client::Static().BlockProcess();
+        }
+        ~ProcessBlocker()
+        {
+            Client::Static().UnblockProcess();
+        }
     };
     class Port
     {

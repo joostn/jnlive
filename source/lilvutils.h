@@ -3,6 +3,9 @@
 #include <stdexcept>	
 #include "utils.h"
 #include <lilv/lilv.h>
+#include <mutex>
+#include <optional>
+#include <map>
 #include "lv2/atom/atom.h"
 
 namespace lilvutils
@@ -48,6 +51,23 @@ namespace lilvutils
             world = nullptr;
             plugins = nullptr;
             staticptr() = this;
+            m_UridMap.handle = this;
+            m_UridMap.map = [](LV2_URID_Map_Handle handle, const char* uri) -> LV2_URID {
+                auto world = (World*)handle;
+                return (LV2_URID)world->UriMapLookup(uri);
+            };
+            m_UridUnmap.handle = this;
+            m_UridUnmap.unmap = [](LV2_URID_Unmap_Handle handle, LV2_URID urid) -> const char* {
+                auto world = (World*)handle;
+                return world->UriMapReverseLookup(urid).c_str();
+            };
+            m_MapFeature.data = &m_UridMap;
+            m_MapFeature.URI = LV2_URID__map;
+            m_UnmapFeature.data = &m_UridUnmap;
+            m_UnmapFeature.URI = LV2_URID__unmap;
+            m_Features.push_back(&m_MapFeature);
+            m_Features.push_back(&m_UnmapFeature);
+            m_Features.push_back(nullptr);
         }
         ~World()
         {
@@ -70,7 +90,36 @@ namespace lilvutils
             }
             return *staticptr();
         }
-        
+        LV2_URID UriMapLookup(const std::string &str)
+        {
+            std::unique_lock<std::mutex> lock(m_Mutex);
+            auto it = m_UriMap.find(str);
+            if(it != m_UriMap.end())
+            {
+                return (LV2_URID)it->second;
+            }
+            else
+            {
+                auto index = m_UriMapReverse.size();
+                m_UriMap[str] = index;
+                m_UriMapReverse.push_back(str);
+                if(index > std::numeric_limits<LV2_URID>::max())
+                {
+                    throw std::runtime_error("LV2_URID overflow");
+                }
+                return (LV2_URID)index;
+            }
+        }
+        const std::string & UriMapReverseLookup(size_t index)
+        {
+            std::unique_lock<std::mutex> lock(m_Mutex);
+            return m_UriMapReverse.at(index);
+        }
+        const LV2_Feature** GetFeatures()
+        {
+            return m_Features.data();
+        }
+
     private:
         static World*& staticptr()
         {
@@ -79,8 +128,16 @@ namespace lilvutils
         }
 
     private:
+        std::mutex m_Mutex;
+        std::map<std::string, size_t> m_UriMap;
+        std::vector<std::string> m_UriMapReverse;
         LilvWorld* m_World = nullptr;
         const LilvPlugins *m_Plugins = nullptr;
+        LV2_URID_Map      m_UridMap;
+        LV2_URID_Unmap    m_UridUnmap;  
+        LV2_Feature m_MapFeature;
+        LV2_Feature m_UnmapFeature;
+        std::vector<const LV2_Feature*> m_Features;
     };
     class Uri
     {
@@ -155,9 +212,9 @@ namespace lilvutils
         Instance& operator=(const Instance&) = delete;
         Instance(Instance&&) = delete;
         Instance& operator=(Instance&&) = delete;
-        Instance(const Plugin &plugin, double sample_rate, LV2_Feature** features) : m_Plugin(plugin)
+        Instance(const Plugin &plugin, double sample_rate) : m_Plugin(plugin)
         {
-            m_Instance = lilv_plugin_instantiate(plugin.get(), sample_rate, features);
+            m_Instance = lilv_plugin_instantiate(plugin.get(), sample_rate, World::Static().GetFeatures());
             if(!m_Instance)
             {
                 throw std::runtime_error("could not instantiate plugin");
