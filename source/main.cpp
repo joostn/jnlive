@@ -5,6 +5,7 @@
 #include "utils.h"
 #include "lilvutils.h"
 #include "jackutils.h"
+#include "lilvjacklink.h"
 
 using namespace std::string_literals;
 
@@ -17,6 +18,7 @@ int main()
 {
     lilvutils::World lilvworld;
     jackutils::Client jackclient("JN Live");
+    lilvjacklink::Global lilvjacklinkglobal;
 
     lilvutils::Plugin plugin("http://tytel.org/helm"s);
     LV2_Feature* host_featuresp[] = {

@@ -3,6 +3,7 @@
 #include <stdexcept>	
 #include "utils.h"
 #include <lilv/lilv.h>
+#include "lv2/atom/atom.h"
 
 namespace lilvutils
 {
@@ -76,6 +77,7 @@ namespace lilvutils
             static World *s_World = nullptr;
             return s_World;
         }
+
     private:
         LilvWorld* m_World = nullptr;
         const LilvPlugins *m_Plugins = nullptr;
@@ -123,6 +125,19 @@ namespace lilvutils
             {
                 throw std::runtime_error("could not load plugin");
             }
+            lilvutils::Uri uri_InputPort(LV2_CORE__InputPort);
+            lilvutils::Uri uri_control(LV2_CORE__control);
+            lilvutils::Uri uri_AtomPort(LV2_ATOM__AtomPort);
+            const LilvPort* control_input = lilv_plugin_get_port_by_designation(m_Plugin, uri_InputPort.get(), uri_control.get());
+            if (control_input) {
+                auto index = lilv_port_get_index(m_Plugin, control_input);
+                auto port = lilv_plugin_get_port_by_index(m_Plugin, index);
+                bool isatomport = lilv_port_is_a(m_Plugin, port, uri_AtomPort.get());
+                if(isatomport)
+                {
+                    m_ControlInputIndex = index;
+                }
+            }
         }
         ~Plugin()
         {
@@ -131,6 +146,7 @@ namespace lilvutils
         const LilvPlugin* get() const { return m_Plugin; }
     private:
         const LilvPlugin *m_Plugin = nullptr;
+        std::optional<uint32_t> m_ControlInputIndex;
     };
     class Instance
     {
@@ -139,13 +155,14 @@ namespace lilvutils
         Instance& operator=(const Instance&) = delete;
         Instance(Instance&&) = delete;
         Instance& operator=(Instance&&) = delete;
-        Instance(const Plugin &plugin, double sample_rate, LV2_Feature** features)
+        Instance(const Plugin &plugin, double sample_rate, LV2_Feature** features) : m_Plugin(plugin)
         {
             m_Instance = lilv_plugin_instantiate(plugin.get(), sample_rate, features);
             if(!m_Instance)
             {
                 throw std::runtime_error("could not instantiate plugin");
             }
+
         }
         ~Instance()
         {
@@ -155,7 +172,10 @@ namespace lilvutils
             }
         }
         const LilvInstance* get() const { return m_Instance; }
+        LilvInstance* get() { return m_Instance; }
+        const Plugin& plugin() const { return m_Plugin; }
     private:
         LilvInstance *m_Instance = nullptr;
+        const Plugin &m_Plugin;
     };
 }
