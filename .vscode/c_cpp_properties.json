@@ -1,0 +1,12 @@
+{
+    "configurations": [
+        {
+            "name": "Default",
+            "configurationProvider": "vector-of-bool.cmake-tools",
+            "browse": {
+                "limitSymbolsToIncludedHeaders": true,
+            }
+        }
+    ],
+    "version": 4
+}
