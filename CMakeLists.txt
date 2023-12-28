@@ -7,11 +7,10 @@ set(CMAKE_CXX_STANDARD 23)
 add_executable (jnlive 
     source/main.cpp
     source/utils.cpp
+    source/jackutils.cpp
+    source/lilvutils.cpp
 )
 
-#target_sources(jnlive PUBLIC FILE_SET CXX_MODULES FILES
-#    source/utils.cpp
-#)
 
 target_include_directories (jnlive PRIVATE 
     "./source"

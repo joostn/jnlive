@@ -1,17 +1,19 @@
 #pragma once
+
+#include <stdexcept>	
 #include "utils.h"
 #include <lilv/lilv.h>
 
 namespace lilvutils
 {
-    class world
+    class World
     {
     public:
-        world(const world&) = delete;
-        world& operator=(const world&) = delete;
-        world(world&&) = delete;
-        world& operator=(world&&) = delete;
-        world()
+        World(const World&) = delete;
+        World& operator=(const World&) = delete;
+        World(World&&) = delete;
+        World& operator=(World&&) = delete;
+        World()
         {
             if(staticptr())
             {
@@ -46,7 +48,7 @@ namespace lilvutils
             plugins = nullptr;
             staticptr() = this;
         }
-        ~world()
+        ~World()
         {
             if(m_World) lilv_world_free(m_World);
             staticptr() = nullptr;
@@ -59,7 +61,7 @@ namespace lilvutils
         {
             return m_World;
         }
-        static world& Static()
+        static World& Static()
         {
             if(!staticptr())
             {
@@ -69,27 +71,31 @@ namespace lilvutils
         }
         
     private:
-        static world*& staticptr()
+        static World*& staticptr()
         {
-            static world *s_World = nullptr;
+            static World *s_World = nullptr;
             return s_World;
         }
     private:
         LilvWorld* m_World = nullptr;
         const LilvPlugins *m_Plugins = nullptr;
     };
-    class uri
+    class Uri
     {
     public:
-        uri(const std::string &name)
+        Uri(const Uri&) = delete;
+        Uri& operator=(const Uri&) = delete;
+        Uri(Uri&&) = delete;
+        Uri& operator=(Uri&&) = delete;
+        Uri(const std::string &name)
         {
-            m_node = lilv_new_uri(world::Static().get(), name.c_str());
+            m_node = lilv_new_uri(World::Static().get(), name.c_str());
             if(!m_node)
             {
                 throw std::runtime_error("lilv_new_uri ("+name+") failed");
             }
         }
-        ~uri()
+        ~Uri()
         {
             if(m_node)
             {
@@ -100,12 +106,17 @@ namespace lilvutils
     private:
         LilvNode *m_node = nullptr;
     };
-    class plugin
+    class Plugin
     {
     public:
-        plugin(const uri &uri)
+        Plugin(const Plugin&) = delete;
+        Plugin& operator=(const Plugin&) = delete;
+        Plugin(Plugin&&) = delete;
+        Plugin& operator=(Plugin&&) = delete;
+        Plugin(const Uri &uri)
         {
-            auto plugins = world::Static().Plugins();
+            auto lilvworld = World::Static().get();
+            auto plugins = World::Static().Plugins();
             auto urinode = uri.get();
             m_Plugin = lilv_plugins_get_by_uri(plugins, urinode); // return value must not be freed
             if(!m_Plugin)
@@ -113,7 +124,7 @@ namespace lilvutils
                 throw std::runtime_error("could not load plugin");
             }
         }
-        ~plugin()
+        ~Plugin()
         {
             // no need to free
         }
@@ -121,10 +132,14 @@ namespace lilvutils
     private:
         const LilvPlugin *m_Plugin = nullptr;
     };
-    class instance
+    class Instance
     {
     public:
-        instance(const plugin &plugin, double sample_rate, LV2_Feature** features)
+        Instance(const Instance&) = delete;
+        Instance& operator=(const Instance&) = delete;
+        Instance(Instance&&) = delete;
+        Instance& operator=(Instance&&) = delete;
+        Instance(const Plugin &plugin, double sample_rate, LV2_Feature** features)
         {
             m_Instance = lilv_plugin_instantiate(plugin.get(), sample_rate, features);
             if(!m_Instance)
@@ -132,7 +147,7 @@ namespace lilvutils
                 throw std::runtime_error("could not instantiate plugin");
             }
         }
-        ~instance()
+        ~Instance()
         {
             if(m_Instance)
             {
