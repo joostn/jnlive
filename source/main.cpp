@@ -8,6 +8,8 @@
 #include "jackutils.h"
 #include "lilvjacklink.h"
 #include "komplete.h"
+#include "project.h"
+#include <filesystem>
 
 using namespace std::string_literals;
 using namespace std::chrono_literals;
@@ -17,6 +19,20 @@ int main()
     lilvutils::World lilvworld;
     jackutils::Client jackclient("JN Live");
     lilvjacklink::Global lilvjacklinkglobal;
+
+    std::string homedir = getenv("HOME");
+    std::string projectdir = homedir + "/.config/jn-live";
+    std::string projectfile = projectdir + "/project.json";
+    if(!std::filesystem::exists(projectdir))
+    {
+        std::filesystem::create_directory(projectdir);
+    }
+    if(!std::filesystem::exists(projectfile))
+    {
+        auto prj = project::TestProject();
+        ProjectToFile(prj, projectfile);
+    }
+    auto prj = project::ProjectFromFile(projectfile);
 
     lilvutils::Plugin plugin("http://tytel.org/helm"s);
     auto samplerate = jack_get_sample_rate(jackutils::Client::Static().get());

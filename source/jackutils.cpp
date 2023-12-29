@@ -8,28 +8,15 @@ namespace jackutils
 {
     void Client::BlockProcess()
     {
-        m_ProcessBlockCount++;
-        if(m_ProcessBlockCount == 1)
+        bool expected = false;
+        while(!m_RealTimeLock.compare_exchange_strong(expected, true))
         {
-            jack_set_process_callback(m_Client, &Client::processStaticDummy, this);
-            while(m_Processing)
-            {
-                std::this_thread::sleep_for(1ms);
-            }
+            std::this_thread::sleep_for(1ms);
         }
     }
     void Client::UnblockProcess()
     {
-        m_ProcessBlockCount--;
-        if(m_ProcessBlockCount == 0)
-        {
-            jack_set_process_callback(m_Client, &Client::processStatic, this);
-        }
-    }
-    int Client::processStaticDummy(jack_nframes_t nframes, void* arg)
-    {
-        // do nothing
-        return 0;
+        m_RealTimeLock = false;
     }
     int Client::processStatic(jack_nframes_t nframes, void* arg)
     {
@@ -42,9 +29,14 @@ namespace jackutils
     }
     int Client::process(jack_nframes_t nframes)
     {
-        m_Processing = true;
+        bool expected = false;
+        if(!m_RealTimeLock.compare_exchange_strong(expected, true))
+        {
+            // just skip this cycle
+            return 0;
+        }
         utils::finally fin1([&](){
-            m_Processing = false;
+            m_RealTimeLock = false;
         });
 
         auto jacklinks = lilvjacklink::Global::StaticPtr();

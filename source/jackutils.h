@@ -47,7 +47,6 @@ namespace jackutils
             return m_Client;
         }
         static int processStatic(jack_nframes_t nframes, void* arg);
-        static int processStaticDummy(jack_nframes_t nframes, void* arg);
         int process(jack_nframes_t nframes);
         static Client& Static()
         {
@@ -69,8 +68,7 @@ namespace jackutils
 
     private:
         jack_client_t *m_Client = nullptr;
-        std::atomic<bool> m_Processing{false};
-        int m_ProcessBlockCount = 0;
+        std::atomic<bool> m_RealTimeLock{false};
     };
     class ProcessBlocker
     {
