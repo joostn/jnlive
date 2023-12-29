@@ -7,6 +7,7 @@
 #include "lilvutils.h"
 #include "jackutils.h"
 #include "lilvjacklink.h"
+#include "komplete.h"
 
 using namespace std::string_literals;
 using namespace std::chrono_literals;
@@ -24,9 +25,11 @@ int main()
     jack_activate(jackutils::Client::Static().get());
 
     std::cout << "Hello World!" << std::endl;
+    komplete::Hid hid;
     while(true)
     {
-        std::this_thread::sleep_for(1s);
+        hid.Run();
+        std::this_thread::sleep_for(2ms);
     }
     return 0;
 }
