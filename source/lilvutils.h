@@ -146,12 +146,12 @@ namespace lilvutils
         Uri& operator=(const Uri&) = delete;
         Uri(Uri&&) = delete;
         Uri& operator=(Uri&&) = delete;
-        Uri(const std::string &name)
+        Uri(std::string &&name) : m_Name(std::move(name))
         {
-            m_node = lilv_new_uri(World::Static().get(), name.c_str());
+            m_node = lilv_new_uri(World::Static().get(), m_Name.c_str());
             if(!m_node)
             {
-                throw std::runtime_error("lilv_new_uri ("+name+") failed");
+                throw std::runtime_error("lilv_new_uri ("+m_Name+") failed");
             }
         }
         ~Uri()
@@ -162,7 +162,9 @@ namespace lilvutils
             }
         }
         const LilvNode* get() const { return m_node; }
+        const std::string& str() const { return m_Name; }
     private:
+        std::string m_Name;
         LilvNode *m_node = nullptr;
     };
     class Plugin
@@ -172,7 +174,7 @@ namespace lilvutils
         Plugin& operator=(const Plugin&) = delete;
         Plugin(Plugin&&) = delete;
         Plugin& operator=(Plugin&&) = delete;
-        Plugin(const Uri &uri)
+        Plugin(const Uri &uri) : m_Uri(uri.get())
         {
             auto lilvworld = World::Static().get();
             auto plugins = World::Static().Plugins();
@@ -202,6 +204,7 @@ namespace lilvutils
         }
         const LilvPlugin* get() const { return m_Plugin; }
     private:
+        std::string m_Uri;
         const LilvPlugin *m_Plugin = nullptr;
         std::optional<uint32_t> m_ControlInputIndex;
     };
