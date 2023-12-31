@@ -10,12 +10,15 @@
 #include "komplete.h"
 #include "project.h"
 #include <filesystem>
+#include "realtimethread.h"
 
 using namespace std::string_literals;
 using namespace std::chrono_literals;
 
 int main()
 {
+    realtimethread::Processor rtprocessor(8192);
+    
     lilvutils::World lilvworld;
     jackutils::Client jackclient("JN Live");
     lilvjacklink::Global lilvjacklinkglobal;

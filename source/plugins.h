@@ -14,7 +14,7 @@ namespace plugins
         Plugin& operator=(const Plugin&) = delete;
         Plugin(Plugin&&) = delete;
         Plugin& operator=(Plugin&&) = delete;
-        Plugin(std::string &&uri, std::string &&displayname, uint32_t samplerate) : m_Plugin(std::make_unique<lilvutils::Plugin>(lilvutils::Uri(std::move(uri)))), m_Instance(std::make_unique<lilvutils::Instance>(*m_Plugin, samplerate)), m_LinkedPluginInstance(std::make_unique<lilvjacklink::LinkedPluginInstance>(*m_Instance, std::move(displayname)))
+        Plugin(std::string &&uri, uint32_t samplerate) : m_Plugin(std::make_unique<lilvutils::Plugin>(lilvutils::Uri(std::move(uri)))), m_Instance(std::make_unique<lilvutils::Instance>(*m_Plugin, samplerate)), m_LinkedPluginInstance(std::make_unique<lilvjacklink::LinkedPluginInstance>(*m_Instance))
         {
         }
         const lilvutils::Plugin& Plugin() const { return *m_Plugin; }

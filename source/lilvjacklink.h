@@ -4,11 +4,6 @@
 #include <optional>
 #include "lilvutils.h"
 #include "jackutils.h"
-#include "lv2/port-props/port-props.h"
-#include "lv2/atom/atom.h"
-#include "lv2/resize-port/resize-port.h"
-#include "lv2_evbuf.h"
-#include "lv2/midi/midi.h"
 
 namespace lilvjacklink {
     class LinkedPluginInstance;

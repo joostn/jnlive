@@ -174,30 +174,7 @@ namespace lilvutils
         Plugin& operator=(const Plugin&) = delete;
         Plugin(Plugin&&) = delete;
         Plugin& operator=(Plugin&&) = delete;
-        Plugin(const Uri &uri) : m_Uri(uri.get())
-        {
-            auto lilvworld = World::Static().get();
-            auto plugins = World::Static().Plugins();
-            auto urinode = uri.get();
-            m_Plugin = lilv_plugins_get_by_uri(plugins, urinode); // return value must not be freed
-            if(!m_Plugin)
-            {
-                throw std::runtime_error("could not load plugin");
-            }
-            lilvutils::Uri uri_InputPort(LV2_CORE__InputPort);
-            lilvutils::Uri uri_control(LV2_CORE__control);
-            lilvutils::Uri uri_AtomPort(LV2_ATOM__AtomPort);
-            const LilvPort* control_input = lilv_plugin_get_port_by_designation(m_Plugin, uri_InputPort.get(), uri_control.get());
-            if (control_input) {
-                auto index = lilv_port_get_index(m_Plugin, control_input);
-                auto port = lilv_plugin_get_port_by_index(m_Plugin, index);
-                bool isatomport = lilv_port_is_a(m_Plugin, port, uri_AtomPort.get());
-                if(isatomport)
-                {
-                    m_ControlInputIndex = index;
-                }
-            }
-        }
+        Plugin(const Uri &uri);
         ~Plugin()
         {
             // no need to free
@@ -207,6 +184,7 @@ namespace lilvutils
         std::string m_Uri;
         const LilvPlugin *m_Plugin = nullptr;
         std::optional<uint32_t> m_ControlInputIndex;
+        std::array<std::optional<uint32_t>,2> m_AudioOutputIndex;
     };
     class Instance
     {

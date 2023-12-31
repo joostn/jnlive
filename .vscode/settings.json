@@ -81,6 +81,7 @@
         "valarray": "cpp",
         "queue": "cpp",
         "stack": "cpp",
-        "charconv": "cpp"
+        "charconv": "cpp",
+        "unordered_set": "cpp"
     }
 }
