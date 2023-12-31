@@ -4,24 +4,17 @@
 #include <thread>
 
 #include "utils.h"
-#include "lilvutils.h"
-#include "jackutils.h"
-#include "lilvjacklink.h"
-#include "komplete.h"
+#include "engine.h"
 #include "project.h"
 #include <filesystem>
-#include "realtimethread.h"
 
 using namespace std::string_literals;
 using namespace std::chrono_literals;
 
 int main()
 {
-    realtimethread::Processor rtprocessor(8192);
+    engine::Engine eng;
     
-    lilvutils::World lilvworld;
-    jackutils::Client jackclient("JN Live");
-    lilvjacklink::Global lilvjacklinkglobal;
 
     std::string homedir = getenv("HOME");
     std::string projectdir = homedir + "/.config/jn-live";

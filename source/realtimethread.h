@@ -8,14 +8,14 @@ namespace realtimethread
     class Data
     {
     public:
-        class TPlugin
+        class Plugin
         {
         public:
-            TPlugin() = default;
-            TPlugin(lilvjacklink::LinkedPluginInstance *pluginInstance, float amplitudeFactor) : m_PluginInstance(pluginInstance), m_AmplitudeFactor(amplitudeFactor)
+            Plugin() = default;
+            Plugin(lilvutils::Instance *pluginInstance, float amplitudeFactor) : m_PluginInstance(pluginInstance), m_AmplitudeFactor(amplitudeFactor)
             {
             }
-            lilvjacklink::LinkedPluginInstance& LinkedPluginInstance() const
+            lilvutils::Instance& LinkedPluginInstance() const
             {
                 return *m_LinkedPluginInstance;
             }
@@ -28,7 +28,7 @@ namespace realtimethread
                 m_AmplitudeFactor = amplitudeFactor;
             }
         private:
-            lilvjacklink::LinkedPluginInstance *m_LinkedPluginInstance = nullptr;
+            lilvutils::Instance *m_LinkedPluginInstance = nullptr;
             float m_AmplitudeFactor = 0.0f;
         };
         class TMidiPort
@@ -55,11 +55,11 @@ namespace realtimethread
             int m_PluginIndex = -1;
         };
     public:
-        TPlugin* Plugins()
+        Plugin* Plugins()
         {
             return m_PluginStorage.data();
         }
-        const TPlugin* Plugins() const
+        const Plugin* Plugins() const
         {
             return m_PluginStorage.data();
         }
@@ -89,7 +89,7 @@ namespace realtimethread
         }
         
     private:
-        std::array<TPlugin, kMaxNumPlugins> m_PluginStorage;
+        std::array<Plugin, kMaxNumPlugins> m_PluginStorage;
         size_t m_NumPlugins = 0;
         std::array<TMidiPort, kMaxNumMidiPorts> m_MidiPortStorage;
         size_t m_NumMidiPorts = 0;
@@ -111,15 +111,15 @@ namespace realtimethread
     class DeletePluginInstanceMessage : public ringbuf::PacketBase
     {
     public:
-        DeletePluginInstanceMessage(lilvjacklink::LinkedPluginInstance *pluginInstance) : m_PluginInstance(pluginInstance)
+        DeletePluginInstanceMessage(lilvutils::Instance *pluginInstance) : m_PluginInstance(pluginInstance)
         {
         }
-        lilvjacklink::LinkedPluginInstance& PluginInstance() const
+        lilvutils::Instance& PluginInstance() const
         {
             return *m_PluginInstance;
         }    
     private:
-        lilvjacklink::LinkedPluginInstance *m_PluginInstance = nullptr;
+        lilvutils::Instance *m_PluginInstance = nullptr;
     };
     class Processor
     {
@@ -136,7 +136,10 @@ namespace realtimethread
             ProcessMessages();
             ProcessIncomingMidi(nframes);
             ProcessOutgoingAudio(nframes);
-
+        }
+        void SetDataFromMainThread(Data &&data)
+        {
+            m_IncomingRingBuf.Write(SetDataMessage(std::move(data)));
         }
     private:
         void ProcessMessages()

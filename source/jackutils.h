@@ -16,7 +16,7 @@ namespace jackutils
         Client& operator=(const Client&) = delete;
         Client(Client&&) = delete;
         Client& operator=(Client&&) = delete;
-        Client(const std::string &name)
+        Client(const std::string &name, std::function<void(jack_nframes_t nframes)> &&processcallback) : m_ProcessCallback(std::move(processcallback))
         {
             if(staticptr())
             {
@@ -46,8 +46,6 @@ namespace jackutils
         {
             return m_Client;
         }
-        static int processStatic(jack_nframes_t nframes, void* arg);
-        int process(jack_nframes_t nframes);
         static Client& Static()
         {
             if(!staticptr())
@@ -63,28 +61,23 @@ namespace jackutils
             static Client *s_Client = nullptr;
             return s_Client;
         }
-        void BlockProcess();
-        void UnblockProcess();
+        int processStatic(jack_nframes_t nframes, void* arg)
+        {
+            auto theclient = (Client*)arg;
+            if (theclient)
+            {
+                return theclient->process(nframes);
+            }
+            return 0;
+        }
+        static int process(jack_nframes_t nframes)
+        {
+            m_ProcessCallback(nframes);
+        }
 
     private:
         jack_client_t *m_Client = nullptr;
-        std::atomic<bool> m_RealTimeLock{false};
-    };
-    class ProcessBlocker
-    {
-    public:
-        ProcessBlocker(ProcessBlocker&&) = delete;
-        ProcessBlocker& operator=(ProcessBlocker&&) = delete;
-        ProcessBlocker(const ProcessBlocker&) = delete;
-        ProcessBlocker& operator=(const ProcessBlocker&) = delete;
-        ProcessBlocker()
-        {
-            Client::Static().BlockProcess();
-        }
-        ~ProcessBlocker()
-        {
-            Client::Static().UnblockProcess();
-        }
+        std::function<void(jack_nframes_t nframes)> m_ProcessCallback;
     };
     class Port
     {
