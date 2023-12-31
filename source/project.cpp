@@ -44,11 +44,39 @@ namespace project
         result["name"] = part.Name();
         result["jackmidiport"] = part.JackMidiPort();
         result["midichannelforsharedinstruments"] = part.MidiChannelForSharedInstruments();
+        if(part.ActiveInstrumentIndex())
+        {
+            result["instrumentindex"] = *part.ActiveInstrumentIndex();
+        }
+        else
+        {
+            result["instrumentindex"] = Json::Value::null;
+        }
+        if(part.ActivePresetIndex())
+        {
+            result["instrumentindex"] = *part.ActivePresetIndex();
+        }
+        else
+        {
+            result["presetindex"] = Json::Value::null;
+        }
+        result["amplitudefactor"] = part.AmplitudeFactor();
         return result;
     }
     Part PartFromJson(const Json::Value &v)
     {
-        return Part(v["name"].asString(), v["jackmidiport"].asString(), v["midichannelforsharedinstruments"].asInt());
+        std::optional<size_t> instrumentIndex;
+        if(!v["instrumentindex"].isNull())
+        {
+            instrumentIndex = v["instrumentindex"].asInt();
+        }
+        std::optional<size_t> presetIndex;
+        if(!v["presetindex"].isNull())
+        {
+            presetIndex = v["presetindex"].asInt();
+        }
+
+        return Part(v["name"].asString(), v["jackmidiport"].asString(), v["midichannelforsharedinstruments"].asInt(), instrumentIndex, presetIndex, v["amplitudefactor"].asFloat());
     }
     Json::Value ToJson(const TQuickPreset &quickPreset)
     {

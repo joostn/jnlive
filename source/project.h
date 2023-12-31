@@ -28,7 +28,7 @@ namespace project
     class Part  // one for each keyboard
     {
     public:
-        Part(std::string &&name, std::string &&jackMidiPort, int midiChannelForSharedInstruments) : m_Name(std::move(name)), m_JackMidiPort(std::move(jackMidiPort)), m_MidiChannelForSharedInstruments(midiChannelForSharedInstruments)
+        Part(std::string &&name, std::string &&jackMidiPort, int midiChannelForSharedInstruments, const std::optional<size_t>& activeInstrumentIndex, const std::optional<size_t>& activePresetIndex, float amplitudeFactor) : m_Name(std::move(name)), m_JackMidiPort(std::move(jackMidiPort)), m_MidiChannelForSharedInstruments(midiChannelForSharedInstruments), m_ActiveInstrumentIndex(activeInstrumentIndex), m_ActivePresetIndex(activePresetIndex), m_AmplitudeFactor(amplitudeFactor)
         {
         }
         const std::string& Name() const
@@ -43,10 +43,28 @@ namespace project
         {
             return m_MidiChannelForSharedInstruments;
         }
+        const std::optional<size_t>& ActiveInstrumentIndex() const { return m_ActiveInstrumentIndex; }
+        const std::optional<size_t>& ActivePresetIndex() const { return m_ActivePresetIndex; }
+        float AmplitudeFactor() const { return m_AmplitudeFactor; }
+        Part Change(std::optional<size_t> activeInstrumentIndex,
+        std::optional<size_t> activePresetIndex,
+        float amplitudeFactor) const
+        {
+            auto result = *this;
+            result.m_ActiveInstrumentIndex = activeInstrumentIndex;
+            result.m_ActivePresetIndex = activePresetIndex;
+            result.m_AmplitudeFactor = amplitudeFactor;
+            return result;
+        }
+
     private:
         std::string m_Name;
         std::string m_JackMidiPort;
         int m_MidiChannelForSharedInstruments = 0;
+        std::optional<size_t> m_ActiveInstrumentIndex;
+        std::optional<size_t> m_ActivePresetIndex;
+        float m_AmplitudeFactor = 1.0f;
+
     };
     class TQuickPreset
     {
@@ -66,6 +84,26 @@ namespace project
         const std::vector<Instrument>& Instruments() const { return m_Instruments; }
         const std::vector<Part>& Parts() const { return m_Parts; }
         const std::vector<TQuickPreset>& QuickPresets() const { return m_QuickPresets; }
+        Project ChangePart(size_t partIndex, std::optional<size_t> activeInstrumentIndex,
+        std::optional<size_t> activePresetIndex,
+        float amplitudeFactor) const
+        {
+            std::vector<Part> parts;
+            for(size_t i=0; i < m_Parts.size(); ++i)
+            {
+                if(i == partIndex)
+                {
+                    parts.push_back(m_Parts[i].Change(activeInstrumentIndex, activePresetIndex, amplitudeFactor));
+                }
+                else
+                {
+                    parts.push_back(m_Parts[i]);
+                }
+            }
+            auto instruments = m_Instruments;
+            auto quickPresets = m_QuickPresets;
+            return Project(std::move(instruments), std::move(parts), std::move(quickPresets));
+        }
     private:
         std::vector<Part> m_Parts;
         std::vector<Instrument> m_Instruments;

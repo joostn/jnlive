@@ -18,7 +18,7 @@ namespace lilvutils
             throw std::runtime_error("could not load plugin");
         }
         std::vector<uint32_t> controlPortIndices;
-        std::vector<uint32_t> audioPortIndices;
+        std::vector<uint32_t> audioOutputPortIndices;
 
         uint32_t numports = lilv_plugin_get_num_ports(m_Plugin);
         lilvutils::Uri uri_connectionOptional(LV2_CORE__connectionOptional);
@@ -26,6 +26,7 @@ namespace lilvutils
         lilvutils::Uri uri_OutputPort(LV2_CORE__OutputPort);
         lilvutils::Uri uri_notOnGUI(LV2_PORT_PROPS__notOnGUI);
         lilvutils::Uri uri_ControlPort(LV2_CORE__ControlPort);
+        lilvutils::Uri uri_control(LV2_CORE__control);
         lilvutils::Uri uri_AudioPort(LV2_CORE__AudioPort);
         lilvutils::Uri uri_CVPort(LV2_CORE__CVPort);
         lilvutils::Uri uri_AtomPort(LV2_ATOM__AtomPort);
@@ -47,42 +48,43 @@ namespace lilvutils
             {
                 throw std::runtime_error("port is neither input nor output");
             }
-            const LilvNode* portsymbol = lilv_port_get_symbol(m_Plugin, port);
 
-            std::optional<uint32_t> bufsizeOrDefault;
+            if(!optional)
             {
-                auto min_size = lilv_port_get(m_Plugin, port, uri_minimumSize.get());
-                if (min_size && lilv_node_is_int(min_size)) {
-                    bufsizeOrDefault = lilv_node_as_int(min_size);
-                }
-                lilv_node_free(min_size);
-            }
-            if( (!optional) && (!notongui) )
-            {
-                if(!portsymbol){
-                    throw std::runtime_error("port has no symbol");
-                }
-                std::string portsymbolstr = lilv_node_as_string(portsymbol);
-                auto jackportname = instancename+"_"+portsymbolstr;
-                if(isaudio || ismidiport)
+                if(isaudio && (!isinput))
                 {
-                    auto port = std::make_unique<jackutils::Port>(std::move(jackportname), isaudio? jackutils::Port::Kind::Audio : jackutils::Port::Kind::Midi, isinput? jackutils::Port::Direction::Input : jackutils::Port::Direction::Output);
-                    m_PortLinks.push_back(std::make_unique<PortLink>(std::move(port), m_Instance, portindex));
+                    audioOutputPortIndices.push_back(portindex);
+                }
+                if(ismidiport && (isinput))
+                {
+                    controlPortIndices.push_back(portindex);
                 }
             }
         }
-
-        const LilvPort* control_input = lilv_plugin_get_port_by_designation(m_Plugin, uri_InputPort.get(), uri_control.get());
-        if (control_input) {
-            auto index = lilv_port_get_index(m_Plugin, control_input);
-            auto port = lilv_plugin_get_port_by_index(m_Plugin, index);
-            bool isatomport = lilv_port_is_a(m_Plugin, port, uri_AtomPort.get());
-            if(isatomport)
+        if(controlPortIndices.size() > 1)
+        {
+            // multiple control ports:
+            // find the port with the http://lv2plug.in/ns/lv2core#control designation:
+            const LilvPort* control_input = lilv_plugin_get_port_by_designation(m_Plugin, uri_InputPort.get(), uri_control.get());
+            if (control_input) 
             {
-                m_ControlInputIndex = index;
+                auto index = lilv_port_get_index(m_Plugin, control_input);
+                if(std::find(controlPortIndices.begin(), controlPortIndices.end(), index) != controlPortIndices.end())
+                {
+                    controlPortIndices = {index};
+                }
             }
         }
+        if(controlPortIndices.size() > 0)
+        {
+            m_ControlInputIndex = controlPortIndices[0];
 
+        }
+        if(audioOutputPortIndices.size() > 0)
+        {
+            m_AudioOutputIndex[0] = audioOutputPortIndices[0];
+            m_AudioOutputIndex[1] = audioOutputPortIndices[audioOutputPortIndices.size() > 1? 1:0];
+        }
     }
 }
 

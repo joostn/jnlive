@@ -7,6 +7,7 @@
 #include <optional>
 #include <map>
 #include "lv2/atom/atom.h"
+#include "lv2_evbuf.h"
 
 namespace lilvutils
 {
@@ -180,6 +181,8 @@ namespace lilvutils
             // no need to free
         }
         const LilvPlugin* get() const { return m_Plugin; }
+        const std::optional<uint32_t>& ControlInputIndex() const { return m_ControlInputIndex; }
+        const std::array<std::optional<uint32_t>,2>& AudioOutputIndex() const { return m_AudioOutputIndex; }
     private:
         std::string m_Uri;
         const LilvPlugin *m_Plugin = nullptr;
@@ -195,10 +198,26 @@ namespace lilvutils
         Instance& operator=(Instance&&) = delete;
         Instance(const Plugin &plugin, double sample_rate) : m_Plugin(plugin)
         {
+            if(plugin.ControlInputIndex())
+            {
+                auto urid_chunk = lilvutils::World::Static().UriMapLookup(LV2_ATOM__Chunk);
+                auto urid_sequence = lilvutils::World::Static().UriMapLookup(LV2_ATOM__Sequence);
+                uint32_t bufsize = 100000; // bufsizeOrDefault.value_or(100000);
+                m_MidiInEvBuf = lv2_evbuf_new(bufsize, urid_chunk, urid_sequence);
+                if(!m_MidiInEvBuf)
+                {
+                    throw std::runtime_error("could not create evbuf");
+                }
+                lv2_evbuf_reset(m_MidiInEvBuf, true);
+            }
             m_Instance = lilv_plugin_instantiate(plugin.get(), sample_rate, World::Static().GetFeatures());
             if(!m_Instance)
             {
                 throw std::runtime_error("could not instantiate plugin");
+            }
+            if(plugin.ControlInputIndex())
+            {
+                lilv_instance_connect_port(m_Instance, plugin.ControlInputIndex().value(), lv2_evbuf_get_buffer(m_MidiInEvBuf));
             }
 
         }
@@ -208,12 +227,18 @@ namespace lilvutils
             {
                 lilv_instance_free(m_Instance);
             }
+            if(m_MidiInEvBuf)
+            {
+                lv2_evbuf_free(m_MidiInEvBuf);
+            }
         }
         const LilvInstance* get() const { return m_Instance; }
         LilvInstance* get() { return m_Instance; }
         const Plugin& plugin() const { return m_Plugin; }
+        LV2_Evbuf* MidiInEvBuf() const { return m_MidiInEvBuf; }
     private:
         LilvInstance *m_Instance = nullptr;
+        LV2_Evbuf* m_MidiInEvBuf = nullptr;
         const Plugin &m_Plugin;
     };
 }
