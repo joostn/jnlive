@@ -12,7 +12,7 @@ add_executable (jnlive
     source/lv2_evbuf.c
     source/komplete.cpp
     source/project.cpp
-    source/plugins.cpp
+    source/engine.cpp
     source/ringbuf.cpp
     source/realtimethread.cpp
 )

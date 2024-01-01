@@ -17,18 +17,20 @@ namespace engine
         PluginInstance& operator=(const PluginInstance&) = delete;
         PluginInstance(PluginInstance&&) = delete;
         PluginInstance& operator=(PluginInstance&&) = delete;
-        PluginInstance(std::string &&uri, uint32_t samplerate, const std::optional<size_t> &owningPart) : m_Plugin(std::make_unique<lilvutils::Plugin>(lilvutils::Uri(std::move(uri)))), m_Instance(std::make_unique<lilvutils::Instance>(*m_Plugin, samplerate)), m_OwningPart(owningPart)
+        PluginInstance(std::string &&uri, uint32_t samplerate, const std::optional<size_t> &owningPart, size_t owningInstrumentIndex) : m_Plugin(std::make_unique<lilvutils::Plugin>(lilvutils::Uri(std::move(uri)))), m_Instance(std::make_unique<lilvutils::Instance>(*m_Plugin, samplerate)), m_OwningPart(owningPart), m_OwningInstrumentIndex(owningInstrumentIndex)
         {
         }
-        const lilvutils::Plugin& Plugin() const { return *m_Plugin; }
-        const lilvutils::Instance& Instance() const { return *m_Instance; }
-        const std::string& Uri() const { return Plugin().Uri().str(); }
+        lilvutils::Plugin& Plugin() const { return *m_Plugin; }
+        lilvutils::Instance& Instance() const { return *m_Instance; }
+        const std::string& Lv2Uri() const { return Plugin().Lv2Uri(); }
         const std::optional<size_t>& OwningPart() const { return m_OwningPart; }
+        const size_t& OwningInstrumentIndex() const { return m_OwningInstrumentIndex; }
 
     private:
         std::unique_ptr<lilvutils::Plugin> m_Plugin;
         std::unique_ptr<lilvutils::Instance> m_Instance;
         std::optional<size_t> m_OwningPart;
+        size_t m_OwningInstrumentIndex;
     };
     class Engine
     {
@@ -36,93 +38,162 @@ namespace engine
         class Part
         {
         public:
-            Part(std::vector<size_t> &&pluginIndices) : m_PluginIndices(std::move(pluginIndices))
+            Part(std::vector<size_t> &&pluginIndices, std::unique_ptr<jackutils::Port> &&midiInPort) : m_PluginIndices(std::move(pluginIndices)), m_MidiInPort(std::move(midiInPort))
             {
             }
             const std::vector<size_t>& PluginIndices() const
             {
                 return m_PluginIndices;
             }
+            const std::unique_ptr<jackutils::Port>& MidiInPort() const { return m_MidiInPort; }
+            std::unique_ptr<jackutils::Port>& MidiInPort() { return m_MidiInPort; }
             
         private:
             std::vector<size_t> m_PluginIndices;
+            std::unique_ptr<jackutils::Port> m_MidiInPort;
         };
-        Engine()
+        Engine() : m_JackClient {"JN Live", [this](jack_nframes_t nframes){
+            m_RtProcessor.Process(nframes);
+        }}, 
+         m_AudioOutPorts { jackutils::Port("out_l", jackutils::Port::Kind::Audio, jackutils::Port::Direction::Output), jackutils::Port("out_r", jackutils::Port::Kind::Audio, jackutils::Port::Direction::Output) }
         {
+            jack_activate(jackutils::Client::Static().get());
         }
-        const std::shared_ptr<project::Project>& Project() const { return m_Project; }
-        void SetProject(const std::shared_ptr<project::Project> &project)
+        const project::Project& Project() const { return m_Project; }
+        void SetProject(project::Project &&project)
         {
-            if(!project)
+            m_Project = std::move(project);
+            std::vector<std::unique_ptr<jackutils::Port>> midiInPortsToDiscard;
+            std::vector<std::unique_ptr<PluginInstance>> pluginsToDiscard;
+            SyncPlugins(midiInPortsToDiscard, pluginsToDiscard);
+            SyncRtData();
+            /*
+            After syncing, we may have plugins and midi in ports that are no longer needed. We cannot delete these right now, because the real-time thread may still be accessing them. Therefore, we post a message to the realtime thread indicating the objects that can be discarded. The realtime thread will simply post the messages back to the main thread. When we receive those messages in ProcessMessages(), we know it's safe to delete the objects.
+            */
+            for(auto &midiport: midiInPortsToDiscard)
             {
-                throw std::runtime_error("project is null");
+                auto ptr = midiport.get();
+                midiport.reset();
+                m_RtProcessor.OutgoingRingBuf().Write(realtimethread::AsyncFunctionMessage([ptr](){
+                    delete ptr;
+                }));     
             }
-            if(m_Project == project) return;
-            SyncPlugins();
-        }
-        bool PluginsChanged() const
-        {
-            if(Parts().size() != Project()->Parts().size()) return true;
-            for(const auto &part : Parts())
+            for(auto &plugin: pluginsToDiscard)
             {
-                if(part.Plugins().size() != Project()->Instruments().size()) return true;
-                for(size_t i = 0; i < part.Plugins().size(); ++i)
+                auto ptr = plugin.get();
+                plugin.reset();
+                m_RtProcessor.OutgoingRingBuf().Write(realtimethread::AsyncFunctionMessage([ptr](){
+                    delete ptr;
+                }));     
+             }
+
+        }
+        void ProcessMessages() // should be called regularly
+        {
+            while(true)
+            {
+                auto message = m_RtProcessor.IncomingRingBuf().Read();
+                if(!message) break;
+                if(auto asyncfunctionmessage = dynamic_cast<const realtimethread::AsyncFunctionMessage*>(message))
                 {
-                    if(part.Plugins()[i]->Uri() != Project()->Instruments()[i].Lv2Uri()) return true;
+                    asyncfunctionmessage->Call();
                 }
             }
-            return false;
         }
-        void SyncPlugins()
+    private:
+        void SyncRtData()
         {
-            if(PluginsChanged())
+            auto rtdata = CalcRtData();
+            if(rtdata != m_CurrentRtData)
             {
-                // todo: re-use plugins
-                std::vector<std::unique_ptr<PluginInstance>> pluginsToDiscard;
-                auto samplerate = jack_get_sample_rate(jackutils::Client::Static().get());
-                std::vector<std::unique_ptr<PluginInstance>> ownedPlugins;
-                std::vector<std::vector<size_t>> parts(Project()->Parts().size());
-                for)(const auto &instrument : Project()->Instruments())
+                m_CurrentRtData = rtdata;
+                m_RtProcessor.SetDataFromMainThread(std::move(rtdata));
+            }
+        }
+        void SyncPlugins(std::vector<std::unique_ptr<jackutils::Port>> &midiInPortsToDiscard, std::vector<std::unique_ptr<PluginInstance>> &pluginsToDiscard)
+        {
+            std::optional<jack_nframes_t> jacksamplerate;
+            std::vector<std::unique_ptr<PluginInstance>> ownedPlugins;
+            std::vector<std::vector<size_t>> partindex2instrumentindex2ownedpluginindex(Project().Parts().size());
+            for(size_t instrumentindex = 0; instrumentindex < Project().Instruments().size(); ++instrumentindex)
+            {
+                const auto &instrument = Project().Instruments()[instrumentindex];
+                size_t sharedpluginindex = 0;
+                for(size_t partindex = 0; partindex < Project().Parts().size(); ++partindex)
                 {
-                    size_t sharedpluginindex = 0;
-                    for(size_t partindex = 0; partindex < Project()->Parts().size(); ++partindex)
+                    auto &instrumentindex2ownedpluginindex = partindex2instrumentindex2ownedpluginindex[partindex];
+                    std::optional<size_t> owningpart;
+                    if(!instrument.Shared())
                     {
-                        auto &part = parts[partindex];
-                        std::optional<size_t> owningpart;
-                        if(!instrument.Shared())
+                        owningpart = partindex;
+                    }
+                    if(instrument.Shared() && (partindex > 0))
+                    {
+                        instrumentindex2ownedpluginindex.push_back(sharedpluginindex);
+                    }
+                    else
+                    {
+                        std::unique_ptr<PluginInstance> plugin_uq;
+                        auto pluginindex = ownedPlugins.size();
+                        sharedpluginindex = pluginindex;
+                        if(m_OwnedPlugins.size() > pluginindex)
                         {
-                            owningpart = partindex;
+                            auto &existingownedplugin = m_OwnedPlugins[pluginindex];
+                            if(existingownedplugin && (existingownedplugin->Lv2Uri() == instrument.Lv2Uri()) && (existingownedplugin->OwningPart() == owningpart) && (existingownedplugin->OwningInstrumentIndex() == instrumentindex) )
+                            {
+                                // re-use:
+                                plugin_uq = std::move(existingownedplugin);
+                            }
                         }
-                        if(instrument.Shared() && (partindex > 0))
+                        if(!plugin_uq)
                         {
-                            part.push_back(sharedpluginindex);
+                            if(!jacksamplerate)
+                            {
+                                jacksamplerate = jack_get_sample_rate(jackutils::Client::Static().get());
+                            }
+                            auto lv2uri = instrument.Lv2Uri();
+                            plugin_uq = std::make_unique<PluginInstance>(std::move(lv2uri), *jacksamplerate, owningpart, instrumentindex);
                         }
-                        else
-                        {
-                            auto pluginindex = ownedPlugins.size();
-                            sharedpluginindex = pluginindex;
-                            auto plugin_uq = std::make_unique<PluginInstance>(instrument.Lv2Uri(), instrument.Lv2Uri(), samplerate, owningpart);
-                            part.push_back(pluginindex);
-                            ownedPlugins.push_back(std::move(plugin_uq));
-                        }
+                        instrumentindex2ownedpluginindex.push_back(ownedPlugins.size());
+                        ownedPlugins.push_back(std::move(plugin_uq));
                     }
                 }
-                std::vector<Part> m_Parts;
-                for(size_t partindex = 0; partindex < Project()->Parts().size(); ++partindex)
-                {
-                    std::vector<size_t> pluginindices;
-                    for(size_t instrumentindex = 0; instrumentindex < Project()->Instruments().size(); ++instrumentindex)
-                    {
-                        pluginindices.push_back(parts[partindex][instrumentindex]);
-                    }
-                    m_Parts.push_back(Part(std::move(pluginindices)));
-                }
-                pluginsToDiscard = std::move(m_OwnedPlugins);
-                m_OwnedPlugins = std::move(ownedPlugins);
-                m_Parts = std::move(m_Parts);
-                //todo: pluginsToDiscard
             }
-            
+            std::vector<Part> newparts;
+            for(size_t partindex = 0; partindex < Project().Parts().size(); ++partindex)
+            {
+                std::unique_ptr<jackutils::Port> midiInPort;
+                if(partindex < m_Parts.size())
+                {
+                    midiInPort = std::move(m_Parts[partindex].MidiInPort());
+                }
+                else
+                {
+                    midiInPort = std::make_unique<jackutils::Port>("midi_in_" + std::to_string(partindex), jackutils::Port::Kind::Midi, jackutils::Port::Direction::Input);
+                }
+                std::vector<size_t> pluginindices;
+                for(size_t instrumentindex = 0; instrumentindex < Project().Instruments().size(); ++instrumentindex)
+                {
+                    pluginindices.push_back(partindex2instrumentindex2ownedpluginindex[partindex][instrumentindex]);
+                }
+                newparts.push_back(Part(std::move(pluginindices), std::move(midiInPort)));
+            }
+            for(auto &part: m_Parts)
+            {
+                if(part.MidiInPort())
+                {
+                    midiInPortsToDiscard.push_back(std::move(part.MidiInPort()));
+                }
+            }
+            for(auto &plugin: m_OwnedPlugins)
+            {
+                if(plugin)
+                {
+                    pluginsToDiscard.push_back(std::move(plugin));
+                }
+            }
+            m_OwnedPlugins = std::move(ownedPlugins);
+            m_Parts = std::move(newparts);
         }
         realtimethread::Data CalcRtData() const
         {
@@ -135,40 +206,56 @@ namespace engine
                 throw std::runtime_error("m_Parts.size() > realtimethread::kMaxNumMidiPorts");
             }
             realtimethread::Data result;
-            float maxamplitude = 0;
-            for(const auto &part: Project()->Parts())
-            {
-                maxamplitude = std::max(maxamplitude, part.AmplitudeFactor());
-            }
             for(const auto &ownedplugin: m_OwnedPlugins)
             {
-                float amplitude = 0;
+                float amplitude = 0.0f;
                 if(ownedplugin->OwningPart())
                 {
-                    amplitude = Project()->Parts()[*ownedplugin->OwningPart()].AmplitudeFactor();
+                    amplitude = Project().Parts()[*ownedplugin->OwningPart()].AmplitudeFactor();
                 }
                 else
                 {
-                    amplitude = maxamplitude;
+                    for(const auto &part: Project().Parts())
+                    {
+                        if(part.ActiveInstrumentIndex() == ownedplugin->OwningInstrumentIndex())
+                        {
+                            amplitude = std::max(part.AmplitudeFactor(), amplitude);
+                        }
+                    }
                 }
-                realtimethread::Data::Plugin plugin(ownedplugin.get(), amplitude);
-                result.xxx
+                realtimethread::Data::Plugin plugin(&ownedplugin->Instance(), amplitude);
+                result.Plugins()[result.NumPlugins()] = plugin;
+                result.SetNumPlugins(result.NumPlugins() + 1);
             }
-
+            for(size_t partindex = 0; partindex < m_Parts.size(); ++partindex)
+            {
+                int pluginindex = -1;
+                auto instrumentIndexOrNull = Project().Parts()[partindex].ActiveInstrumentIndex();
+                if(instrumentIndexOrNull)
+                {
+                    pluginindex = (int)m_Parts[partindex].PluginIndices()[*instrumentIndexOrNull];
+                }
+                auto jackport = m_Parts[partindex].MidiInPort().get()->get();
+                realtimethread::Data::TMidiPort midiPort(jackport, pluginindex);
+                result.MidiPorts()[result.NumMidiPorts()] = midiPort;
+                result.SetNumMidiPorts(result.NumMidiPorts() + 1);
+            }
+            result.OutputAudioPorts()[0] = m_AudioOutPorts[0].get();
+            result.OutputAudioPorts()[1] = m_AudioOutPorts[1].get();
+            return result;
         }
-        const std::vector<PluginInstance>& OwnedPlugins() const { return m_OwnedPlugins; }
+        const std::vector<std::unique_ptr<PluginInstance>>& OwnedPlugins() const { return m_OwnedPlugins; }
         const std::vector<Part>& Parts() const { return m_Parts; }
+
     private:
-        std::shared_ptr<project::Project> m_Project = std::make_shared<project::Project>();
+        project::Project m_Project;
         std::vector<std::unique_ptr<PluginInstance>> m_OwnedPlugins;
         std::vector<Part> m_Parts;
-        realtimethread::Processor m_RtProcessor(8192);
         lilvutils::World m_LilvWorld;
-        jackutils::Client m_JackClient("JN Live", [&m_RtProcessor](jack_nframes_t nframes){
-            m_RtProcessor.Process(nframes);
-        });
-        jackutils::Port m_MidiInPort("midi_in", jackutils::Port::Kind::Midi, jackutils::Port::Direction::In);
-        std::array<jackutils::Port, 2> m_AudioOutPorts = { jackutils::Port("out_l", jackutils::Port::Kind::Audio, jackutils::Port::Direction::Out), jackutils::Port("out_r", jackutils::Port::Kind::Audio, jackutils::Port::Direction::Out) };
+        realtimethread::Processor m_RtProcessor {8192};
+        realtimethread::Data m_CurrentRtData;
+        jackutils::Client m_JackClient;
+        std::array<jackutils::Port, 2> m_AudioOutPorts;
 
     };
 }

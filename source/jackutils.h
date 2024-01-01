@@ -61,7 +61,7 @@ namespace jackutils
             static Client *s_Client = nullptr;
             return s_Client;
         }
-        int processStatic(jack_nframes_t nframes, void* arg)
+        static int processStatic(jack_nframes_t nframes, void* arg)
         {
             auto theclient = (Client*)arg;
             if (theclient)
@@ -70,9 +70,10 @@ namespace jackutils
             }
             return 0;
         }
-        static int process(jack_nframes_t nframes)
+        int process(jack_nframes_t nframes)
         {
             m_ProcessCallback(nframes);
+            return 0;
         }
 
     private:
@@ -116,7 +117,7 @@ namespace jackutils
         {
             return m_Port;
         }
-        const jack_port_t* get() const
+        jack_port_t* get() const
         {
             return m_Port;
         }

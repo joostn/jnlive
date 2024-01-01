@@ -2,6 +2,7 @@
 #include <vector>
 #include <string>
 #include <fstream>
+#include <optional>
 #include "json/json.h"
 
 namespace project

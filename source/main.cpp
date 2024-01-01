@@ -6,6 +6,7 @@
 #include "utils.h"
 #include "engine.h"
 #include "project.h"
+#include "komplete.h"
 #include <filesystem>
 
 using namespace std::string_literals;
@@ -30,18 +31,16 @@ int main()
     }
     auto prj = project::ProjectFromFile(projectfile);
 
-    lilvutils::Plugin plugin("http://tytel.org/helm"s);
-    auto samplerate = jack_get_sample_rate(jackutils::Client::Static().get());
-    lilvutils::Instance instance(plugin, samplerate);
-    lilvjacklink::LinkedPluginInstance linkedplugininstance(instance, "helmpje");
-    jack_activate(jackutils::Client::Static().get());
+    eng.SetProject(std::move(prj));
+
 
     std::cout << "Hello World!" << std::endl;
-    komplete::Hid hid;
+    //komplete::Hid hid;
     while(true)
     {
-        hid.Run();
-        std::this_thread::sleep_for(2ms);
+        //hid.Run();
+        eng.ProcessMessages();
+        std::this_thread::sleep_for(1ms);
     }
     return 0;
 }

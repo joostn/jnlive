@@ -47,11 +47,9 @@ namespace ringbuf
         bool Write(const T& packet, bool throwiffail = true)
         {
             static_assert(std::is_base_of<PacketBase, T>::value, "T must descend from PacketBase");
-            static_assert(std::is_trivially_destructible<T>::value, "T must have trivial destructor");
-            static_assert(sizeof(T) )
             auto packetbaseptr = (const PacketBase*)&packet;
             ptrdiff_t packetbaseoffset =  (const char*)packetbaseptr - (const char*)&packet;
-            if( (packetbaseoffset < 0)
+            if(packetbaseoffset < 0)
             {
                 throw std::runtime_error("packetbaseoffset < 0");
             }

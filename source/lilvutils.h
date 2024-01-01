@@ -182,7 +182,8 @@ namespace lilvutils
         }
         const LilvPlugin* get() const { return m_Plugin; }
         const std::optional<uint32_t>& ControlInputIndex() const { return m_ControlInputIndex; }
-        const std::array<std::optional<uint32_t>,2>& AudioOutputIndex() const { return m_AudioOutputIndex; }
+        const std::array<std::optional<uint32_t>,2>& OutputAudioPortIndices() const { return m_AudioOutputIndex; }
+        const std::string& Lv2Uri() const { return m_Uri; }
     private:
         std::string m_Uri;
         const LilvPlugin *m_Plugin = nullptr;

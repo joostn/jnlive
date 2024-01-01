@@ -11,8 +11,8 @@ namespace project
         instruments.emplace_back("http://tytel.org/helm", false);
         instruments.emplace_back("http://www.openavproductions.com/sorcer", false);
         std::vector<Part> parts;
-        parts.emplace_back("Upper", "S61mk2", 1);
-        parts.emplace_back("Lower", "S88mk2", 2);
+        parts.emplace_back("Upper", "S61mk2", 1, std::nullopt, std::nullopt, 1.0f);
+        parts.emplace_back("Lower", "S88mk2", 2, std::nullopt, std::nullopt, 1.0f);
         std::vector<TQuickPreset> quickPresets;
         quickPresets.emplace_back(0, 0);
         quickPresets.emplace_back(1, 0);
