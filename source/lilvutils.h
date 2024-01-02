@@ -2,12 +2,15 @@
 
 #include <stdexcept>	
 #include "utils.h"
+#include "schedule.h"
 #include <lilv/lilv.h>
 #include <mutex>
 #include <optional>
 #include <map>
 #include "lv2/atom/atom.h"
 #include "lv2_evbuf.h"
+#include "log.h"
+#include "lv2/log/log.h"
 
 namespace lilvutils
 {
@@ -62,6 +65,7 @@ namespace lilvutils
                 auto world = (World*)handle;
                 return world->UriMapReverseLookup(urid).c_str();
             };
+
             m_MapFeature.data = &m_UridMap;
             m_MapFeature.URI = LV2_URID__map;
             m_UnmapFeature.data = &m_UridUnmap;
@@ -120,6 +124,7 @@ namespace lilvutils
         {
             return m_Features.data();
         }
+        const std::vector<const LV2_Feature*>& Features() const { return m_Features; }
 
     private:
         static World*& staticptr()
@@ -135,7 +140,7 @@ namespace lilvutils
         LilvWorld* m_World = nullptr;
         const LilvPlugins *m_Plugins = nullptr;
         LV2_URID_Map      m_UridMap;
-        LV2_URID_Unmap    m_UridUnmap;  
+        LV2_URID_Unmap    m_UridUnmap;
         LV2_Feature m_MapFeature;
         LV2_Feature m_UnmapFeature;
         std::vector<const LV2_Feature*> m_Features;
@@ -197,7 +202,7 @@ namespace lilvutils
         Instance& operator=(const Instance&) = delete;
         Instance(Instance&&) = delete;
         Instance& operator=(Instance&&) = delete;
-        Instance(const Plugin &plugin, double sample_rate) : m_Plugin(plugin)
+        Instance(const Plugin &plugin, double sample_rate) : m_Plugin(plugin), m_ScheduleWorker(*this)
         {
             if(plugin.ControlInputIndex())
             {
@@ -211,7 +216,26 @@ namespace lilvutils
                 }
                 lv2_evbuf_reset(m_MidiInEvBuf, true);
             }
-            m_Instance = lilv_plugin_instantiate(plugin.get(), sample_rate, World::Static().GetFeatures());
+            auto uri_workerinterface = lilvutils::Uri(LV2_WORKER__interface);
+            
+            // if (lilv_plugin_has_extension_data(plugin.get(),uri_workerinterface))
+            // {
+            //     jalv->worker                = jalv_worker_new(&jalv->work_lock, true);
+            //     jalv->features.sched.handle = jalv->worker;
+            //     if (jalv->safe_restore) {
+            //     jalv->state_worker           = jalv_worker_new(&jalv->work_lock, false);
+            //     jalv->features.ssched.handle = jalv->state_worker;
+            // }
+
+            m_Features = World::Static().Features();
+            m_Log.handle  = &m_Logger;
+            m_Log.printf  = &logger::Logger::printf_static;
+            m_Log.vprintf = &logger::Logger::vprintf_static;
+            m_LogFeature.data = &m_Log;
+            m_LogFeature.URI = LV2_LOG__log;
+            m_Features.push_back(&m_LogFeature);
+            m_Features.push_back(&m_ScheduleWorker.ScheduleFeature());
+            m_Instance = lilv_plugin_instantiate(plugin.get(), sample_rate, m_Features.data());
             if(!m_Instance)
             {
                 throw std::runtime_error("could not instantiate plugin");
@@ -220,6 +244,12 @@ namespace lilvutils
             {
                 lilv_instance_connect_port(m_Instance, plugin.ControlInputIndex().value(), lv2_evbuf_get_buffer(m_MidiInEvBuf));
             }
+            if (lilv_plugin_has_extension_data(plugin.get(),uri_workerinterface.get()))
+            {
+              auto worker_iface = (const LV2_Worker_Interface*)lilv_instance_get_extension_data(m_Instance, LV2_WORKER__interface);
+              m_ScheduleWorker.Start(worker_iface, *this);
+            }
+
 
         }
         ~Instance()
@@ -233,13 +263,23 @@ namespace lilvutils
                 lv2_evbuf_free(m_MidiInEvBuf);
             }
         }
+        void Run(uint32_t samplecount)
+        {
+            lilv_instance_run(m_Instance, samplecount);
+            m_ScheduleWorker.RunInRealtimeThread();
+        }
         const LilvInstance* get() const { return m_Instance; }
         LilvInstance* get() { return m_Instance; }
         const Plugin& plugin() const { return m_Plugin; }
         LV2_Evbuf* MidiInEvBuf() const { return m_MidiInEvBuf; }
     private:
+        std::vector<const LV2_Feature*> m_Features;
         LilvInstance *m_Instance = nullptr;
         LV2_Evbuf* m_MidiInEvBuf = nullptr;
+        logger::Logger m_Logger;
+        schedule::Worker m_ScheduleWorker;
+        LV2_Log_Log m_Log;
+        LV2_Feature m_LogFeature;
         const Plugin &m_Plugin;
     };
 }

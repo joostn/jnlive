@@ -15,6 +15,8 @@ add_executable (jnlive
     source/engine.cpp
     source/ringbuf.cpp
     source/realtimethread.cpp
+    source/log.cpp
+    source/schedule.cpp
 )
 
 

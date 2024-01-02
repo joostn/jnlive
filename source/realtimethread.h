@@ -129,7 +129,7 @@ namespace realtimethread
     class Processor
     {
     public:
-        Processor(jack_nframes_t bufsize) : m_Bufsize(), m_AudioBufferStorage(2*bufsize)
+        Processor(jack_nframes_t bufsize) : m_Bufsize(bufsize), m_AudioBufferStorage(2*bufsize)
         {
           m_UridMidiEvent = lilvutils::World::Static().UriMapLookup(LV2_MIDI__MidiEvent);
         }
@@ -202,7 +202,7 @@ namespace realtimethread
                     {
                         lilv_instance_connect_port(lilvinstance, outputAudioPortIndices[1].value(), pluginaudiobufs[1]);
                     }
-                    lilv_instance_run(lilvinstance, nframes);
+                    plugin.PluginInstance().Run(nframes);
                     auto multiplier = plugin.AmplitudeFactor();
                     if(hasoutputaudio)
                     {
