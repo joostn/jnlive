@@ -11,6 +11,10 @@
 #include "lv2_evbuf.h"
 #include "log.h"
 #include "lv2/log/log.h"
+#include "lv2/options/options.h"
+#include "lv2/parameters/parameters.h"
+#include "lv2/ui/ui.h"
+#include "lv2/buf-size/buf-size.h"
 
 namespace lilvutils
 {
@@ -21,7 +25,7 @@ namespace lilvutils
         World& operator=(const World&) = delete;
         World(World&&) = delete;
         World& operator=(World&&) = delete;
-        World()
+        World(uint32_t sample_rate) : m_OptionSampleRate((float)sample_rate)
         {
             if(staticptr())
             {
@@ -72,7 +76,52 @@ namespace lilvutils
             m_UnmapFeature.URI = LV2_URID__unmap;
             m_Features.push_back(&m_MapFeature);
             m_Features.push_back(&m_UnmapFeature);
-            m_Features.push_back(nullptr);
+
+            // floats:
+            for(auto p: {
+                std::make_tuple(LV2_PARAMETERS__sampleRate, &m_OptionSampleRate),
+                std::make_tuple(LV2_UI__updateRate, &m_OptionUiUpdateRate),
+                std::make_tuple(LV2_UI__scaleFactor, &m_OptionUiScaleFactor),
+            })
+            {
+                m_Options.push_back(LV2_Options_Option {
+                    .context = LV2_OPTIONS_INSTANCE,
+                    .subject = 0,
+                    .key = UriMapLookup(std::get<0>(p)),
+                    .size = sizeof(float),
+                    .type = UriMapLookup(LV2_ATOM__Float),
+                    .value = std::get<1>(p)
+                });
+            }
+
+            // ints:
+            for(auto p: {
+                std::make_tuple(LV2_BUF_SIZE__minBlockLength, &m_OptionMinBlockLength),
+                std::make_tuple(LV2_BUF_SIZE__maxBlockLength, &m_OptionMaxBlockLength),
+                std::make_tuple(LV2_BUF_SIZE__sequenceSize, &m_OptionSequenceSize),
+            })
+            {
+                m_Options.push_back(LV2_Options_Option {
+                    .context = LV2_OPTIONS_INSTANCE,
+                    .subject = 0,
+                    .key = UriMapLookup(std::get<0>(p)),
+                    .size = sizeof(int32_t),
+                    .type = UriMapLookup(LV2_ATOM__Int),
+                    .value = std::get<1>(p)
+                });
+            }
+            // terminate:
+            m_Options.push_back(LV2_Options_Option {
+                .context = LV2_OPTIONS_INSTANCE,
+                .subject = 0,
+                .key = 0,
+                .size = 0,
+                .type = 0,
+                .value = nullptr
+            });
+            m_OptionsFeature.data = m_Options.data();
+            m_OptionsFeature.URI = LV2_OPTIONS__options;
+            m_Features.push_back(&m_OptionsFeature);
         }
         ~World()
         {
@@ -120,10 +169,6 @@ namespace lilvutils
             std::unique_lock<std::mutex> lock(m_Mutex);
             return m_UriMapReverse.at(index);
         }
-        const LV2_Feature** GetFeatures()
-        {
-            return m_Features.data();
-        }
         const std::vector<const LV2_Feature*>& Features() const { return m_Features; }
 
     private:
@@ -143,7 +188,15 @@ namespace lilvutils
         LV2_URID_Unmap    m_UridUnmap;
         LV2_Feature m_MapFeature;
         LV2_Feature m_UnmapFeature;
+        LV2_Feature m_OptionsFeature;
         std::vector<const LV2_Feature*> m_Features;
+        std::vector<LV2_Options_Option> m_Options;
+        float m_OptionSampleRate = 0.0f;
+        uint32_t m_OptionMinBlockLength = 16;
+        uint32_t m_OptionMaxBlockLength = 4096;
+        uint32_t m_OptionSequenceSize = 4096;
+        float m_OptionUiUpdateRate = 30.0f;
+        float m_OptionUiScaleFactor = 1.0f;
     };
     class Uri
     {
@@ -195,6 +248,26 @@ namespace lilvutils
         std::optional<uint32_t> m_ControlInputIndex;
         std::array<std::optional<uint32_t>,2> m_AudioOutputIndex;
     };
+    class Evbuf
+    {
+    public:
+        Evbuf(uint32_t bufsize)
+        {
+            auto urid_chunk = lilvutils::World::Static().UriMapLookup(LV2_ATOM__Chunk);
+            auto urid_sequence = lilvutils::World::Static().UriMapLookup(LV2_ATOM__Sequence);
+            m_EvBuf = lv2_evbuf_new(bufsize, urid_chunk, urid_sequence);
+        }
+        ~Evbuf()
+        {
+            if(m_EvBuf)
+            {
+                lv2_evbuf_free(m_EvBuf);
+            }
+        }
+        LV2_Evbuf* get() const { return m_EvBuf; }
+    private:
+        LV2_Evbuf* m_EvBuf = nullptr;
+    };
     class Instance
     {
     public:
@@ -202,90 +275,26 @@ namespace lilvutils
         Instance& operator=(const Instance&) = delete;
         Instance(Instance&&) = delete;
         Instance& operator=(Instance&&) = delete;
-        Instance(const Plugin &plugin, double sample_rate) : m_Plugin(plugin)
-        {
-            if(plugin.ControlInputIndex())
-            {
-                auto urid_chunk = lilvutils::World::Static().UriMapLookup(LV2_ATOM__Chunk);
-                auto urid_sequence = lilvutils::World::Static().UriMapLookup(LV2_ATOM__Sequence);
-                uint32_t bufsize = 100000; // bufsizeOrDefault.value_or(100000);
-                m_MidiInEvBuf = lv2_evbuf_new(bufsize, urid_chunk, urid_sequence);
-                if(!m_MidiInEvBuf)
-                {
-                    throw std::runtime_error("could not create evbuf");
-                }
-                lv2_evbuf_reset(m_MidiInEvBuf, true);
-            }
-            auto uri_workerinterface = lilvutils::Uri(LV2_WORKER__interface);
-            bool needsWorker = lilv_plugin_has_extension_data(plugin.get(),uri_workerinterface.get());
-            
-            // if (lilv_plugin_has_extension_data(plugin.get(),uri_workerinterface))
-            // {
-            //     jalv->worker                = jalv_worker_new(&jalv->work_lock, true);
-            //     jalv->features.sched.handle = jalv->worker;
-            //     if (jalv->safe_restore) {
-            //     jalv->state_worker           = jalv_worker_new(&jalv->work_lock, false);
-            //     jalv->features.ssched.handle = jalv->state_worker;
-            // }
+        Instance(const Plugin &plugin, double sample_rate);
+        ~Instance();
 
-            m_Features = World::Static().Features();
-            m_Log.handle  = &m_Logger;
-            m_Log.printf  = &logger::Logger::printf_static;
-            m_Log.vprintf = &logger::Logger::vprintf_static;
-            m_LogFeature.data = &m_Log;
-            m_LogFeature.URI = LV2_LOG__log;
-            m_Features.push_back(&m_LogFeature);
-            if(needsWorker)
-            {
-                m_ScheduleWorker = std::make_unique<schedule::Worker>(*this);
-                m_Features.push_back(&m_ScheduleWorker->ScheduleFeature());
-            }
-            m_Instance = lilv_plugin_instantiate(plugin.get(), sample_rate, m_Features.data());
-            if(!m_Instance)
-            {
-                throw std::runtime_error("could not instantiate plugin");
-            }
-            if(plugin.ControlInputIndex())
-            {
-                lilv_instance_connect_port(m_Instance, plugin.ControlInputIndex().value(), lv2_evbuf_get_buffer(m_MidiInEvBuf));
-            }
-            if (needsWorker)
-            {
-              auto worker_iface = (const LV2_Worker_Interface*)lilv_instance_get_extension_data(m_Instance, LV2_WORKER__interface);
-              m_ScheduleWorker->Start(worker_iface);
-            }
-
-
-        }
-        ~Instance()
-        {
-            if(m_ScheduleWorker)
-            {
-                m_ScheduleWorker->Stop();
-                m_ScheduleWorker.reset();
-            }
-            if(m_Instance)
-            {
-                lilv_instance_free(m_Instance);
-            }
-            if(m_MidiInEvBuf)
-            {
-                lv2_evbuf_free(m_MidiInEvBuf);
-            }
-        }
         void Run(uint32_t samplecount)
         {
             lilv_instance_run(m_Instance, samplecount);
-            m_ScheduleWorker.RunInRealtimeThread();
+            if(m_ScheduleWorker)
+            {
+                m_ScheduleWorker->RunInRealtimeThread();
+            }
         }
         const LilvInstance* get() const { return m_Instance; }
         LilvInstance* get() { return m_Instance; }
         const Plugin& plugin() const { return m_Plugin; }
-        LV2_Evbuf* MidiInEvBuf() const { return m_MidiInEvBuf; }
+        LV2_Evbuf* MidiInEvBuf() const;
     private:
         std::vector<const LV2_Feature*> m_Features;
         LilvInstance *m_Instance = nullptr;
-        LV2_Evbuf* m_MidiInEvBuf = nullptr;
+        //LV2_Evbuf* m_MidiInEvBuf = nullptr;
+        std::vector<std::unique_ptr<Evbuf>> m_Evbufs;
         logger::Logger m_Logger;
         std::unique_ptr<schedule::Worker> m_ScheduleWorker;
         LV2_Log_Log m_Log;

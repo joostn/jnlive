@@ -54,7 +54,14 @@ namespace jackutils
             }
             return *staticptr();
         }
-        
+        uint32_t SampleRate() const
+        {
+            return jack_get_sample_rate(m_Client);
+        }
+        uint32_t BufferSize() const
+        {
+            return jack_get_buffer_size(m_Client);
+        }
     private:
         static Client*& staticptr()
         {

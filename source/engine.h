@@ -55,7 +55,7 @@ namespace engine
         Engine() : m_JackClient {"JN Live", [this](jack_nframes_t nframes){
             m_RtProcessor.Process(nframes);
         }}, 
-         m_AudioOutPorts { jackutils::Port("out_l", jackutils::Port::Kind::Audio, jackutils::Port::Direction::Output), jackutils::Port("out_r", jackutils::Port::Kind::Audio, jackutils::Port::Direction::Output) }
+         m_AudioOutPorts { jackutils::Port("out_l", jackutils::Port::Kind::Audio, jackutils::Port::Direction::Output), jackutils::Port("out_r", jackutils::Port::Kind::Audio, jackutils::Port::Direction::Output) }, m_LilvWorld(m_JackClient.SampleRate())
         {
             jack_activate(jackutils::Client::Static().get());
         }
@@ -85,18 +85,11 @@ namespace engine
                 });  
             }
         }
-        void ProcessMessages() // should be called regularly
+        void ProcessMessages()
         {
-            while(true)
-            {
-                auto message = m_RtProcessor.IncomingRingBuf().Read();
-                if(!message) break;
-                if(auto asyncfunctionmessage = dynamic_cast<const realtimethread::AsyncFunctionMessage*>(message))
-                {
-                    asyncfunctionmessage->Call();
-                }
-            }
+            m_RtProcessor.ProcessMessagesInMainThread();
         }
+
     private:
         void SyncRtData()
         {
@@ -248,10 +241,10 @@ namespace engine
         project::Project m_Project;
         std::vector<std::unique_ptr<PluginInstance>> m_OwnedPlugins;
         std::vector<Part> m_Parts;
+        jackutils::Client m_JackClient;
         lilvutils::World m_LilvWorld;
         realtimethread::Processor m_RtProcessor {8192};
         realtimethread::Data m_CurrentRtData;
-        jackutils::Client m_JackClient;
         std::array<jackutils::Port, 2> m_AudioOutPorts;
 
     };

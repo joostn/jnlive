@@ -93,6 +93,7 @@ namespace realtimethread
         {
             m_NumMidiPorts = numMidiPorts;
         }
+        const std::array<jack_port_t*, 2>& OutputAudioPorts() const { return m_OutputAudioPorts; }
         std::array<jack_port_t*, 2>& OutputAudioPorts() { return m_OutputAudioPorts; }
         auto operator<=>(const Data&) const = default;
         
@@ -106,10 +107,10 @@ namespace realtimethread
     class SetDataMessage : public ringbuf::PacketBase
     {
     public:
-        SetDataMessage(Data &&data) : m_Data(data) {}
-        const Data& data() const { return m_Data; }
+        SetDataMessage(const Data *data) : m_Data(data) {}
+        const Data* data() const { return m_Data; }
     private:
-        Data m_Data;
+        const Data *m_Data;
     };
     class AsyncFunctionMessage : public ringbuf::PacketBase
     {
@@ -129,7 +130,7 @@ namespace realtimethread
     class Processor
     {
     public:
-        Processor(jack_nframes_t bufsize) : m_Bufsize(bufsize), m_AudioBufferStorage(2*bufsize)
+        Processor(jack_nframes_t bufsize) : m_Bufsize(bufsize), m_AudioBufferStorage(2*bufsize), m_CurrentData(std::make_unique<Data>()), m_DataInRtThread(m_CurrentData.get())
         {
           m_UridMidiEvent = lilvutils::World::Static().UriMapLookup(LV2_MIDI__MidiEvent);
         }
@@ -139,47 +140,65 @@ namespace realtimethread
             {
                 throw std::runtime_error("nframes > bufsize");
             }
-            ProcessMessages();
+            ProcessMessagesInRealtimeThread();
             ProcessIncomingMidi(nframes);
             ProcessOutgoingAudio(nframes);
         }
         void SetDataFromMainThread(Data &&data)
         {
-            IncomingRingBuf().Write(SetDataMessage(std::move(data)));
+            auto olddata = std::move(m_CurrentData);
+            m_CurrentData = std::make_unique<Data>(std::move(data));
+            RingBufToRtThread().Write(SetDataMessage(m_CurrentData.get()));
+            auto ptr = olddata.release();
+            DeferredExecuteAfterRoundTrip([ptr](){
+                delete ptr;
+            });
         }
         void DeferredExecuteAfterRoundTrip(std::function<void()> &&function)
         {
-            OutgoingRingBuf().Write(realtimethread::AsyncFunctionMessage(std::move(function)));
+            RingBufToRtThread().Write(realtimethread::AsyncFunctionMessage(std::move(function)));
         }
-        ringbuf::RingBuf& IncomingRingBuf() { return m_IncomingRingBuf; }
-        ringbuf::RingBuf& OutgoingRingBuf() { return m_OutgoingRingBuf; }
-        
-    private:
-        void ProcessMessages()
+        ringbuf::RingBuf& RingBufToRtThread() { return m_RingBufToRtThread; }
+        ringbuf::RingBuf& RingBufFromRtThread() { return m_RingBufFromRtThread; }
+        void ProcessMessagesInMainThread() // should be called regularly
         {
             while(true)
             {
-                auto message = IncomingRingBuf().Read();
+                auto message = RingBufFromRtThread().Read();
+                if(!message) break;
+                if(auto asyncfunctionmessage = dynamic_cast<const realtimethread::AsyncFunctionMessage*>(message))
+                {
+                    asyncfunctionmessage->Call();
+                }
+            }
+        }
+    private:
+        void ProcessMessagesInRealtimeThread()
+        {
+            while(true)
+            {
+                auto message = RingBufToRtThread().Read();
                 if(!message) break;
                 if(auto setdatamessage = dynamic_cast<const SetDataMessage*>(message))
                 {
-                    m_Data = setdatamessage->data();
+                    m_DataInRtThread = setdatamessage->data();
                 }
                 else if(auto asyncfunctionmessage = dynamic_cast<const AsyncFunctionMessage*>(message))
                 {
                     // post back to main thread
-                    m_OutgoingRingBuf.Write(*asyncfunctionmessage);
+                    m_RingBufFromRtThread.Write(*asyncfunctionmessage);
                 }
             }
         }
         void ProcessOutgoingAudio(jack_nframes_t nframes)
         {
+            const auto &data = *m_DataInRtThread;
             std::array<float*, 2> outputAudioPorts = {
-                (float*)jack_port_get_buffer(m_Data.OutputAudioPorts()[0], nframes),
-                (float*)jack_port_get_buffer(m_Data.OutputAudioPorts()[1], nframes)
+                (float*)jack_port_get_buffer(data.OutputAudioPorts()[0], nframes),
+                (float*)jack_port_get_buffer(data.OutputAudioPorts()[1], nframes)
             };
             bool hasoutputaudio = outputAudioPorts[0] && outputAudioPorts[1];
-            if(m_Data.NumPlugins() == 0)
+            if(data.NumPlugins() == 0)
             {
                 if(hasoutputaudio)
                 {
@@ -193,9 +212,9 @@ namespace realtimethread
             else
             {
                 std::array<float*, 2> pluginaudiobufs = {m_AudioBufferStorage.data() + 0*nframes, m_AudioBufferStorage.data() + 1*nframes};
-                for(size_t pluginindex = 0; pluginindex < m_Data.NumPlugins(); ++pluginindex)
+                for(size_t pluginindex = 0; pluginindex < data.NumPlugins(); ++pluginindex)
                 {
-                    const auto &plugin = m_Data.Plugins()[pluginindex];
+                    const auto &plugin = data.Plugins()[pluginindex];
                     auto outputAudioPortIndices = plugin.PluginInstance().plugin().OutputAudioPortIndices();
                     auto lilvinstance = plugin.PluginInstance().get();
                     if(outputAudioPortIndices[0])
@@ -232,33 +251,31 @@ namespace realtimethread
         }
         void ProcessIncomingMidi(jack_nframes_t nframes)
         {
-            for(size_t midiportindex = 0; midiportindex < m_Data.NumMidiPorts(); ++midiportindex)
+            const auto &data = *m_DataInRtThread;
+            for(size_t midiportindex = 0; midiportindex < data.NumMidiPorts(); ++midiportindex)
             {
-                auto &midiport = m_Data.MidiPorts()[midiportindex];
+                auto &midiport = data.MidiPorts()[midiportindex];
                 auto buf = jack_port_get_buffer(&midiport.Port(), nframes);
-                if(buf)
+                auto evtcount = jack_midi_get_event_count(buf);
+                if(buf && (evtcount > 0))
                 {
                     LV2_Evbuf *evbuf = nullptr;
                     LV2_Evbuf_Iterator iter;
-                    if( (midiport.PluginIndex() >= 0) && (midiport.PluginIndex() < m_Data.NumPlugins()) )
+                    if( (midiport.PluginIndex() >= 0) && (midiport.PluginIndex() < data.NumPlugins()) )
                     {
-                        auto &plugin = m_Data.Plugins()[midiport.PluginIndex()];
+                        auto &plugin = data.Plugins()[midiport.PluginIndex()];
                         auto &plugininstance = plugin.PluginInstance();
                         evbuf = plugininstance.MidiInEvBuf();
                         lv2_evbuf_reset(evbuf, true);
                         iter = lv2_evbuf_begin(evbuf);
                     }
-                    void* buf = jack_port_get_buffer(&midiport.Port(), nframes);
-                    if(buf)
+                    for (uint32_t i = 0; i < jack_midi_get_event_count(buf); ++i) 
                     {
-                        for (uint32_t i = 0; i < jack_midi_get_event_count(buf); ++i) 
+                        jack_midi_event_t ev;
+                        jack_midi_event_get(&ev, buf, i);
+                        if(evbuf)
                         {
-                            jack_midi_event_t ev;
-                            jack_midi_event_get(&ev, buf, i);
-                            if(evbuf)
-                            {
-                                lv2_evbuf_write(&iter, ev.time, 0, m_UridMidiEvent, ev.size, ev.buffer);
-                            }
+                            lv2_evbuf_write(&iter, ev.time, 0, m_UridMidiEvent, ev.size, ev.buffer);
                         }
                     }
                 }
@@ -266,11 +283,12 @@ namespace realtimethread
         }
 
     private:
-        Data m_Data;
+        std::unique_ptr<Data> m_CurrentData;
+        const Data* m_DataInRtThread;
         jack_nframes_t m_Bufsize;
         std::vector<float> m_AudioBufferStorage;
-        ringbuf::RingBuf m_IncomingRingBuf {130000, 4096};
-        ringbuf::RingBuf m_OutgoingRingBuf {130000, 4096};
+        ringbuf::RingBuf m_RingBufToRtThread {130000, 4096};
+        ringbuf::RingBuf m_RingBufFromRtThread {130000, 4096};
         LV2_URID m_UridMidiEvent;
     };
 }
