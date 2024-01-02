@@ -14,6 +14,8 @@ namespace
         {
             memcpy(m_Data.data(), data, size);
         }
+        const void* Data() const { return m_Data.data(); }
+        uint32_t DataSize() const { return m_DataSize; }
     private:
         std::array<char, cMaxDataSize> m_Data;
         uint32_t m_DataSize;
@@ -33,35 +35,113 @@ namespace schedule
         m_ScheduleFeature.data = &m_Schedule;
         m_ScheduleFeature.URI = LV2_WORKER__schedule;
     }
+    Worker::~Worker()
+    {
+        Stop();
+    }
     LV2_Worker_Status Worker::schedule_work(uint32_t size, const void* data)
     {
         // called in audio thread:
         if(ScheduleMessage::cMaxDataSize >= size)
         {
-            bool success = m_RingBufFromRealtimeThread.Write(ScheduleMessage(size, data));
-            return success? LV2_WORKER_SUCCESS : LV2_WORKER_ERR_NO_SPACE;
+            bool success = m_RingBufFromRealtimeThread.Write(ScheduleMessage(size, data), false);
+            if(success)
+            {
+                return LV2_WORKER_SUCCESS;
+            }
         }
-        else
-        {
-            return LV2_WORKER_ERR_NO_SPACE;
-        }
+        return LV2_WORKER_ERR_NO_SPACE;
     }
     void Worker::RunInRealtimeThread()
     {
         // called in audio thread:
+        while(true)
+        {
+            auto message = m_RingBufFromRealtimeThread.Read();
+            if(!message) break;
+            if(auto schedulemessage = dynamic_cast<const ScheduleMessage*>(message))
+            {
+                if(m_WorkerInterface && m_WorkerInterface->work_response)
+                {
+                    m_WorkerInterface->work_response(m_Instance.get(), schedulemessage->DataSize(), schedulemessage->Data());
+                }
+            }
+        }
+        if(m_WorkerInterface->end_run)
+        {
+            m_WorkerInterface->end_run(m_Instance.get());
+        }
     }
     void Worker::WorkerThreadFunc()
     {
-        
+        while(true)
+        {
+            {
+                std::unique_lock lk(m_Mutex);
+                m_Cv.wait_for(lk, std::chrono::milliseconds(1), [this]{ return m_AbortRequested; });
+                if(m_AbortRequested)
+                {
+                    break;
+                }
+            }
+            while(true)
+            {
+                auto message = m_RingBufFromRealtimeThread.Read();
+                if(!message) break;
+                if(auto schedulemessage = dynamic_cast<const ScheduleMessage*>(message))
+                {
+                    if(m_WorkerInterface && m_WorkerInterface->work)
+                    {
+                        m_WorkerInterface->work(m_Instance.get(), &Worker::RespondStatic, this, schedulemessage->DataSize(), schedulemessage->Data());
+                    }
+                }
+            }
+
+        }
     }
 
     void Worker::Start(const LV2_Worker_Interface* iface)
     {
         m_WorkerInterface = iface;
-        m_WorkerThread = std::thread([this](){
-            WorkerThreadFunc();
-        })
+        if(m_WorkerInterface)
+        {
+            m_WorkerThread = std::thread([this](){
+                WorkerThreadFunc();
+            });
+        }
     }
 
+    void Worker::Stop()
+    {
+        if(m_WorkerInterface)
+        {
+            {
+                std::unique_lock lk(m_Mutex);
+                m_AbortRequested = true;
+            }
+            m_Cv.notify_all();
+            m_WorkerThread.join();
+            m_WorkerInterface = nullptr;
+        }
+    }
+
+    /* static */ LV2_Worker_Status Worker::RespondStatic(LV2_Worker_Respond_Handle handle, uint32_t size, const void *data)
+    {
+        return static_cast<Worker*>(handle)->Respond(size, data);
+    }
+
+    LV2_Worker_Status Worker::Respond(uint32_t size, const void *data)
+    {
+        // called in worker thread:
+        if(ScheduleMessage::cMaxDataSize >= size)
+        {
+            bool success = m_RingBufToRealtimeThread.Write(ScheduleMessage(size, data), false);
+            if(success)
+            {
+                return LV2_WORKER_SUCCESS;
+            }
+        }
+        return LV2_WORKER_ERR_NO_SPACE;
+    }
 
 }

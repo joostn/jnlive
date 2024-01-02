@@ -72,21 +72,18 @@ namespace engine
             */
             for(auto &midiport: midiInPortsToDiscard)
             {
-                auto ptr = midiport.get();
-                midiport.reset();
-                m_RtProcessor.OutgoingRingBuf().Write(realtimethread::AsyncFunctionMessage([ptr](){
+                auto ptr = midiport.release();
+                m_RtProcessor.DeferredExecuteAfterRoundTrip([ptr](){
                     delete ptr;
-                }));     
+                });  
             }
             for(auto &plugin: pluginsToDiscard)
             {
-                auto ptr = plugin.get();
-                plugin.reset();
-                m_RtProcessor.OutgoingRingBuf().Write(realtimethread::AsyncFunctionMessage([ptr](){
+                auto ptr = plugin.release();
+                m_RtProcessor.DeferredExecuteAfterRoundTrip([ptr](){
                     delete ptr;
-                }));     
-             }
-
+                });  
+            }
         }
         void ProcessMessages() // should be called regularly
         {

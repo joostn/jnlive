@@ -202,7 +202,7 @@ namespace lilvutils
         Instance& operator=(const Instance&) = delete;
         Instance(Instance&&) = delete;
         Instance& operator=(Instance&&) = delete;
-        Instance(const Plugin &plugin, double sample_rate) : m_Plugin(plugin), m_ScheduleWorker(*this)
+        Instance(const Plugin &plugin, double sample_rate) : m_Plugin(plugin)
         {
             if(plugin.ControlInputIndex())
             {
@@ -217,6 +217,7 @@ namespace lilvutils
                 lv2_evbuf_reset(m_MidiInEvBuf, true);
             }
             auto uri_workerinterface = lilvutils::Uri(LV2_WORKER__interface);
+            bool needsWorker = lilv_plugin_has_extension_data(plugin.get(),uri_workerinterface.get());
             
             // if (lilv_plugin_has_extension_data(plugin.get(),uri_workerinterface))
             // {
@@ -234,7 +235,11 @@ namespace lilvutils
             m_LogFeature.data = &m_Log;
             m_LogFeature.URI = LV2_LOG__log;
             m_Features.push_back(&m_LogFeature);
-            m_Features.push_back(&m_ScheduleWorker.ScheduleFeature());
+            if(needsWorker)
+            {
+                m_ScheduleWorker = std::make_unique<schedule::Worker>(*this);
+                m_Features.push_back(&m_ScheduleWorker->ScheduleFeature());
+            }
             m_Instance = lilv_plugin_instantiate(plugin.get(), sample_rate, m_Features.data());
             if(!m_Instance)
             {
@@ -244,16 +249,21 @@ namespace lilvutils
             {
                 lilv_instance_connect_port(m_Instance, plugin.ControlInputIndex().value(), lv2_evbuf_get_buffer(m_MidiInEvBuf));
             }
-            if (lilv_plugin_has_extension_data(plugin.get(),uri_workerinterface.get()))
+            if (needsWorker)
             {
               auto worker_iface = (const LV2_Worker_Interface*)lilv_instance_get_extension_data(m_Instance, LV2_WORKER__interface);
-              m_ScheduleWorker.Start(worker_iface, *this);
+              m_ScheduleWorker->Start(worker_iface);
             }
 
 
         }
         ~Instance()
         {
+            if(m_ScheduleWorker)
+            {
+                m_ScheduleWorker->Stop();
+                m_ScheduleWorker.reset();
+            }
             if(m_Instance)
             {
                 lilv_instance_free(m_Instance);
@@ -277,7 +287,7 @@ namespace lilvutils
         LilvInstance *m_Instance = nullptr;
         LV2_Evbuf* m_MidiInEvBuf = nullptr;
         logger::Logger m_Logger;
-        schedule::Worker m_ScheduleWorker;
+        std::unique_ptr<schedule::Worker> m_ScheduleWorker;
         LV2_Log_Log m_Log;
         LV2_Feature m_LogFeature;
         const Plugin &m_Plugin;

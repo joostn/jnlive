@@ -147,6 +147,10 @@ namespace realtimethread
         {
             IncomingRingBuf().Write(SetDataMessage(std::move(data)));
         }
+        void DeferredExecuteAfterRoundTrip(std::function<void()> &&function)
+        {
+            OutgoingRingBuf().Write(realtimethread::AsyncFunctionMessage(std::move(function)));
+        }
         ringbuf::RingBuf& IncomingRingBuf() { return m_IncomingRingBuf; }
         ringbuf::RingBuf& OutgoingRingBuf() { return m_OutgoingRingBuf; }
         
