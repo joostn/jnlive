@@ -152,9 +152,14 @@ namespace lilvutils
                     int minsize = lilv_node_as_int(min_size);
                     bufsize = std::max(bufsize, minsize);
                 }
-                m_Evbufs[portindex] = std::make_unique<Evbuf>(bufsize);
-                lilv_instance_connect_port(                    m_Instance, portindex, lv2_evbuf_get_buffer(m_Evbufs[portindex]->get()));
-                lv2_evbuf_reset(m_Evbufs[portindex]->get(), isinput);
+                auto evbuf = std::make_unique<Evbuf>(bufsize);
+                lv2_evbuf_reset(evbuf->get(), isinput);
+                lilv_instance_connect_port(                    m_Instance, portindex, lv2_evbuf_get_buffer(evbuf->get()));
+                m_Evbufs[portindex] = std::move(evbuf);
+                if(isoutput)
+                {
+                    m_IndicesOfEvBufsToDrain.push_back(portindex);
+                }
             }
         }
         if (needsWorker)

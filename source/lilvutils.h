@@ -285,6 +285,10 @@ namespace lilvutils
             {
                 m_ScheduleWorker->RunInRealtimeThread();
             }
+            for(auto index: m_IndicesOfEvBufsToDrain)
+            {
+                lv2_evbuf_reset(m_Evbufs[index]->get(), false);
+            }
         }
         const LilvInstance* get() const { return m_Instance; }
         LilvInstance* get() { return m_Instance; }
@@ -295,6 +299,7 @@ namespace lilvutils
         LilvInstance *m_Instance = nullptr;
         //LV2_Evbuf* m_MidiInEvBuf = nullptr;
         std::vector<std::unique_ptr<Evbuf>> m_Evbufs;
+        std::vector<size_t> m_IndicesOfEvBufsToDrain;
         logger::Logger m_Logger;
         std::unique_ptr<schedule::Worker> m_ScheduleWorker;
         LV2_Log_Log m_Log;
