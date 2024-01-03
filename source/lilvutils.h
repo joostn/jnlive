@@ -25,104 +25,7 @@ namespace lilvutils
         World& operator=(const World&) = delete;
         World(World&&) = delete;
         World& operator=(World&&) = delete;
-        World(uint32_t sample_rate) : m_OptionSampleRate((float)sample_rate)
-        {
-            if(staticptr())
-            {
-                throw std::runtime_error("Can only instantiate a single lilv_world");
-            }
-            auto world = lilv_world_new();
-            if(!world)
-            {
-                throw std::runtime_error("lilv_world_new failed");
-            }
-            utils::finally fin1([&](){
-                if(world)
-                {
-                    lilv_world_free(world); 
-                }
-            });
-            lilv_world_load_all(world);
-            auto plugins = lilv_world_get_all_plugins(world); // result must not be freed
-            if(!plugins)
-            {
-                throw std::runtime_error("Failed to get LV2 plugins.");
-            }
-/*            LILV_FOREACH(plugins, i, plugins) {
-                auto plugin = lilv_plugins_get(plugins, i);
-                auto uri = lilv_node_as_uri(lilv_plugin_get_uri(plugin));
-                std::cout << "Plugin: " << uri << std::endl;
-            }
-*/
-            m_World = world;
-            m_Plugins = plugins;
-            world = nullptr;
-            plugins = nullptr;
-            staticptr() = this;
-            m_UridMap.handle = this;
-            m_UridMap.map = [](LV2_URID_Map_Handle handle, const char* uri) -> LV2_URID {
-                auto world = (World*)handle;
-                return (LV2_URID)world->UriMapLookup(uri);
-            };
-            m_UridUnmap.handle = this;
-            m_UridUnmap.unmap = [](LV2_URID_Unmap_Handle handle, LV2_URID urid) -> const char* {
-                auto world = (World*)handle;
-                return world->UriMapReverseLookup(urid).c_str();
-            };
-
-            m_MapFeature.data = &m_UridMap;
-            m_MapFeature.URI = LV2_URID__map;
-            m_UnmapFeature.data = &m_UridUnmap;
-            m_UnmapFeature.URI = LV2_URID__unmap;
-            m_Features.push_back(&m_MapFeature);
-            m_Features.push_back(&m_UnmapFeature);
-
-            // floats:
-            for(auto p: {
-                std::make_tuple(LV2_PARAMETERS__sampleRate, &m_OptionSampleRate),
-                std::make_tuple(LV2_UI__updateRate, &m_OptionUiUpdateRate),
-                std::make_tuple(LV2_UI__scaleFactor, &m_OptionUiScaleFactor),
-            })
-            {
-                m_Options.push_back(LV2_Options_Option {
-                    .context = LV2_OPTIONS_INSTANCE,
-                    .subject = 0,
-                    .key = UriMapLookup(std::get<0>(p)),
-                    .size = sizeof(float),
-                    .type = UriMapLookup(LV2_ATOM__Float),
-                    .value = std::get<1>(p)
-                });
-            }
-
-            // ints:
-            for(auto p: {
-                std::make_tuple(LV2_BUF_SIZE__minBlockLength, &m_OptionMinBlockLength),
-                std::make_tuple(LV2_BUF_SIZE__maxBlockLength, &m_OptionMaxBlockLength),
-                std::make_tuple(LV2_BUF_SIZE__sequenceSize, &m_OptionSequenceSize),
-            })
-            {
-                m_Options.push_back(LV2_Options_Option {
-                    .context = LV2_OPTIONS_INSTANCE,
-                    .subject = 0,
-                    .key = UriMapLookup(std::get<0>(p)),
-                    .size = sizeof(int32_t),
-                    .type = UriMapLookup(LV2_ATOM__Int),
-                    .value = std::get<1>(p)
-                });
-            }
-            // terminate:
-            m_Options.push_back(LV2_Options_Option {
-                .context = LV2_OPTIONS_INSTANCE,
-                .subject = 0,
-                .key = 0,
-                .size = 0,
-                .type = 0,
-                .value = nullptr
-            });
-            m_OptionsFeature.data = m_Options.data();
-            m_OptionsFeature.URI = LV2_OPTIONS__options;
-            m_Features.push_back(&m_OptionsFeature);
-        }
+        World(uint32_t sample_rate, uint32_t maxBlockSize);
         ~World()
         {
             if(m_World) lilv_world_free(m_World);
@@ -170,6 +73,7 @@ namespace lilvutils
             return m_UriMapReverse.at(index);
         }
         const std::vector<const LV2_Feature*>& Features() const { return m_Features; }
+        uint32_t MaxBlockLength() const { return m_OptionMaxBlockLength; }
 
     private:
         static World*& staticptr()
@@ -226,6 +130,66 @@ namespace lilvutils
         std::string m_Name;
         LilvNode *m_node = nullptr;
     };
+    class TPortBase
+    {
+    public:
+        enum class TDirection {Input, Output};
+        TPortBase(TDirection direction, std::string &&name, std::string &&symbol, bool optional) : m_Direction(direction), m_Name(std::move(name)), m_Symbol(std::move(symbol)), m_Optional(optional) {}
+        virtual ~TPortBase() {}
+        TDirection Direction() const { return m_Direction; }
+        const std::string& Name() const { return m_Name; }
+        const std::string& Symbol() const { return m_Symbol; }
+        bool Optional() const { return m_Optional; }
+    private:
+        TDirection m_Direction;
+        std::string m_Name;
+        std::string m_Symbol;
+        bool m_Optional;
+    };
+    class TAudioPort : public TPortBase
+    {
+    public:
+        enum class TDesignation {StereoLeft, StereoRight};
+        TAudioPort(TDirection direction, std::string &&name, std::string &&symbol, std::optional<TDesignation> designation, bool optional) : TPortBase(direction, std::move(name), std::move(symbol), optional), m_Designation(designation) {}
+        virtual ~TAudioPort() {}
+        std::optional<TDesignation> Designation() const { return m_Designation; }
+    private:
+        std::optional<TDesignation> m_Designation;
+    };
+    class TCvPort : public TPortBase
+    {
+    public:
+        TCvPort(TDirection direction, std::string &&name, std::string &&symbol, bool optional) : TPortBase(direction, std::move(name), std::move(symbol), optional) {}
+        virtual ~TCvPort() {}
+    };
+    class TAtomPort : public TPortBase
+    {
+    public:
+        enum class TDesignation {Control};
+        TAtomPort(TDirection direction, std::string &&name, std::string &&symbol, std::optional<TDesignation> designation, bool supportsmidi, const std::optional<int> &minbuffersize, bool optional) : TPortBase(direction, std::move(name), std::move(symbol), optional), m_Designation(designation), m_SupportsMidi(supportsmidi), m_MinBufferSize(minbuffersize) {}
+        virtual ~TAtomPort() {}
+        std::optional<TDesignation> Designation() const { return m_Designation; }
+        bool SupportsMidi() const { return m_SupportsMidi; }
+        const std::optional<int>& MinBufferSize() const { return m_MinBufferSize; }
+    private:
+        std::optional<TDesignation> m_Designation;
+        bool m_SupportsMidi;
+        std::optional<int> m_MinBufferSize;
+    };
+    template <typename T>
+    class TControlPort : public TPortBase
+    {
+    public:
+        TControlPort(TDirection direction, std::string &&name, std::string &&symbol, T minimum, T maximum, T defaultvalue, bool optional) : TPortBase(direction, std::move(name), std::move(symbol), optional), m_Minimum(minimum), m_Maximum(maximum), m_DefaultValue(defaultvalue) {}
+        virtual ~TControlPort() {}
+        T Minimum() const { return m_Minimum; }
+        T Maximum() const { return m_Maximum; }
+        T DefaultValue() const { return m_DefaultValue; }
+    private:
+        T m_Minimum;
+        T m_Maximum;
+        T m_DefaultValue;
+    };
     class Plugin
     {
     public:
@@ -239,34 +203,88 @@ namespace lilvutils
             // no need to free
         }
         const LilvPlugin* get() const { return m_Plugin; }
-        const std::optional<uint32_t>& ControlInputIndex() const { return m_ControlInputIndex; }
+        const std::optional<uint32_t>& MidiInputIndex() const { return m_MidiInputIndex; }
         const std::array<std::optional<uint32_t>,2>& OutputAudioPortIndices() const { return m_AudioOutputIndex; }
         const std::string& Lv2Uri() const { return m_Uri; }
+        const std::vector<std::unique_ptr<TPortBase>>& Ports() const { return m_Ports; }
+        bool CanInstantiate() const { return m_CanInstantiate; }
+        const std::string& Name() const { return m_Name; }
+
     private:
         std::string m_Uri;
+        std::string m_Name;
         const LilvPlugin *m_Plugin = nullptr;
-        std::optional<uint32_t> m_ControlInputIndex;
+        std::optional<uint32_t> m_MidiInputIndex;
+        std::vector<std::unique_ptr<TPortBase>> m_Ports;
+        bool m_CanInstantiate = false;
         std::array<std::optional<uint32_t>,2> m_AudioOutputIndex;
     };
-    class Evbuf
+    class TConnectionBase
     {
     public:
-        Evbuf(uint32_t bufsize)
+        TConnectionBase() {}
+        virtual ~TConnectionBase() {}
+    };
+    template <class TPort> class TConnection;
+    template <>
+    class TConnection<TAudioPort> : public TConnectionBase
+    {
+    public:
+        TConnection(size_t bufsize) : m_Buffer(bufsize)
+        {
+            std::fill(m_Buffer.begin(), m_Buffer.end(), 0.0f);
+        }
+        virtual ~TConnection() {}
+        float *Buffer() { return &m_Buffer[0]; }
+    private:
+        std::vector<float> m_Buffer;
+    };
+    template <>
+    class TConnection<TCvPort> : public TConnectionBase
+    {
+    public:
+        TConnection(size_t bufsize) : m_Buffer(bufsize) 
+        {
+            std::fill(m_Buffer.begin(), m_Buffer.end(), 0.0f);
+        }
+        virtual ~TConnection() {}
+        float *Buffer() { return &m_Buffer[0]; }
+    private:
+        std::vector<float> m_Buffer;
+    };
+    template <>
+    class TConnection<TAtomPort> : public TConnectionBase
+    {
+    public:
+        TConnection(uint32_t bufsize)
         {
             auto urid_chunk = lilvutils::World::Static().UriMapLookup(LV2_ATOM__Chunk);
             auto urid_sequence = lilvutils::World::Static().UriMapLookup(LV2_ATOM__Sequence);
             m_EvBuf = lv2_evbuf_new(bufsize, urid_chunk, urid_sequence);
         }
-        ~Evbuf()
+        virtual ~TConnection()
         {
             if(m_EvBuf)
             {
                 lv2_evbuf_free(m_EvBuf);
             }
         }
-        LV2_Evbuf* get() const { return m_EvBuf; }
+        LV2_Evbuf* Buffer() const { return m_EvBuf; }
     private:
         LV2_Evbuf* m_EvBuf = nullptr;
+    };
+    template <typename T>
+    class TConnection<TControlPort<T>> : public TConnectionBase
+    {
+    public:
+        TConnection(const T &defaultvalue)
+        {
+            m_Value = (T)0;            
+        }
+        virtual ~TConnection() {}
+        T* Buffer() { return &m_Value; }
+    private:
+        T m_Value;
     };
     class Instance
     {
@@ -285,25 +303,27 @@ namespace lilvutils
             {
                 m_ScheduleWorker->RunInRealtimeThread();
             }
-            for(auto index: m_IndicesOfEvBufsToDrain)
+            for(auto index: m_PortIndicesOfAtomPorts)
             {
-                lv2_evbuf_reset(m_Evbufs[index]->get(), false);
+                bool isinput = m_Plugin.Ports().at(index)->Direction() == TPortBase::TDirection::Input;
+                if(auto atomconnection = dynamic_cast<TConnection<TAtomPort>*>(m_Connections.at(index).get()))
+                {
+                    lv2_evbuf_reset(atomconnection->Buffer(), isinput);
+                }
             }
         }
         const LilvInstance* get() const { return m_Instance; }
         LilvInstance* get() { return m_Instance; }
         const Plugin& plugin() const { return m_Plugin; }
+        const std::vector<std::unique_ptr<TConnectionBase>>& Connections() const { return m_Connections; }
         LV2_Evbuf* MidiInEvBuf() const;
     private:
+        const Plugin &m_Plugin;
         std::vector<const LV2_Feature*> m_Features;
         LilvInstance *m_Instance = nullptr;
-        //LV2_Evbuf* m_MidiInEvBuf = nullptr;
-        std::vector<std::unique_ptr<Evbuf>> m_Evbufs;
-        std::vector<size_t> m_IndicesOfEvBufsToDrain;
+        std::vector<std::unique_ptr<TConnectionBase>> m_Connections;
+        std::vector<size_t> m_PortIndicesOfAtomPorts;
         logger::Logger m_Logger;
         std::unique_ptr<schedule::Worker> m_ScheduleWorker;
-        LV2_Log_Log m_Log;
-        LV2_Feature m_LogFeature;
-        const Plugin &m_Plugin;
     };
 }

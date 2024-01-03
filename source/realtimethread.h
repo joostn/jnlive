@@ -130,7 +130,7 @@ namespace realtimethread
     class Processor
     {
     public:
-        Processor(jack_nframes_t bufsize) : m_Bufsize(bufsize), m_AudioBufferStorage(2*bufsize), m_CurrentData(std::make_unique<Data>()), m_DataInRtThread(m_CurrentData.get())
+        Processor(jack_nframes_t bufsize) : m_Bufsize(bufsize), m_CurrentData(std::make_unique<Data>()), m_DataInRtThread(m_CurrentData.get())
         {
           m_UridMidiEvent = lilvutils::World::Static().UriMapLookup(LV2_MIDI__MidiEvent);
         }
@@ -193,58 +193,36 @@ namespace realtimethread
         void ProcessOutgoingAudio(jack_nframes_t nframes)
         {
             const auto &data = *m_DataInRtThread;
-            std::array<float*, 2> outputAudioPorts = {
+            std::array<float*, 2> mixedAudioPorts = {
                 (float*)jack_port_get_buffer(data.OutputAudioPorts()[0], nframes),
                 (float*)jack_port_get_buffer(data.OutputAudioPorts()[1], nframes)
             };
-            bool hasoutputaudio = outputAudioPorts[0] && outputAudioPorts[1];
-            if(data.NumPlugins() == 0)
+            bool hasoutputaudio = mixedAudioPorts[0] && mixedAudioPorts[1];
+            if(hasoutputaudio)
             {
-                if(hasoutputaudio)
+                for(size_t i = 0; i < nframes; ++i)
                 {
-                    for(size_t i = 0; i < nframes; ++i)
-                    {
-                        outputAudioPorts[0][i] = 0.0f;
-                        outputAudioPorts[1][i] = 0.0f;
-                    }
+                    mixedAudioPorts[0][i] = 0.0f;
+                    mixedAudioPorts[1][i] = 0.0f;
                 }
             }
-            else
+            for(size_t pluginindex = 0; pluginindex < data.NumPlugins(); ++pluginindex)
             {
-                std::array<float*, 2> pluginaudiobufs = {m_AudioBufferStorage.data() + 0*nframes, m_AudioBufferStorage.data() + 1*nframes};
-                for(size_t pluginindex = 0; pluginindex < data.NumPlugins(); ++pluginindex)
+                const auto &plugin = data.Plugins()[pluginindex];
+                auto outputAudioPortIndices = plugin.PluginInstance().plugin().OutputAudioPortIndices();
+                auto lilvinstance = plugin.PluginInstance().get();
+                plugin.PluginInstance().Run(nframes);
+                auto multiplier = plugin.AmplitudeFactor();
+                if(hasoutputaudio && outputAudioPortIndices[0] && outputAudioPortIndices[1])
                 {
-                    const auto &plugin = data.Plugins()[pluginindex];
-                    auto outputAudioPortIndices = plugin.PluginInstance().plugin().OutputAudioPortIndices();
-                    auto lilvinstance = plugin.PluginInstance().get();
-                    if(outputAudioPortIndices[0])
+                    std::array<float*, 2> pluginOutputAudioPorts {
+                        dynamic_cast<lilvutils::TConnection<lilvutils::TAudioPort>*>(plugin.PluginInstance().Connections().at(*outputAudioPortIndices[0]).get())->Buffer(),
+                        dynamic_cast<lilvutils::TConnection<lilvutils::TAudioPort>*>(plugin.PluginInstance().Connections().at(*outputAudioPortIndices[1]).get())->Buffer()
+                    };
+                    for(size_t i = 0; i < nframes; ++i)
                     {
-                        lilv_instance_connect_port(lilvinstance, outputAudioPortIndices[0].value(), pluginaudiobufs[0]);
-                    }
-                    if(outputAudioPortIndices[1])
-                    {
-                        lilv_instance_connect_port(lilvinstance, outputAudioPortIndices[1].value(), pluginaudiobufs[1]);
-                    }
-                    plugin.PluginInstance().Run(nframes);
-                    auto multiplier = plugin.AmplitudeFactor();
-                    if(hasoutputaudio)
-                    {
-                        if(pluginindex == 0)
-                        {
-                            for(size_t i = 0; i < nframes; ++i)
-                            {
-                                outputAudioPorts[0][i] = multiplier * pluginaudiobufs[0][i];
-                                outputAudioPorts[1][i] = multiplier * pluginaudiobufs[1][i];
-                            }
-                        }
-                        else
-                        {
-                            for(size_t i = 0; i < nframes; ++i)
-                            {
-                                outputAudioPorts[0][i] += multiplier * pluginaudiobufs[0][i];
-                                outputAudioPorts[1][i] += multiplier * pluginaudiobufs[1][i];
-                            }
-                        }
+                        mixedAudioPorts[0][i] += multiplier * pluginOutputAudioPorts[0][i];
+                        mixedAudioPorts[1][i] += multiplier * pluginOutputAudioPorts[1][i];
                     }
                 }
             }
@@ -266,7 +244,6 @@ namespace realtimethread
                         auto &plugin = data.Plugins()[midiport.PluginIndex()];
                         auto &plugininstance = plugin.PluginInstance();
                         evbuf = plugininstance.MidiInEvBuf();
-                        lv2_evbuf_reset(evbuf, true);
                         iter = lv2_evbuf_begin(evbuf);
                     }
                     for (uint32_t i = 0; i < jack_midi_get_event_count(buf); ++i) 
@@ -286,7 +263,6 @@ namespace realtimethread
         std::unique_ptr<Data> m_CurrentData;
         const Data* m_DataInRtThread;
         jack_nframes_t m_Bufsize;
-        std::vector<float> m_AudioBufferStorage;
         ringbuf::RingBuf m_RingBufToRtThread {130000, 4096};
         ringbuf::RingBuf m_RingBufFromRtThread {130000, 4096};
         LV2_URID m_UridMidiEvent;

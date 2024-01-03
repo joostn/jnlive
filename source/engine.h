@@ -52,10 +52,10 @@ namespace engine
             std::vector<size_t> m_PluginIndices;
             std::unique_ptr<jackutils::Port> m_MidiInPort;
         };
-        Engine() : m_JackClient {"JN Live", [this](jack_nframes_t nframes){
+        Engine(uint32_t maxBlockSize) : m_JackClient {"JN Live", [this](jack_nframes_t nframes){
             m_RtProcessor.Process(nframes);
         }}, 
-         m_AudioOutPorts { jackutils::Port("out_l", jackutils::Port::Kind::Audio, jackutils::Port::Direction::Output), jackutils::Port("out_r", jackutils::Port::Kind::Audio, jackutils::Port::Direction::Output) }, m_LilvWorld(m_JackClient.SampleRate())
+         m_AudioOutPorts { jackutils::Port("out_l", jackutils::Port::Kind::Audio, jackutils::Port::Direction::Output), jackutils::Port("out_r", jackutils::Port::Kind::Audio, jackutils::Port::Direction::Output) }, m_LilvWorld(m_JackClient.SampleRate(), maxBlockSize)
         {
             jack_activate(jackutils::Client::Static().get());
         }

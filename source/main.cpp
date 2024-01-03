@@ -14,7 +14,8 @@ using namespace std::chrono_literals;
 
 int main()
 {
-    engine::Engine eng;
+    uint32_t maxblocksize = 4096;
+    engine::Engine eng(maxblocksize);
     
 
     std::string homedir = getenv("HOME");

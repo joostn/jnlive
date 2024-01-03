@@ -4,23 +4,15 @@
 #include "lv2/resize-port/resize-port.h"
 #include "lv2_evbuf.h"
 #include "lv2/midi/midi.h"
+#include "lv2/port-groups/port-groups.h"
 
-namespace lilvutils
+namespace 
 {
-    Plugin::Plugin(const Uri &uri) : m_Uri(uri.str())
+    std::vector<std::unique_ptr<lilvutils::TPortBase>> GetPluginPorts(const LilvPlugin *plugin, bool &canInstantiate)
     {
-        auto lilvworld = World::Static().get();
-        auto plugins = World::Static().Plugins();
-        auto urinode = uri.get();
-        m_Plugin = lilv_plugins_get_by_uri(plugins, urinode); // return value must not be freed
-        if(!m_Plugin)
-        {
-            throw std::runtime_error("could not load plugin");
-        }
-        std::vector<uint32_t> controlPortIndices;
-        std::vector<uint32_t> audioOutputPortIndices;
-
-        uint32_t numports = lilv_plugin_get_num_ports(m_Plugin);
+        canInstantiate = true;
+        std::vector<std::unique_ptr<lilvutils::TPortBase>> result;
+        uint32_t numports = lilv_plugin_get_num_ports(plugin);
         lilvutils::Uri uri_connectionOptional(LV2_CORE__connectionOptional);
         lilvutils::Uri uri_InputPort(LV2_CORE__InputPort);
         lilvutils::Uri uri_OutputPort(LV2_CORE__OutputPort);
@@ -32,82 +24,321 @@ namespace lilvutils
         lilvutils::Uri uri_AtomPort(LV2_ATOM__AtomPort);
         lilvutils::Uri uri_minimumSize(LV2_RESIZE_PORT__minimumSize);
         lilvutils::Uri uri_midievent(LV2_MIDI__MidiEvent);
+        lilvutils::Uri uri_portGroupsLeft(LV2_PORT_GROUPS__left);
+        lilvutils::Uri uri_portGroupsRight(LV2_PORT_GROUPS__right);
         for(uint32_t portindex = 0; portindex < numports; portindex++)
         {
-            auto port = lilv_plugin_get_port_by_index(m_Plugin, portindex);
-            auto optional = lilv_port_has_property(m_Plugin, port, uri_connectionOptional.get());
-            auto notongui = lilv_port_has_property(m_Plugin, port, uri_notOnGUI.get());
-            bool isinput = lilv_port_is_a(m_Plugin, port, uri_InputPort.get());
-            bool isoutput = lilv_port_is_a(m_Plugin, port, uri_OutputPort.get());
-            bool isaudio = lilv_port_is_a(m_Plugin, port, uri_AudioPort.get());
-            bool iscontrolport = lilv_port_is_a(m_Plugin, port, uri_ControlPort.get());
-            bool iscvport = lilv_port_is_a(m_Plugin, port, uri_CVPort.get());
-            bool isatomport = lilv_port_is_a(m_Plugin, port, uri_AtomPort.get());
-            bool ismidiport = isatomport && lilv_port_supports_event(m_Plugin, port, uri_midievent.get());
-            if( (!isinput) && (!isoutput) )
+            auto port = lilv_plugin_get_port_by_index(plugin, portindex);
+            auto optional = lilv_port_has_property(plugin, port, uri_connectionOptional.get());
+            auto notongui = lilv_port_has_property(plugin, port, uri_notOnGUI.get());
+            bool isinput = lilv_port_is_a(plugin, port, uri_InputPort.get());
+            bool isoutput = lilv_port_is_a(plugin, port, uri_OutputPort.get());
+            bool isaudio = lilv_port_is_a(plugin, port, uri_AudioPort.get());
+            bool iscontrolport = lilv_port_is_a(plugin, port, uri_ControlPort.get());
+            bool iscvport = lilv_port_is_a(plugin, port, uri_CVPort.get());
+            bool isatomport = lilv_port_is_a(plugin, port, uri_AtomPort.get());
+
+            if(isinput != (!isoutput))
             {
                 throw std::runtime_error("port is neither input nor output");
             }
-
-            if(!optional)
+            auto direction = isinput? lilvutils::TPortBase::TDirection::Input : lilvutils::TPortBase::TDirection::Output;
+            std::string symbol;
+            auto port_sym = lilv_port_get_symbol(plugin, port);
+            // Returned value is owned by port and must not be freed
+            if(port_sym)
             {
-                if(isaudio && (!isinput))
+                auto str = lilv_node_as_string(port_sym);
+                if(str)
                 {
-                    audioOutputPortIndices.push_back(portindex);
+                    symbol = str;
                 }
-                if(ismidiport && (isinput))
+            }
+            std::string name;
+            auto port_name = lilv_port_get_name(plugin, port);
+            if(port_name)
+            {
+                utils::finally fin1([&](){
+                    lilv_node_free(port_name);
+                });
+                auto str = lilv_node_as_string(port_name);
+                if(str)
                 {
-                    controlPortIndices.push_back(portindex);
+                    name = str;
+                }
+            }
+            std::unique_ptr<lilvutils::TPortBase> portbase;
+            if(isaudio)
+            {
+                std::optional<lilvutils::TAudioPort::TDesignation> designation;
+                if(lilv_port_has_property(plugin, port, uri_portGroupsLeft.get()))
+                {
+                    designation = lilvutils::TAudioPort::TDesignation::StereoLeft;
+                }
+                else if(lilv_port_has_property(plugin, port, uri_portGroupsRight.get()))
+                {
+                    designation = lilvutils::TAudioPort::TDesignation::StereoRight;
+                }
+                portbase = std::make_unique<lilvutils::TAudioPort>(direction, std::move(name), std::move(symbol), designation, optional);
+            }
+            else if(isatomport)
+            {
+                std::optional<int> minbufsize;
+                {
+                    LilvNode* min_size = lilv_port_get(plugin, port, uri_minimumSize.get());
+                    if (min_size && lilv_node_is_int(min_size))
+                    {
+                        minbufsize = lilv_node_as_int(min_size);
+                    }
+                }
+                std::optional<lilvutils::TAtomPort::TDesignation> designation;
+                if(lilv_port_has_property(plugin, port, uri_control.get()))
+                {
+                    designation = lilvutils::TAtomPort::TDesignation::Control;
+                }
+                bool supportsmidi = lilv_port_supports_event(plugin, port, uri_midievent.get());
+                portbase = std::make_unique<lilvutils::TAtomPort>(direction, std::move(name), std::move(symbol), designation, supportsmidi, minbufsize, optional);
+            }
+            else if(iscontrolport)
+            {
+                LilvNode *minvalue = nullptr;
+                LilvNode *maxvalue = nullptr;
+                LilvNode *defaultvalue = nullptr;
+                lilv_port_get_range(plugin, port, &defaultvalue, &minvalue, &maxvalue);
+                utils::finally fin1([&](){
+                    if(minvalue) lilv_node_free(minvalue);
+                    if(maxvalue) lilv_node_free(maxvalue);
+                    if(defaultvalue) lilv_node_free(defaultvalue);
+                });
+                if(lilv_node_is_float(minvalue) && lilv_node_is_float(maxvalue) && lilv_node_is_float(defaultvalue))
+                {
+                    float minv = lilv_node_as_float(minvalue);
+                    float maxv = lilv_node_as_float(maxvalue);
+                    float defv = lilv_node_as_float(defaultvalue);
+                    portbase = std::make_unique<lilvutils::TControlPort<float>>(direction, std::move(name), std::move(symbol), minv, maxv, defv, optional);
+                }
+                else if(lilv_node_is_int(minvalue) && lilv_node_is_int(maxvalue) && lilv_node_is_int(defaultvalue))
+                {
+                    int minv = lilv_node_as_int(minvalue);
+                    int maxv = lilv_node_as_int(maxvalue);
+                    int defv = lilv_node_as_int(defaultvalue);
+                    portbase = std::make_unique<lilvutils::TControlPort<int>>(direction, std::move(name), std::move(symbol), minv, maxv, defv, optional);
+                }
+                else
+                {
+                    // unsupported. Will throw later (if not optional)
+                }
+            }
+            else if(iscvport)
+            {
+                portbase = std::make_unique<lilvutils::TCvPort>(direction, std::move(name), std::move(symbol), optional);
+            }
+            if( (!portbase) && (!optional) )
+            {
+                canInstantiate = false;
+            }
+            result.push_back(std::move(portbase));
+        }
+        return result;
+    }
+}
+namespace lilvutils
+{
+    World::World(uint32_t sample_rate, uint32_t maxBlockSize) : m_OptionSampleRate((float)sample_rate), m_OptionMaxBlockLength(maxBlockSize)
+    {
+        if(staticptr())
+        {
+            throw std::runtime_error("Can only instantiate a single lilv_world");
+        }
+        auto world = lilv_world_new();
+        if(!world)
+        {
+            throw std::runtime_error("lilv_world_new failed");
+        }
+        utils::finally fin1([&](){
+            if(world)
+            {
+                lilv_world_free(world); 
+            }
+        });
+        lilv_world_load_all(world);
+        auto plugins = lilv_world_get_all_plugins(world); // result must not be freed
+        if(!plugins)
+        {
+            throw std::runtime_error("Failed to get LV2 plugins.");
+        }
+/*            LILV_FOREACH(plugins, i, plugins) {
+            auto plugin = lilv_plugins_get(plugins, i);
+            auto uri = lilv_node_as_uri(lilv_plugin_get_uri(plugin));
+            std::cout << "Plugin: " << uri << std::endl;
+        }
+*/
+        m_World = world;
+        m_Plugins = plugins;
+        world = nullptr;
+        plugins = nullptr;
+        staticptr() = this;
+        m_UridMap.handle = this;
+        m_UridMap.map = [](LV2_URID_Map_Handle handle, const char* uri) -> LV2_URID {
+            auto world = (World*)handle;
+            return (LV2_URID)world->UriMapLookup(uri);
+        };
+        m_UridUnmap.handle = this;
+        m_UridUnmap.unmap = [](LV2_URID_Unmap_Handle handle, LV2_URID urid) -> const char* {
+            auto world = (World*)handle;
+            return world->UriMapReverseLookup(urid).c_str();
+        };
+
+        m_MapFeature.data = &m_UridMap;
+        m_MapFeature.URI = LV2_URID__map;
+        m_UnmapFeature.data = &m_UridUnmap;
+        m_UnmapFeature.URI = LV2_URID__unmap;
+        m_Features.push_back(&m_MapFeature);
+        m_Features.push_back(&m_UnmapFeature);
+
+        // floats:
+        for(auto p: {
+            std::make_tuple(LV2_PARAMETERS__sampleRate, &m_OptionSampleRate),
+            std::make_tuple(LV2_UI__updateRate, &m_OptionUiUpdateRate),
+            std::make_tuple(LV2_UI__scaleFactor, &m_OptionUiScaleFactor),
+        })
+        {
+            m_Options.push_back(LV2_Options_Option {
+                .context = LV2_OPTIONS_INSTANCE,
+                .subject = 0,
+                .key = UriMapLookup(std::get<0>(p)),
+                .size = sizeof(float),
+                .type = UriMapLookup(LV2_ATOM__Float),
+                .value = std::get<1>(p)
+            });
+        }
+
+        // ints:
+        for(auto p: {
+            std::make_tuple(LV2_BUF_SIZE__minBlockLength, &m_OptionMinBlockLength),
+            std::make_tuple(LV2_BUF_SIZE__maxBlockLength, &m_OptionMaxBlockLength),
+            std::make_tuple(LV2_BUF_SIZE__sequenceSize, &m_OptionSequenceSize),
+        })
+        {
+            m_Options.push_back(LV2_Options_Option {
+                .context = LV2_OPTIONS_INSTANCE,
+                .subject = 0,
+                .key = UriMapLookup(std::get<0>(p)),
+                .size = sizeof(int32_t),
+                .type = UriMapLookup(LV2_ATOM__Int),
+                .value = std::get<1>(p)
+            });
+        }
+        // terminate:
+        m_Options.push_back(LV2_Options_Option {
+            .context = LV2_OPTIONS_INSTANCE,
+            .subject = 0,
+            .key = 0,
+            .size = 0,
+            .type = 0,
+            .value = nullptr
+        });
+        m_OptionsFeature.data = m_Options.data();
+        m_OptionsFeature.URI = LV2_OPTIONS__options;
+        m_Features.push_back(&m_OptionsFeature);
+    }
+    Plugin::Plugin(const Uri &uri) : m_Uri(uri.str())
+    {
+        auto lilvworld = World::Static().get();
+        auto plugins = World::Static().Plugins();
+        auto urinode = uri.get();
+        m_Plugin = lilv_plugins_get_by_uri(plugins, urinode); // return value must not be freed
+        if(!m_Plugin)
+        {
+            throw std::runtime_error("could not load plugin");
+        }
+        {
+            auto namenode = lilv_plugin_get_name(m_Plugin);
+            if(namenode)
+            {
+                utils::finally fin1([&](){
+                    lilv_node_free(namenode);
+                });
+                auto str = lilv_node_as_string(namenode);
+                if(str)
+                {
+                    m_Name = str;
                 }
             }
         }
-        if(controlPortIndices.size() > 1)
+        bool canInstantiate = false;
+        m_Ports = GetPluginPorts(m_Plugin, canInstantiate);
+        m_CanInstantiate = canInstantiate;
+        for(size_t portindex = 0; portindex < m_Ports.size(); portindex++)
         {
-            // multiple control ports:
-            // find the port with the http://lv2plug.in/ns/lv2core#control designation:
-            const LilvPort* control_input = lilv_plugin_get_port_by_designation(m_Plugin, uri_InputPort.get(), uri_control.get());
-            if (control_input) 
+            const auto& port = m_Ports[portindex];
+            if(auto audioport = dynamic_cast<const TAudioPort*>(port.get()); audioport)
             {
-                auto index = lilv_port_get_index(m_Plugin, control_input);
-                if(std::find(controlPortIndices.begin(), controlPortIndices.end(), index) != controlPortIndices.end())
+                if(audioport->Direction() == TAudioPort::TDirection::Output)
                 {
-                    controlPortIndices = {index};
+                    if(audioport->Designation() == TAudioPort::TDesignation::StereoLeft)
+                    {
+                        m_AudioOutputIndex[0] = portindex;
+                        if(!m_AudioOutputIndex[1])
+                        {
+                            m_AudioOutputIndex[1] = portindex;
+                        }
+                    }
+                    else if(audioport->Designation() == TAudioPort::TDesignation::StereoRight)
+                    {
+                        m_AudioOutputIndex[1] = portindex;
+                        if(!m_AudioOutputIndex[0])
+                        {
+                            m_AudioOutputIndex[0] = portindex;
+                        }
+                    }
+                    else
+                    {
+                        if(!m_AudioOutputIndex[0])
+                        {
+                            m_AudioOutputIndex[0] = portindex;
+                        }
+                        if(!m_AudioOutputIndex[1])
+                        {
+                            m_AudioOutputIndex[1] = portindex;
+                        }
+                    }
                 }
             }
-        }
-        if(controlPortIndices.size() > 0)
-        {
-            m_ControlInputIndex = controlPortIndices[0];
-
-        }
-        if(audioOutputPortIndices.size() > 0)
-        {
-            m_AudioOutputIndex[0] = audioOutputPortIndices[0];
-            m_AudioOutputIndex[1] = audioOutputPortIndices[audioOutputPortIndices.size() > 1? 1:0];
+            if(auto atomport = dynamic_cast<const TAtomPort*>(port.get()); atomport)
+            {
+                if(atomport->Direction() == TAtomPort::TDirection::Input)
+                {
+                    if(atomport->SupportsMidi())
+                    {
+                        if(atomport->Designation() == TAtomPort::TDesignation::Control)
+                        {
+                            m_MidiInputIndex = portindex;
+                        }
+                        else
+                        {
+                            if(!m_MidiInputIndex)
+                            {
+                                m_MidiInputIndex = portindex;
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
-    Instance::Instance(const Plugin &plugin, double sample_rate) : m_Plugin(plugin)
+    Instance::Instance(const Plugin &plugin, double sample_rate) : m_Plugin(plugin), m_Logger(*this)
     {
+        if(!plugin.CanInstantiate())
+        {
+            throw std::runtime_error("plugin has unsupported ports and cannot be instantiated");
+        }
         auto uri_workerinterface = lilvutils::Uri(LV2_WORKER__interface);
         bool needsWorker = lilv_plugin_has_extension_data(plugin.get(),uri_workerinterface.get());
-        
-        // if (lilv_plugin_has_extension_data(plugin.get(),uri_workerinterface))
-        // {
-        //     jalv->worker                = jalv_worker_new(&jalv->work_lock, true);
-        //     jalv->features.sched.handle = jalv->worker;
-        //     if (jalv->safe_restore) {
-        //     jalv->state_worker           = jalv_worker_new(&jalv->work_lock, false);
-        //     jalv->features.ssched.handle = jalv->state_worker;
-        // }
 
         m_Features = World::Static().Features();
-        m_Log.handle  = &m_Logger;
-        m_Log.printf  = &logger::Logger::printf_static;
-        m_Log.vprintf = &logger::Logger::vprintf_static;
-        m_LogFeature.data = &m_Log;
-        m_LogFeature.URI = LV2_LOG__log;
-        m_Features.push_back(&m_LogFeature);
+        m_Features.push_back(m_Logger.Feature());
         if(needsWorker)
         {
             m_ScheduleWorker = std::make_unique<schedule::Worker>(*this);
@@ -119,48 +350,52 @@ namespace lilvutils
         {
             throw std::runtime_error("could not instantiate plugin");
         }
-
-        uint32_t numports = lilv_plugin_get_num_ports(m_Plugin.get());
-        lilvutils::Uri uri_InputPort(LV2_CORE__InputPort);
-        lilvutils::Uri uri_OutputPort(LV2_CORE__OutputPort);
-        lilvutils::Uri uri_notOnGUI(LV2_PORT_PROPS__notOnGUI);
-        lilvutils::Uri uri_ControlPort(LV2_CORE__ControlPort);
-        lilvutils::Uri uri_control(LV2_CORE__control);
-        lilvutils::Uri uri_AudioPort(LV2_CORE__AudioPort);
-        lilvutils::Uri uri_CVPort(LV2_CORE__CVPort);
-        lilvutils::Uri uri_AtomPort(LV2_ATOM__AtomPort);
-        lilvutils::Uri uri_minimumSize(LV2_RESIZE_PORT__minimumSize);
-        lilvutils::Uri uri_midievent(LV2_MIDI__MidiEvent);
-        m_Evbufs.resize(numports);
-        for(uint32_t portindex = 0; portindex < numports; portindex++)
+        auto audiobufsize = World::Static().MaxBlockLength();
+        for(size_t portindex = 0; portindex < m_Plugin.Ports().size(); portindex++)
         {
-            auto port = lilv_plugin_get_port_by_index(m_Plugin.get(), portindex);
-            bool isatomport = lilv_port_is_a(m_Plugin.get(), port, uri_AtomPort.get());
-            if(isatomport)
+            const auto *port = m_Plugin.Ports()[portindex].get();
+            std::unique_ptr<TConnectionBase> connection;
+            if(port)
             {
-                bool isinput = lilv_port_is_a(m_Plugin.get(), port, uri_InputPort.get());
-                bool isoutput = lilv_port_is_a(m_Plugin.get(), port, uri_OutputPort.get());
-                if( (!isinput) && (!isoutput) )
+                if(dynamic_cast<const TAudioPort*>(port))
                 {
-                    throw std::runtime_error("port is neither input nor output");
+                    auto audioconnection = std::make_unique<TConnection<TAudioPort>>(audiobufsize);
+                    lilv_instance_connect_port(m_Instance, (uint32_t)portindex, audioconnection->Buffer());
+                    connection = std::move(audioconnection);
                 }
-                int bufsize = 4096;
-                std::optional<int> minsize;
-                LilvNode* min_size = lilv_port_get(m_Plugin.get(), port, uri_minimumSize.get());
-                if (min_size && lilv_node_is_int(min_size))
+                else if(dynamic_cast<const TCvPort*>(port))
                 {
-                    int minsize = lilv_node_as_int(min_size);
-                    bufsize = std::max(bufsize, minsize);
+                    auto audioconnection = std::make_unique<TConnection<TCvPort>>(audiobufsize);
+                    lilv_instance_connect_port(m_Instance, (uint32_t)portindex, audioconnection->Buffer());
+                    connection = std::move(audioconnection);
                 }
-                auto evbuf = std::make_unique<Evbuf>(bufsize);
-                lv2_evbuf_reset(evbuf->get(), isinput);
-                lilv_instance_connect_port(                    m_Instance, portindex, lv2_evbuf_get_buffer(evbuf->get()));
-                m_Evbufs[portindex] = std::move(evbuf);
-                if(isoutput)
+                else if(auto atomport = dynamic_cast<const TAtomPort*>(port); atomport)
                 {
-                    m_IndicesOfEvBufsToDrain.push_back(portindex);
+                    m_PortIndicesOfAtomPorts.push_back(portindex);
+                    auto bufsize = atomport->MinBufferSize().value_or(0);
+                    bufsize = std::min(bufsize, 65536);
+                    auto atomconnection = std::make_unique<TConnection<TAtomPort>>((uint32_t)bufsize);
+                    lilv_instance_connect_port(m_Instance, (uint32_t)portindex, lv2_evbuf_get_buffer(atomconnection->Buffer()));
+                    connection = std::move(atomconnection);
+                }
+                else if(auto intport = dynamic_cast<const TControlPort<int>*>(port); intport)
+                {
+                    auto controlconnection = std::make_unique<TConnection<TControlPort<int>>>(intport->DefaultValue());
+                    lilv_instance_connect_port(m_Instance, (uint32_t)portindex, controlconnection->Buffer());
+                    connection = std::move(controlconnection);
+                }
+                else if(auto floatport = dynamic_cast<const TControlPort<float>*>(port); floatport)
+                {
+                    auto controlconnection = std::make_unique<TConnection<TControlPort<float>>>(floatport->DefaultValue());
+                    lilv_instance_connect_port(m_Instance, (uint32_t)portindex, controlconnection->Buffer());
+                    connection = std::move(controlconnection);
+                }
+                else
+                {
+                    throw std::runtime_error("unsupported port type");
                 }
             }
+            m_Connections.push_back(std::move(connection));
         }
         if (needsWorker)
         {
@@ -184,12 +419,11 @@ namespace lilvutils
     }
     LV2_Evbuf* Instance::MidiInEvBuf() const
     {
-        if(m_Plugin.ControlInputIndex())
+        if(m_Plugin.MidiInputIndex())
         {
-            auto ptr = m_Evbufs.at(m_Plugin.ControlInputIndex().value()).get();
-            if(ptr)
+            if(auto atomconnection = dynamic_cast<TConnection<TAtomPort>*>(m_Connections.at(*m_Plugin.MidiInputIndex()).get()))
             {
-                return ptr->get();
+                return atomconnection->Buffer();
             }
         }
         return nullptr;
