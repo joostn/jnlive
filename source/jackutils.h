@@ -36,6 +36,28 @@ namespace jackutils
             m_Client = jackclient;
             jackclient = nullptr;
             staticptr() = this;
+            ListAllPorts();
+
+            // https://jackaudio.org/api/group__PortFunctions.html#gae6090e81f2ee23b5c0e432a899085ec8
+
+        }
+        void ListAllPorts()
+        {
+            auto ports = jack_get_ports(m_Client, nullptr, nullptr, 0);
+            if(ports)
+            {
+                size_t index = 0;
+                while(true)
+                {
+                    const char *port = ports[index++];
+                    if(!port)
+                    {
+                        break;
+                    }
+                    printf("%s\n", port);
+                }
+            }
+            jack_free(ports);
         }
         ~Client()
         {
@@ -131,6 +153,25 @@ namespace jackutils
         const std::string& name() const
         {
             return m_Name;
+        }
+        // returns true on success
+        bool LinkToPortByName(const std::string &portname)
+        {
+            auto jackclient = Client::Static().get();
+            int result;
+            if(direction() == Direction::Input)
+            {
+                result = jack_connect(jackclient, portname.c_str(), jack_port_name(m_Port));
+            }
+            else
+            {
+                result = jack_connect(jackclient, jack_port_name(m_Port), portname.c_str());
+            }
+            if( (result == 0) || (result == EEXIST) )
+            {
+                return true;
+            }
+            return false;
         }
 
     private:

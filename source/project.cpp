@@ -11,8 +11,8 @@ namespace project
         instruments.emplace_back("http://tytel.org/helm", false);
         instruments.emplace_back("http://www.openavproductions.com/sorcer", false);
         std::vector<Part> parts;
-        parts.emplace_back("Upper", "S61mk2", 1, std::nullopt, std::nullopt, 1.0f);
-        parts.emplace_back("Lower", "S88mk2", 2, std::nullopt, std::nullopt, 1.0f);
+        parts.emplace_back("Upper", 1, std::nullopt, std::nullopt, 1.0f);
+        parts.emplace_back("Lower", 2, std::nullopt, std::nullopt, 1.0f);
         std::vector<TQuickPreset> quickPresets;
         quickPresets.emplace_back(0, 0);
         quickPresets.emplace_back(1, 0);
@@ -25,6 +25,10 @@ namespace project
         quickPresets.emplace_back(3, 1);
         quickPresets.emplace_back(4, 1);
         return Project(std::move(instruments), std::move(parts), std::move(quickPresets));
+
+            // "Family 17h/19h HD Audio Controller Analog Stereo:playback_FL",
+            // "Family 17h/19h HD Audio Controller Analog Stereo:playback_FR"
+
     }
 
     Json::Value ToJson(const Instrument &instrument)
@@ -42,7 +46,6 @@ namespace project
     {
         Json::Value result;
         result["name"] = part.Name();
-        result["jackmidiport"] = part.JackMidiPort();
         result["midichannelforsharedinstruments"] = part.MidiChannelForSharedInstruments();
         if(part.ActiveInstrumentIndex())
         {
@@ -76,7 +79,7 @@ namespace project
             presetIndex = v["presetindex"].asInt();
         }
 
-        return Part(v["name"].asString(), v["jackmidiport"].asString(), v["midichannelforsharedinstruments"].asInt(), instrumentIndex, presetIndex, v["amplitudefactor"].asFloat());
+        return Part(v["name"].asString(), v["midichannelforsharedinstruments"].asInt(), instrumentIndex, presetIndex, v["amplitudefactor"].asFloat());
     }
     Json::Value ToJson(const TQuickPreset &quickPreset)
     {
@@ -146,4 +149,57 @@ namespace project
         }
         ofs << v;
     }
+
+    Json::Value ToJson(const TJackConnections &jackConnections)
+    {
+        Json::Value result;
+        for (const auto &audioOutput : jackConnections.AudioOutputs())
+        {
+            result["audiooutputs"].append(audioOutput);
+        }
+        for (const auto &midiInput : jackConnections.MidiInputs())
+        {
+            result["midiinputs"].append(midiInput);
+        }
+        return result;
+    }
+    TJackConnections JackConnectionsFromJson(const Json::Value &v)
+    {
+        std::array<std::string, 2> audioOutputs;
+        std::vector<std::string> midiInputs;
+        for (const auto &midiinput : v["midiinputs"])
+        {
+            midiInputs.push_back(midiinput.asString());
+        }
+        size_t index = 0;
+        for (const auto &midiinput : v["audiooutputs"])
+        {
+            audioOutputs[index++] = midiinput.asString();
+            if(index == 2) break;
+        }
+        return TJackConnections(std::move(audioOutputs), std::move(midiInputs));
+    }
+
+    TJackConnections JackConnectionsFromFile(const std::string &filename)
+    {
+        Json::Value v;
+        std::ifstream ifs(filename);
+        if (!ifs)
+        {
+            throw std::runtime_error("Could not open file for reading: " + filename);
+        }
+        ifs >> v;
+        return JackConnectionsFromJson(v);
+    }
+    void JackConnectionsToFile(const TJackConnections &jackConnections, const std::string &filename)
+    {
+        Json::Value v = ToJson(jackConnections);
+        std::ofstream ofs(filename);
+        if (!ofs)
+        {
+            throw std::runtime_error("Could not open file for writing: " + filename);
+        }
+        ofs << v;
+    }
+
 }

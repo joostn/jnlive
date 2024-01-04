@@ -29,16 +29,12 @@ namespace project
     class Part  // one for each keyboard
     {
     public:
-        Part(std::string &&name, std::string &&jackMidiPort, int midiChannelForSharedInstruments, const std::optional<size_t>& activeInstrumentIndex, const std::optional<size_t>& activePresetIndex, float amplitudeFactor) : m_Name(std::move(name)), m_JackMidiPort(std::move(jackMidiPort)), m_MidiChannelForSharedInstruments(midiChannelForSharedInstruments), m_ActiveInstrumentIndex(activeInstrumentIndex), m_ActivePresetIndex(activePresetIndex), m_AmplitudeFactor(amplitudeFactor)
+        Part(std::string &&name, int midiChannelForSharedInstruments, const std::optional<size_t>& activeInstrumentIndex, const std::optional<size_t>& activePresetIndex, float amplitudeFactor) : m_Name(std::move(name)), m_MidiChannelForSharedInstruments(midiChannelForSharedInstruments), m_ActiveInstrumentIndex(activeInstrumentIndex), m_ActivePresetIndex(activePresetIndex), m_AmplitudeFactor(amplitudeFactor)
         {
         }
         const std::string& Name() const
         {
             return m_Name;
-        }
-        const std::string& JackMidiPort() const
-        {
-            return m_JackMidiPort;
         }
         const int& MidiChannelForSharedInstruments() const
         {
@@ -60,7 +56,6 @@ namespace project
 
     private:
         std::string m_Name;
-        std::string m_JackMidiPort;
         int m_MidiChannelForSharedInstruments = 0;
         std::optional<size_t> m_ActiveInstrumentIndex;
         std::optional<size_t> m_ActivePresetIndex;
@@ -110,6 +105,18 @@ namespace project
         std::vector<Instrument> m_Instruments;
         std::vector<TQuickPreset> m_QuickPresets;
     };
+    class TJackConnections
+    {
+    public:
+        TJackConnections() {}
+        TJackConnections(std::array<std::string, 2> &&audioOutputs, std::vector<std::string> &&midiInputs) : m_AudioOutputs(std::move(audioOutputs)), m_MidiInputs(std::move(midiInputs)) {}
+        const std::array<std::string, 2>& AudioOutputs() const { return m_AudioOutputs; }
+        const std::vector<std::string>& MidiInputs() const { return m_MidiInputs; }
+
+    private:
+        std::array<std::string, 2> m_AudioOutputs;
+        std::vector<std::string> m_MidiInputs;
+    };
 
     Json::Value ToJson(const Instrument &instrument);
     Instrument InstrumentFromJson(const Json::Value &v);
@@ -122,5 +129,11 @@ namespace project
     Project ProjectFromFile(const std::string &filename);
     void ProjectToFile(const Project &project, const std::string &filename);
     Project TestProject();
+
+    Json::Value ToJson(const TJackConnections &jackConnections);
+    TJackConnections JackConnectionsFromJson(const Json::Value &v);
+
+    TJackConnections JackConnectionsFromFile(const std::string &filename);
+    void JackConnectionsToFile(const TJackConnections &jackConnections, const std::string &filename);
 
 }

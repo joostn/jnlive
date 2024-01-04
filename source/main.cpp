@@ -20,20 +20,40 @@ int main()
 
     std::string homedir = getenv("HOME");
     std::string projectdir = homedir + "/.config/jn-live";
-    std::string projectfile = projectdir + "/project.json";
     if(!std::filesystem::exists(projectdir))
     {
         std::filesystem::create_directory(projectdir);
     }
-    if(!std::filesystem::exists(projectfile))
     {
-        auto prj = project::TestProject();
-        ProjectToFile(prj, projectfile);
+        std::string projectfile = projectdir + "/project.json";
+        if(!std::filesystem::exists(projectfile))
+        {
+            auto prj = project::TestProject();
+            ProjectToFile(prj, projectfile);
+        }
+        {
+            auto prj = project::ProjectFromFile(projectfile);
+            eng.SetProject(std::move(prj));
+        }
     }
     {
-        auto prj = project::ProjectFromFile(projectfile);
-        eng.SetProject(std::move(prj));
+        std::string jackconnectionfile = projectdir + "/jackconnection.json";
+        if(!std::filesystem::exists(jackconnectionfile))
+        {
+            std::array<std::string, 2> m_AudioOutputs {
+                "Family 17h/19h HD Audio Controller Analog Stereo:playback_FL",
+                "Family 17h/19h HD Audio Controller Analog Stereo:playback_FR",
+            };
+            std::vector<std::string> midiInputs {};
+            project::TJackConnections jackconn(std::move(m_AudioOutputs), std::move(midiInputs));
+            JackConnectionsToFile(jackconn, jackconnectionfile);
+        }
+        {
+            auto jackconn = project::JackConnectionsFromFile(jackconnectionfile);
+            eng.SetJackConnections(std::move(jackconn));
+        }
     }
+
     {
         auto prj = eng.Project();
         prj = prj.ChangePart(0, 1, std::nullopt, 1.0f);

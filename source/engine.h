@@ -7,6 +7,7 @@
 #include "jackutils.h"
 #include "realtimethread.h"
 #include "engine.h"
+#include <chrono>
 
 namespace engine
 {
@@ -88,7 +89,14 @@ namespace engine
         void ProcessMessages()
         {
             m_RtProcessor.ProcessMessagesInMainThread();
+            ApplyJackConnections(false);
         }
+        void SetJackConnections(project::TJackConnections &&con)
+        {
+            m_JackConnections = std::move(con);
+            ApplyJackConnections(true);
+        }
+        void ApplyJackConnections(bool forceNow);
 
     private:
         void SyncRtData()
@@ -246,6 +254,8 @@ namespace engine
         realtimethread::Processor m_RtProcessor {8192};
         realtimethread::Data m_CurrentRtData;
         std::array<jackutils::Port, 2> m_AudioOutPorts;
+        project::TJackConnections m_JackConnections;
+        std::optional<std::chrono::steady_clock::time_point> m_LastApplyJackConnectionTime;
 
     };
 }
