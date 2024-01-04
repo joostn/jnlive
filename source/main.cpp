@@ -30,10 +30,18 @@ int main()
         auto prj = project::TestProject();
         ProjectToFile(prj, projectfile);
     }
-    auto prj = project::ProjectFromFile(projectfile);
+    {
+        auto prj = project::ProjectFromFile(projectfile);
+        eng.SetProject(std::move(prj));
+    }
+    {
+        auto prj = eng.Project();
+        prj = prj.ChangePart(0, 1, std::nullopt, 1.0f);
+        prj = prj.ChangePart(1, 2, std::nullopt, 1.0f);
+        eng.SetProject(std::move(prj));
+    }
 
-    eng.SetProject(std::move(prj));
-
+    
 
     std::cout << "Hello World!" << std::endl;
     //komplete::Hid hid;

@@ -26,6 +26,14 @@ namespace
         lilvutils::Uri uri_midievent(LV2_MIDI__MidiEvent);
         lilvutils::Uri uri_portGroupsLeft(LV2_PORT_GROUPS__left);
         lilvutils::Uri uri_portGroupsRight(LV2_PORT_GROUPS__right);
+
+        auto leftoutputport = lilv_plugin_get_port_by_designation(plugin, uri_OutputPort.get(), uri_portGroupsLeft.get());
+        auto rightoutputport = lilv_plugin_get_port_by_designation(plugin, uri_OutputPort.get(), uri_portGroupsRight.get());
+        auto leftinputport = lilv_plugin_get_port_by_designation(plugin, uri_InputPort.get(), uri_portGroupsLeft.get());
+        auto rightinputport = lilv_plugin_get_port_by_designation(plugin, uri_InputPort.get(), uri_portGroupsRight.get());
+        auto controloutputport = lilv_plugin_get_port_by_designation(plugin, uri_OutputPort.get(), uri_control.get());
+        auto controlinputport = lilv_plugin_get_port_by_designation(plugin, uri_InputPort.get(), uri_control.get());
+
         for(uint32_t portindex = 0; portindex < numports; portindex++)
         {
             auto port = lilv_plugin_get_port_by_index(plugin, portindex);
@@ -71,11 +79,11 @@ namespace
             if(isaudio)
             {
                 std::optional<lilvutils::TAudioPort::TDesignation> designation;
-                if(lilv_port_has_property(plugin, port, uri_portGroupsLeft.get()))
+                if( (port == leftoutputport) || (port == leftinputport) )
                 {
                     designation = lilvutils::TAudioPort::TDesignation::StereoLeft;
                 }
-                else if(lilv_port_has_property(plugin, port, uri_portGroupsRight.get()))
+                else if( (port == rightoutputport) || (port == rightinputport) )
                 {
                     designation = lilvutils::TAudioPort::TDesignation::StereoRight;
                 }
@@ -92,7 +100,7 @@ namespace
                     }
                 }
                 std::optional<lilvutils::TAtomPort::TDesignation> designation;
-                if(lilv_port_has_property(plugin, port, uri_control.get()))
+                if( (port == controloutputport) || (port == controlinputport) )
                 {
                     designation = lilvutils::TAtomPort::TDesignation::Control;
                 }
@@ -101,6 +109,10 @@ namespace
             }
             else if(iscontrolport)
             {
+                bool hasrange = false;
+                float minv = 0.0f;
+                float maxv = 1.0f;
+                float defv = 0.0f;
                 LilvNode *minvalue = nullptr;
                 LilvNode *maxvalue = nullptr;
                 LilvNode *defaultvalue = nullptr;
@@ -110,23 +122,28 @@ namespace
                     if(maxvalue) lilv_node_free(maxvalue);
                     if(defaultvalue) lilv_node_free(defaultvalue);
                 });
-                if(lilv_node_is_float(minvalue) && lilv_node_is_float(maxvalue) && lilv_node_is_float(defaultvalue))
+                if( (lilv_node_is_float(minvalue) || lilv_node_is_int(minvalue))
+                    && (lilv_node_is_float(maxvalue) || lilv_node_is_int(maxvalue))
+                    && (lilv_node_is_float(defaultvalue) || lilv_node_is_int(defaultvalue))
+                )
                 {
-                    float minv = lilv_node_as_float(minvalue);
-                    float maxv = lilv_node_as_float(maxvalue);
-                    float defv = lilv_node_as_float(defaultvalue);
-                    portbase = std::make_unique<lilvutils::TControlPort<float>>(direction, std::move(name), std::move(symbol), minv, maxv, defv, optional);
-                }
-                else if(lilv_node_is_int(minvalue) && lilv_node_is_int(maxvalue) && lilv_node_is_int(defaultvalue))
-                {
-                    int minv = lilv_node_as_int(minvalue);
-                    int maxv = lilv_node_as_int(maxvalue);
-                    int defv = lilv_node_as_int(defaultvalue);
-                    portbase = std::make_unique<lilvutils::TControlPort<int>>(direction, std::move(name), std::move(symbol), minv, maxv, defv, optional);
+                    minv = lilv_node_as_float(minvalue);
+                    maxv = lilv_node_as_float(maxvalue);
+                    defv = lilv_node_as_float(defaultvalue);
+                    hasrange = true;
                 }
                 else
                 {
-                    // unsupported. Will throw later (if not optional)
+                    hasrange = false;
+                }
+                if( (!hasrange) && (isinput) )
+                {
+                    // input control ports must have a range. For outputs we don't need it
+                    canInstantiate = false;
+                }
+                else
+                {
+                    portbase = std::make_unique<lilvutils::TControlPort>(direction, std::move(name), std::move(symbol), minv, maxv, defv, optional);
                 }
             }
             else if(iscvport)
@@ -332,7 +349,7 @@ namespace lilvutils
     {
         if(!plugin.CanInstantiate())
         {
-            throw std::runtime_error("plugin has unsupported ports and cannot be instantiated");
+            throw std::runtime_error("plugin "+plugin.Name()+" hasv nsupported ports and cannot be instantiated");
         }
         auto uri_workerinterface = lilvutils::Uri(LV2_WORKER__interface);
         bool needsWorker = lilv_plugin_has_extension_data(plugin.get(),uri_workerinterface.get());
@@ -373,20 +390,16 @@ namespace lilvutils
                 {
                     m_PortIndicesOfAtomPorts.push_back(portindex);
                     auto bufsize = atomport->MinBufferSize().value_or(0);
-                    bufsize = std::min(bufsize, 65536);
+                    bufsize = std::max(bufsize, 65536);
                     auto atomconnection = std::make_unique<TConnection<TAtomPort>>((uint32_t)bufsize);
-                    lilv_instance_connect_port(m_Instance, (uint32_t)portindex, lv2_evbuf_get_buffer(atomconnection->Buffer()));
+                    lv2_evbuf_reset(atomconnection->Buffer(), atomport->Direction() == TAtomPort::TDirection::Input);
+                    auto actualbuf = lv2_evbuf_get_buffer(atomconnection->Buffer());
+                    lilv_instance_connect_port(m_Instance, (uint32_t)portindex, actualbuf);
                     connection = std::move(atomconnection);
                 }
-                else if(auto intport = dynamic_cast<const TControlPort<int>*>(port); intport)
+                else if(auto controlport = dynamic_cast<const TControlPort*>(port); controlport)
                 {
-                    auto controlconnection = std::make_unique<TConnection<TControlPort<int>>>(intport->DefaultValue());
-                    lilv_instance_connect_port(m_Instance, (uint32_t)portindex, controlconnection->Buffer());
-                    connection = std::move(controlconnection);
-                }
-                else if(auto floatport = dynamic_cast<const TControlPort<float>*>(port); floatport)
-                {
-                    auto controlconnection = std::make_unique<TConnection<TControlPort<float>>>(floatport->DefaultValue());
+                    auto controlconnection = std::make_unique<TConnection<TControlPort>>(controlport->DefaultValue());
                     lilv_instance_connect_port(m_Instance, (uint32_t)portindex, controlconnection->Buffer());
                     connection = std::move(controlconnection);
                 }

@@ -53,11 +53,11 @@ namespace ringbuf
             {
                 throw std::runtime_error("packetbaseoffset < 0");
             }
-            auto writesize = sizeof(T) + 2 * sizeof(uint32_t);
-            if(writesize > MaxPacketSize())
+            if(sizeof(T) > MaxPacketSize())
             {
                 throw std::runtime_error("packet larger than  MaxPacketSize");
             }
+            auto writesize = sizeof(T) + 2 * sizeof(uint32_t);
             if(writesize >  zix_ring_write_space(m_Ring))
             {
                 if(throwiffail)

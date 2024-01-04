@@ -176,19 +176,18 @@ namespace lilvutils
         bool m_SupportsMidi;
         std::optional<int> m_MinBufferSize;
     };
-    template <typename T>
     class TControlPort : public TPortBase
     {
     public:
-        TControlPort(TDirection direction, std::string &&name, std::string &&symbol, T minimum, T maximum, T defaultvalue, bool optional) : TPortBase(direction, std::move(name), std::move(symbol), optional), m_Minimum(minimum), m_Maximum(maximum), m_DefaultValue(defaultvalue) {}
+        TControlPort(TDirection direction, std::string &&name, std::string &&symbol, float minimum, float maximum, float defaultvalue, bool optional) : TPortBase(direction, std::move(name), std::move(symbol), optional), m_Minimum(minimum), m_Maximum(maximum), m_DefaultValue(defaultvalue) {}
         virtual ~TControlPort() {}
-        T Minimum() const { return m_Minimum; }
-        T Maximum() const { return m_Maximum; }
-        T DefaultValue() const { return m_DefaultValue; }
+        float Minimum() const { return m_Minimum; }
+        float Maximum() const { return m_Maximum; }
+        float DefaultValue() const { return m_DefaultValue; }
     private:
-        T m_Minimum;
-        T m_Maximum;
-        T m_DefaultValue;
+        float m_Minimum;
+        float m_Maximum;
+        float m_DefaultValue;
     };
     class Plugin
     {
@@ -273,18 +272,17 @@ namespace lilvutils
     private:
         LV2_Evbuf* m_EvBuf = nullptr;
     };
-    template <typename T>
-    class TConnection<TControlPort<T>> : public TConnectionBase
+    template <>
+    class TConnection<TControlPort> : public TConnectionBase
     {
     public:
-        TConnection(const T &defaultvalue)
+        TConnection(const float &defaultvalue) : m_Value(defaultvalue)
         {
-            m_Value = (T)0;            
         }
         virtual ~TConnection() {}
-        T* Buffer() { return &m_Value; }
+        float* Buffer() { return &m_Value; }
     private:
-        T m_Value;
+        float m_Value;
     };
     class Instance
     {
@@ -313,6 +311,7 @@ namespace lilvutils
             }
         }
         const LilvInstance* get() const { return m_Instance; }
+        LV2_Handle Handle() const { return lilv_instance_get_handle(m_Instance); }
         LilvInstance* get() { return m_Instance; }
         const Plugin& plugin() const { return m_Plugin; }
         const std::vector<std::unique_ptr<TConnectionBase>>& Connections() const { return m_Connections; }

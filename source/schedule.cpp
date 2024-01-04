@@ -9,7 +9,7 @@ namespace
     class ScheduleMessage : public ringbuf::PacketBase
     {
     public:
-        static constexpr uint32_t cMaxDataSize = 4096;
+        static constexpr uint32_t cMaxDataSize = 8192;
         ScheduleMessage(uint32_t size, const void* data) : m_DataSize(size)
         {
             memcpy(m_Data.data(), data, size);
@@ -57,13 +57,13 @@ namespace schedule
         // called in audio thread:
         while(true)
         {
-            auto message = m_RingBufFromRealtimeThread.Read();
+            auto message = m_RingBufToRealtimeThread.Read();
             if(!message) break;
             if(auto schedulemessage = dynamic_cast<const ScheduleMessage*>(message))
             {
                 if(m_WorkerInterface && m_WorkerInterface->work_response)
                 {
-                    m_WorkerInterface->work_response(m_Instance.get(), schedulemessage->DataSize(), schedulemessage->Data());
+                    m_WorkerInterface->work_response(m_Instance.Handle(), schedulemessage->DataSize(), schedulemessage->Data());
                 }
             }
         }
@@ -92,7 +92,12 @@ namespace schedule
                 {
                     if(m_WorkerInterface && m_WorkerInterface->work)
                     {
-                        m_WorkerInterface->work(m_Instance.get(), &Worker::RespondStatic, this, schedulemessage->DataSize(), schedulemessage->Data());
+                        LV2_Handle instance = m_Instance.Handle();
+                        LV2_Worker_Respond_Function respond = &Worker::RespondStatic;
+                        LV2_Worker_Respond_Handle handle = this;
+                        uint32_t size = schedulemessage->DataSize();
+                        const void *data = schedulemessage->Data();
+                        m_WorkerInterface->work(instance, respond, handle,  size, data);
                     }
                 }
             }
