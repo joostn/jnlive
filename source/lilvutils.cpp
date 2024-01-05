@@ -5,9 +5,37 @@
 #include "lv2_evbuf.h"
 #include "lv2/midi/midi.h"
 #include "lv2/port-groups/port-groups.h"
+#include "suil/suil.h"
 
 namespace 
 {
+    uint32_t SuilPortIndex(SuilController controller, const char *port_symbol)
+    {
+        return 0;
+    }
+
+    uint32_t SuilPortSubscribe(SuilController controller, uint32_t port_index, uint32_t protocol, const LV2_Feature *const *features)
+    {
+        return 0;
+
+    }
+
+    uint32_t SuilPortUnsubscribe(SuilController controller, uint32_t port_index, uint32_t protocol, const LV2_Feature *const *features)
+    {
+        return 0;
+
+    }
+
+    void SuilPortWrite(SuilController controller, uint32_t port_index, uint32_t buffer_size, uint32_t protocol, void const *buffer)
+    {
+
+    }
+
+    void SuilTouch(SuilController controller, uint32_t port_index, bool grabbed)
+    {
+
+    }
+
     std::vector<std::unique_ptr<lilvutils::TPortBase>> GetPluginPorts(const LilvPlugin *plugin, bool &canInstantiate)
     {
         canInstantiate = true;
@@ -161,7 +189,7 @@ namespace
 }
 namespace lilvutils
 {
-    World::World(uint32_t sample_rate, uint32_t maxBlockSize) : m_OptionSampleRate((float)sample_rate), m_OptionMaxBlockLength(maxBlockSize)
+    World::World(uint32_t sample_rate, uint32_t maxBlockSize, int argc, char** argv) : m_OptionSampleRate((float)sample_rate), m_OptionMaxBlockLength(maxBlockSize)
     {
         if(staticptr())
         {
@@ -178,6 +206,15 @@ namespace lilvutils
                 lilv_world_free(world); 
             }
         });
+        suil_init(&argc, &argv, SUIL_ARG_NONE);
+        auto suilhost = suil_host_new(&SuilPortWrite, &SuilPortIndex, &SuilPortSubscribe, &SuilPortUnsubscribe);
+        utils::finally fin2([&](){
+            if(suilhost)
+            {
+                suil_host_free(suilhost); 
+            }
+        });
+
         lilv_world_load_all(world);
         auto plugins = lilv_world_get_all_plugins(world); // result must not be freed
         if(!plugins)
@@ -190,11 +227,6 @@ namespace lilvutils
             std::cout << "Plugin: " << uri << std::endl;
         }
 */
-        m_World = world;
-        m_Plugins = plugins;
-        world = nullptr;
-        plugins = nullptr;
-        staticptr() = this;
         m_UridMap.handle = this;
         m_UridMap.map = [](LV2_URID_Map_Handle handle, const char* uri) -> LV2_URID {
             auto world = (World*)handle;
@@ -258,6 +290,13 @@ namespace lilvutils
         m_OptionsFeature.data = m_Options.data();
         m_OptionsFeature.URI = LV2_OPTIONS__options;
         m_Features.push_back(&m_OptionsFeature);
+        m_World = world;
+        m_Plugins = plugins;
+        m_SuilHost = suilhost;
+        world = nullptr;
+        plugins = nullptr;
+        suilhost = nullptr;
+        staticptr() = this;
     }
     Plugin::Plugin(const Uri &uri) : m_Uri(uri.str())
     {
@@ -345,7 +384,7 @@ namespace lilvutils
         }
     }
 
-    Instance::Instance(const Plugin &plugin, double sample_rate) : m_Plugin(plugin), m_Logger(*this)
+    Instance::Instance(const Plugin &plugin, double sample_rate) : m_Plugin(plugin)
     {
         if(!plugin.CanInstantiate())
         {

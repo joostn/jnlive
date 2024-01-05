@@ -15,7 +15,7 @@ namespace logger
     class Logger
     {
     public:
-        Logger(lilvutils::Instance &instance);
+        Logger();
         const LV2_Feature* Feature() const { return &m_LogFeature; }
         static int vprintf_static(LV2_Log_Handle handle, LV2_URID type, const char* fmt, va_list ap)
         {
@@ -61,7 +61,6 @@ namespace logger
             return 0;
         }
     private:
-        lilvutils::Instance &m_Instance;
         bool m_EnableTracing = true;
         LV2_URID m_Urid_Log_Error = 0;
         LV2_URID m_Urid_Log_Warning = 0;

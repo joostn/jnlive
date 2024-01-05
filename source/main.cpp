@@ -12,10 +12,10 @@
 using namespace std::string_literals;
 using namespace std::chrono_literals;
 
-int main()
+int main(int argc, char** argv)
 {
     uint32_t maxblocksize = 4096;
-    engine::Engine eng(maxblocksize);
+    engine::Engine eng(maxblocksize, argc, argv);
     
 
     std::string homedir = getenv("HOME");

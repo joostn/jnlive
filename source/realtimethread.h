@@ -7,8 +7,6 @@
 
 namespace realtimethread
 {
-    constexpr int kMaxNumPlugins = 128;
-    constexpr int kMaxNumMidiPorts = 8;
     class Data
     {
     public:
@@ -26,10 +24,6 @@ namespace realtimethread
             float AmplitudeFactor() const
             {
                 return m_AmplitudeFactor;
-            }
-            void SetAmplitudeFactor(float amplitudeFactor)
-            {
-                m_AmplitudeFactor = amplitudeFactor;
             }
             auto operator<=>(const Plugin&) const = default;
         private:
@@ -51,58 +45,23 @@ namespace realtimethread
             {
                 return m_PluginIndex;
             }
-            void SetPluginIndex(int pluginIndex)
-            {
-                m_PluginIndex = pluginIndex;
-            }
             auto operator<=>(const TMidiPort&) const = default;
         private:
             jack_port_t *m_Port = nullptr;
             int m_PluginIndex = -1;
         };
     public:
-        Plugin* Plugins()
-        {
-            return m_PluginStorage.data();
-        }
-        const Plugin* Plugins() const
-        {
-            return m_PluginStorage.data();
-        }
-        size_t NumPlugins() const
-        {
-            return m_NumPlugins;
-        }
-        void SetNumPlugins(size_t numPlugins)
-        {
-            m_NumPlugins = numPlugins;
-        }
-        TMidiPort* MidiPorts()
-        {
-            return m_MidiPortStorage.data();
-        }
-        const TMidiPort* MidiPorts() const
-        {
-            return m_MidiPortStorage.data();
-        }
-        size_t NumMidiPorts() const
-        {
-            return m_NumMidiPorts;
-        }
-        void SetNumMidiPorts(size_t numMidiPorts)
-        {
-            m_NumMidiPorts = numMidiPorts;
-        }
+        Data() = default;
+        Data(const std::vector<Plugin>& plugins, const std::vector<TMidiPort>& midiPorts, const std::array<jack_port_t*, 2>& outputAudioPorts) : m_Plugins(plugins), m_MidiPorts(midiPorts), m_OutputAudioPorts(outputAudioPorts) {}
+        const std::vector<Plugin>& Plugins() const { return m_Plugins; }
+        const std::vector<TMidiPort>& MidiPorts() const { return m_MidiPorts; }
         const std::array<jack_port_t*, 2>& OutputAudioPorts() const { return m_OutputAudioPorts; }
-        std::array<jack_port_t*, 2>& OutputAudioPorts() { return m_OutputAudioPorts; }
         auto operator<=>(const Data&) const = default;
         
     private:
-        std::array<Plugin, kMaxNumPlugins> m_PluginStorage;
-        size_t m_NumPlugins = 0;
-        std::array<TMidiPort, kMaxNumMidiPorts> m_MidiPortStorage;
-        size_t m_NumMidiPorts = 0;
-        std::array<jack_port_t*, 2> m_OutputAudioPorts = {nullptr, nullptr};
+        std::vector<Plugin> m_Plugins;
+        std::vector<TMidiPort> m_MidiPorts;
+        std::array<jack_port_t*, 2> m_OutputAudioPorts = {nullptr, nullptr};    
     };
     class SetDataMessage : public ringbuf::PacketBase
     {
@@ -130,12 +89,13 @@ namespace realtimethread
     class Processor
     {
     public:
-        Processor(jack_nframes_t bufsize) : m_Bufsize(bufsize), m_CurrentData(std::make_unique<Data>()), m_DataInRtThread(m_CurrentData.get())
+        Processor(jack_nframes_t bufsize) : m_Bufsize(bufsize), m_DataInRtThread(m_CurrentData.get())
         {
           m_UridMidiEvent = lilvutils::World::Static().UriMapLookup(LV2_MIDI__MidiEvent);
         }
         void Process(jack_nframes_t nframes)
         {
+            if(!m_DataInRtThread) return;
             if(nframes > m_Bufsize)
             {
                 throw std::runtime_error("nframes > bufsize");
@@ -206,9 +166,8 @@ namespace realtimethread
                     mixedAudioPorts[1][i] = 0.0f;
                 }
             }
-            for(size_t pluginindex = 0; pluginindex < data.NumPlugins(); ++pluginindex)
+            for(const auto &plugin: data.Plugins())
             {
-                const auto &plugin = data.Plugins()[pluginindex];
                 auto outputAudioPortIndices = plugin.PluginInstance().plugin().OutputAudioPortIndices();
                 auto lilvinstance = plugin.PluginInstance().get();
                 plugin.PluginInstance().Run(nframes);
@@ -230,16 +189,15 @@ namespace realtimethread
         void ProcessIncomingMidi(jack_nframes_t nframes)
         {
             const auto &data = *m_DataInRtThread;
-            for(size_t midiportindex = 0; midiportindex < data.NumMidiPorts(); ++midiportindex)
+            for(const auto &midiport: data.MidiPorts())
             {
-                auto &midiport = data.MidiPorts()[midiportindex];
                 auto buf = jack_port_get_buffer(&midiport.Port(), nframes);
                 auto evtcount = jack_midi_get_event_count(buf);
                 if(buf && (evtcount > 0))
                 {
                     LV2_Evbuf *evbuf = nullptr;
                     LV2_Evbuf_Iterator iter;
-                    if( (midiport.PluginIndex() >= 0) && (midiport.PluginIndex() < data.NumPlugins()) )
+                    if( (midiport.PluginIndex() >= 0) && (midiport.PluginIndex() < (int)data.Plugins().size()) )
                     {
                         auto &plugin = data.Plugins()[midiport.PluginIndex()];
                         auto &plugininstance = plugin.PluginInstance();

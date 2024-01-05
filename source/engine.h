@@ -53,10 +53,10 @@ namespace engine
             std::vector<size_t> m_PluginIndices;
             std::unique_ptr<jackutils::Port> m_MidiInPort;
         };
-        Engine(uint32_t maxBlockSize) : m_JackClient {"JN Live", [this](jack_nframes_t nframes){
+        Engine(uint32_t maxBlockSize, int argc, char** argv) : m_JackClient {"JN Live", [this](jack_nframes_t nframes){
             m_RtProcessor.Process(nframes);
         }}, 
-         m_AudioOutPorts { jackutils::Port("out_l", jackutils::Port::Kind::Audio, jackutils::Port::Direction::Output), jackutils::Port("out_r", jackutils::Port::Kind::Audio, jackutils::Port::Direction::Output) }, m_LilvWorld(m_JackClient.SampleRate(), maxBlockSize)
+         m_AudioOutPorts { jackutils::Port("out_l", jackutils::Port::Kind::Audio, jackutils::Port::Direction::Output), jackutils::Port("out_r", jackutils::Port::Kind::Audio, jackutils::Port::Direction::Output) }, m_LilvWorld(m_JackClient.SampleRate(), maxBlockSize, argc, argv)
         {
             jack_activate(jackutils::Client::Static().get());
         }
@@ -195,15 +195,7 @@ namespace engine
         }
         realtimethread::Data CalcRtData() const
         {
-            if(m_OwnedPlugins.size() > realtimethread::kMaxNumPlugins)
-            {
-                throw std::runtime_error("m_OwnedPlugins.size() > realtimethread::kMaxNumPlugins");
-            }
-            if(m_Parts.size() > realtimethread::kMaxNumMidiPorts)
-            {
-                throw std::runtime_error("m_Parts.size() > realtimethread::kMaxNumMidiPorts");
-            }
-            realtimethread::Data result;
+            std::vector<realtimethread::Data::Plugin> plugins;
             for(const auto &ownedplugin: m_OwnedPlugins)
             {
                 float amplitude = 0.0f;
@@ -221,10 +213,9 @@ namespace engine
                         }
                     }
                 }
-                realtimethread::Data::Plugin plugin(&ownedplugin->Instance(), amplitude);
-                result.Plugins()[result.NumPlugins()] = plugin;
-                result.SetNumPlugins(result.NumPlugins() + 1);
+                plugins.emplace_back(&ownedplugin->Instance(), amplitude);
             }
+            std::vector<realtimethread::Data::TMidiPort> midiPorts;
             for(size_t partindex = 0; partindex < m_Parts.size(); ++partindex)
             {
                 int pluginindex = -1;
@@ -234,13 +225,13 @@ namespace engine
                     pluginindex = (int)m_Parts[partindex].PluginIndices()[*instrumentIndexOrNull];
                 }
                 auto jackport = m_Parts[partindex].MidiInPort().get()->get();
-                realtimethread::Data::TMidiPort midiPort(jackport, pluginindex);
-                result.MidiPorts()[result.NumMidiPorts()] = midiPort;
-                result.SetNumMidiPorts(result.NumMidiPorts() + 1);
+                midiPorts.emplace_back(jackport, pluginindex);
             }
-            result.OutputAudioPorts()[0] = m_AudioOutPorts[0].get();
-            result.OutputAudioPorts()[1] = m_AudioOutPorts[1].get();
-            return result;
+            std::array<jack_port_t*, 2> outputAudioPorts {
+                m_AudioOutPorts[0].get(),
+                m_AudioOutPorts[1].get()
+            };
+            return realtimethread::Data(std::move(plugins), std::move(midiPorts), std::move(outputAudioPorts));
         }
         const std::vector<std::unique_ptr<PluginInstance>>& OwnedPlugins() const { return m_OwnedPlugins; }
         const std::vector<Part>& Parts() const { return m_Parts; }

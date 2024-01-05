@@ -3,7 +3,7 @@
 
 namespace logger
 {
-        Logger::Logger(lilvutils::Instance &instance) : m_Instance(instance)
+        Logger::Logger() 
         {
             m_Urid_Log_Error = lilvutils::World::Static().UriMapLookup(LV2_LOG__Error);
             m_Urid_Log_Trace = lilvutils::World::Static().UriMapLookup(LV2_LOG__Trace);

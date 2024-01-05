@@ -15,6 +15,9 @@
 #include "lv2/parameters/parameters.h"
 #include "lv2/ui/ui.h"
 #include "lv2/buf-size/buf-size.h"
+#include "suil/suil.h"
+#include "lv2/instance-access/instance-access.h"
+#include "lv2/data-access/data-access.h"
 
 namespace lilvutils
 {
@@ -25,10 +28,11 @@ namespace lilvutils
         World& operator=(const World&) = delete;
         World(World&&) = delete;
         World& operator=(World&&) = delete;
-        World(uint32_t sample_rate, uint32_t maxBlockSize);
+        World(uint32_t sample_rate, uint32_t maxBlockSize, int argc, char** argv);
         ~World()
         {
             if(m_World) lilv_world_free(m_World);
+            if(m_SuilHost) suil_host_free(m_SuilHost); 
             staticptr() = nullptr;
         }        
         const LilvPlugins* Plugins()
@@ -74,6 +78,7 @@ namespace lilvutils
         }
         const std::vector<const LV2_Feature*>& Features() const { return m_Features; }
         uint32_t MaxBlockLength() const { return m_OptionMaxBlockLength; }
+        SuilHost* suilHost() const { return m_SuilHost; }
 
     private:
         static World*& staticptr()
@@ -87,6 +92,7 @@ namespace lilvutils
         std::map<std::string, size_t> m_UriMap;
         std::vector<std::string> m_UriMapReverse;
         LilvWorld* m_World = nullptr;
+        SuilHost* m_SuilHost = nullptr;
         const LilvPlugins *m_Plugins = nullptr;
         LV2_URID_Map      m_UridMap;
         LV2_URID_Unmap    m_UridUnmap;
@@ -316,6 +322,7 @@ namespace lilvutils
         const Plugin& plugin() const { return m_Plugin; }
         const std::vector<std::unique_ptr<TConnectionBase>>& Connections() const { return m_Connections; }
         LV2_Evbuf* MidiInEvBuf() const;
+
     private:
         const Plugin &m_Plugin;
         std::vector<const LV2_Feature*> m_Features;
@@ -325,4 +332,87 @@ namespace lilvutils
         logger::Logger m_Logger;
         std::unique_ptr<schedule::Worker> m_ScheduleWorker;
     };
+    class UI
+    {
+    public:
+        UI(const UI&) = delete;
+        UI& operator=(const UI&) = delete;
+        UI(UI&&) = delete;
+        UI& operator=(UI&&) = delete;
+        UI(Instance &instance) : m_Instance(instance)
+        {
+            m_InstanceAccessFeature.URI = LV2_INSTANCE_ACCESS_URI;
+            m_InstanceAccessFeature.data = m_Instance.Handle();
+            m_UiParentFeature.URI = LV2_UI__parent;
+            m_UiParentFeature.data = nullptr;
+
+            auto extensiondata = lilv_instance_get_descriptor(m_Instance.get())->extension_data;
+            m_DataAccessFeature.URI = LV2_DATA_ACCESS_URI;
+            m_DataAccessFeature.data = const_cast<void*>((const void*)extensiondata);
+            m_IdleFeature.URI = LV2_UI__idleInterface;
+            m_IdleFeature.data = nullptr;
+            m_Features = World::Static().Features();
+            m_Features.push_back(m_Logger.Feature());
+            m_Features.push_back(&m_InstanceAccessFeature);
+            m_Features.push_back(&m_UiParentFeature);
+            m_Features.push_back(&m_DataAccessFeature);
+            m_Features.push_back(&m_IdleFeature);
+            m_Features.push_back(nullptr);
+            lilvutils::Uri uri_extensionData(LV2_CORE__extensionData);
+            lilvutils::Uri uri_showInterface(LV2_UI__showInterface);
+            const LilvUI* uiToShow = nullptr;
+            auto uis = lilv_plugin_get_uis(m_Instance.plugin().get());
+            utils::finally fin1([&]() {  if(uis) lilv_uis_free(uis); });
+            {
+                // Try to find a UI with ui:showInterface
+                LILV_FOREACH (uis, u, uis) {
+                    const LilvUI*   ui      = lilv_uis_get(uis, u);
+                    const LilvNode* ui_node = lilv_ui_get_uri(ui);
+
+                    lilv_world_load_resource(World::Static().get(), ui_node);
+                    utils::finally fin2([&]() {  lilv_world_unload_resource(World::Static().get(), ui_node); });
+
+                    bool supported = lilv_world_ask(World::Static().get(), ui_node, uri_extensionData.get(), uri_showInterface.get());
+
+                    if (supported) 
+                    {
+                        uiToShow = ui;
+                        break;
+                    }
+                }
+            }
+
+            auto bundle_uri  = lilv_node_as_uri(lilv_ui_get_bundle_uri(uiToShow));
+            auto binary_uri  = lilv_node_as_uri(lilv_ui_get_binary_uri(uiToShow));
+            auto bundle_path = lilv_file_uri_parse(bundle_uri, NULL);
+            utils::finally fin3([&]() { if(bundle_path) lilv_free(bundle_path); });
+            auto binary_path = lilv_file_uri_parse(binary_uri, NULL);
+            utils::finally fin4([&]() { if(binary_path) lilv_free(binary_path); });
+            const char* container_type_uri = nullptr;
+            const char *ui_type_uri = nullptr;
+            auto suilinstance = suil_instance_new(World::Static().suilHost(), this, container_type_uri, lilv_node_as_uri(lilv_plugin_get_uri(m_Instance.plugin().get())), lilv_node_as_uri(lilv_ui_get_uri(uiToShow)), ui_type_uri, bundle_path, binary_path, m_Features.data());
+            if(!suilinstance)
+            {
+                throw std::runtime_error("suil_instance_new failed");
+            }
+            m_SuilInstance = suilinstance;
+            m_Ui = uiToShow;
+        }
+        void CallIdle()
+        {
+            // todo
+        }
+    private:
+        Instance &m_Instance;
+        std::vector<const LV2_Feature*> m_Features;
+        LV2_Feature m_InstanceAccessFeature;
+        LV2_Feature m_UiParentFeature;
+        LV2_Feature m_DataAccessFeature;
+        LV2_Feature m_IdleFeature;
+        logger::Logger m_Logger;
+        const LilvUI* m_Ui = nullptr;
+        SuilInstance *m_SuilInstance = nullptr;
+
+    };
+
 }
