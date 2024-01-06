@@ -29,7 +29,7 @@ namespace project
     class Part  // one for each keyboard
     {
     public:
-        Part(std::string &&name, int midiChannelForSharedInstruments, const std::optional<size_t>& activeInstrumentIndex, const std::optional<size_t>& activePresetIndex, float amplitudeFactor) : m_Name(std::move(name)), m_MidiChannelForSharedInstruments(midiChannelForSharedInstruments), m_ActiveInstrumentIndex(activeInstrumentIndex), m_ActivePresetIndex(activePresetIndex), m_AmplitudeFactor(amplitudeFactor)
+        Part(std::string &&name, int midiChannelForSharedInstruments, const std::optional<size_t>& activeInstrumentIndex, const std::optional<size_t>& activePresetIndex, float amplitudeFactor, bool showUi) : m_Name(std::move(name)), m_MidiChannelForSharedInstruments(midiChannelForSharedInstruments), m_ActiveInstrumentIndex(activeInstrumentIndex), m_ActivePresetIndex(activePresetIndex), m_AmplitudeFactor(amplitudeFactor), m_ShowUi(showUi)
         {
         }
         const std::string& Name() const
@@ -43,14 +43,16 @@ namespace project
         const std::optional<size_t>& ActiveInstrumentIndex() const { return m_ActiveInstrumentIndex; }
         const std::optional<size_t>& ActivePresetIndex() const { return m_ActivePresetIndex; }
         float AmplitudeFactor() const { return m_AmplitudeFactor; }
+        bool ShowUi() const { return m_ShowUi; }
         Part Change(std::optional<size_t> activeInstrumentIndex,
         std::optional<size_t> activePresetIndex,
-        float amplitudeFactor) const
+        float amplitudeFactor, bool showui) const
         {
             auto result = *this;
             result.m_ActiveInstrumentIndex = activeInstrumentIndex;
             result.m_ActivePresetIndex = activePresetIndex;
             result.m_AmplitudeFactor = amplitudeFactor;
+            result.m_ShowUi = showui;
             return result;
         }
 
@@ -60,6 +62,7 @@ namespace project
         std::optional<size_t> m_ActiveInstrumentIndex;
         std::optional<size_t> m_ActivePresetIndex;
         float m_AmplitudeFactor = 1.0f;
+        bool m_ShowUi = false;
 
     };
     class TQuickPreset
@@ -82,14 +85,14 @@ namespace project
         const std::vector<TQuickPreset>& QuickPresets() const { return m_QuickPresets; }
         Project ChangePart(size_t partIndex, std::optional<size_t> activeInstrumentIndex,
         std::optional<size_t> activePresetIndex,
-        float amplitudeFactor) const
+        float amplitudeFactor, bool showui) const
         {
             std::vector<Part> parts;
             for(size_t i=0; i < m_Parts.size(); ++i)
             {
                 if(i == partIndex)
                 {
-                    parts.push_back(m_Parts[i].Change(activeInstrumentIndex, activePresetIndex, amplitudeFactor));
+                    parts.push_back(m_Parts[i].Change(activeInstrumentIndex, activePresetIndex, amplitudeFactor, showui));
                 }
                 else
                 {

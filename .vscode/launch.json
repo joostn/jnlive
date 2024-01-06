@@ -11,7 +11,7 @@
             "initCommands": [
             ],
             "env": {
-                // "LANG": "en_CH.UTF-8"
+                "GDK_BACKEND": "x11"
                 // "GTK_DEBUG": "interactive",
             },
         }

@@ -8,6 +8,7 @@
 #include "realtimethread.h"
 #include "engine.h"
 #include <chrono>
+#include <iostream>
 
 namespace engine
 {
@@ -36,10 +37,22 @@ namespace engine
     class Engine
     {
     public:
+        class OptionalUI
+        {
+        public:
+            OptionalUI(lilvutils::Instance &instance, std::unique_ptr<lilvutils::UI> &&ui) : m_Instance(instance), m_Ui(std::move(ui))
+            {
+            }
+            lilvutils::Instance &instance() const { return m_Instance; }
+            std::unique_ptr<lilvutils::UI>& ui() { return m_Ui; }
+        private:
+            lilvutils::Instance &m_Instance;
+            std::unique_ptr<lilvutils::UI> m_Ui;
+        };
         class Part
         {
         public:
-            Part(std::vector<size_t> &&pluginIndices, std::unique_ptr<jackutils::Port> &&midiInPort) : m_PluginIndices(std::move(pluginIndices)), m_MidiInPort(std::move(midiInPort))
+            Part(std::vector<size_t> &&pluginIndices, std::unique_ptr<jackutils::Port> &&midiInPort, std::unique_ptr<OptionalUI> &&ui) : m_PluginIndices(std::move(pluginIndices)), m_MidiInPort(std::move(midiInPort)), m_Ui(std::move(ui))
             {
             }
             const std::vector<size_t>& PluginIndices() const
@@ -48,10 +61,12 @@ namespace engine
             }
             const std::unique_ptr<jackutils::Port>& MidiInPort() const { return m_MidiInPort; }
             std::unique_ptr<jackutils::Port>& MidiInPort() { return m_MidiInPort; }
+            std::unique_ptr<OptionalUI>& Ui() { return m_Ui; }
             
         private:
             std::vector<size_t> m_PluginIndices;
             std::unique_ptr<jackutils::Port> m_MidiInPort;
+            std::unique_ptr<OptionalUI> m_Ui;
         };
         Engine(uint32_t maxBlockSize, int argc, char** argv) : m_JackClient {"JN Live", [this](jack_nframes_t nframes){
             m_RtProcessor.Process(nframes);
@@ -90,6 +105,17 @@ namespace engine
         {
             m_RtProcessor.ProcessMessagesInMainThread();
             ApplyJackConnections(false);
+            for(auto &part: m_Parts)
+            {
+                if(part.Ui())
+                {
+                    auto &ui = *part.Ui();
+                    if(ui.ui())
+                    {
+                        ui.ui()->CallIdle();
+                    }
+                }
+            }
         }
         void SetJackConnections(project::TJackConnections &&con)
         {
@@ -174,7 +200,42 @@ namespace engine
                 {
                     pluginindices.push_back(partindex2instrumentindex2ownedpluginindex[partindex][instrumentindex]);
                 }
-                newparts.push_back(Part(std::move(pluginindices), std::move(midiInPort)));
+                std::unique_ptr<OptionalUI> optionalui;
+                if(Project().Parts()[partindex].ShowUi())
+                {
+                    if(Project().Parts()[partindex].ActiveInstrumentIndex())
+                    {
+                        const auto &instrumentindex2ownedpluginindex = partindex2instrumentindex2ownedpluginindex[partindex];
+                        auto instrindex = *Project().Parts()[partindex].ActiveInstrumentIndex();
+                        if( (instrindex >= 0) && (instrindex < instrumentindex2ownedpluginindex.size()) )
+                        {
+                            auto ownedpluginindex = instrumentindex2ownedpluginindex[instrindex];
+                            const auto &ownedplugin = ownedPlugins[ownedpluginindex];
+                            if(ownedplugin)
+                            {
+                                auto &instance = ownedplugin->Instance();
+                                if(m_Parts[partindex].Ui() && &m_Parts[partindex].Ui()->instance() == &instance)
+                                {
+                                    optionalui = std::move(m_Parts[partindex].Ui());
+                                }
+                                else
+                                {
+                                    std::unique_ptr<lilvutils::UI> ui;
+                                    try
+                                    {
+                                        ui = std::make_unique<lilvutils::UI>(instance);
+                                    }
+                                    catch(std::exception &e)
+                                    {
+                                        std::cerr << "Failed to create UI for plugin " << instance.plugin().Lv2Uri() << ": " << e.what() << std::endl;
+                                    }
+                                    optionalui = std::make_unique<OptionalUI>(instance, std::move(ui));
+                                }
+                            }
+                        }
+                    }
+                }
+                newparts.push_back(Part(std::move(pluginindices), std::move(midiInPort), std::move(optionalui)));
             }
             for(auto &part: m_Parts)
             {
@@ -237,12 +298,13 @@ namespace engine
         const std::vector<Part>& Parts() const { return m_Parts; }
 
     private:
-        project::Project m_Project;
-        std::vector<std::unique_ptr<PluginInstance>> m_OwnedPlugins;
-        std::vector<Part> m_Parts;
         jackutils::Client m_JackClient;
         lilvutils::World m_LilvWorld;
         realtimethread::Processor m_RtProcessor {8192};
+
+        project::Project m_Project;
+        std::vector<std::unique_ptr<PluginInstance>> m_OwnedPlugins;
+        std::vector<Part> m_Parts;
         realtimethread::Data m_CurrentRtData;
         std::array<jackutils::Port, 2> m_AudioOutPorts;
         project::TJackConnections m_JackConnections;

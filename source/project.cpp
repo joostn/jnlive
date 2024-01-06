@@ -11,8 +11,8 @@ namespace project
         instruments.emplace_back("http://tytel.org/helm", false);
         instruments.emplace_back("http://www.openavproductions.com/sorcer", false);
         std::vector<Part> parts;
-        parts.emplace_back("Upper", 1, std::nullopt, std::nullopt, 1.0f);
-        parts.emplace_back("Lower", 2, std::nullopt, std::nullopt, 1.0f);
+        parts.emplace_back("Upper", 1, std::nullopt, std::nullopt, 1.0f, false);
+        parts.emplace_back("Lower", 2, std::nullopt, std::nullopt, 1.0f, false);
         std::vector<TQuickPreset> quickPresets;
         quickPresets.emplace_back(0, 0);
         quickPresets.emplace_back(1, 0);
@@ -64,6 +64,7 @@ namespace project
             result["presetindex"] = Json::Value::null;
         }
         result["amplitudefactor"] = part.AmplitudeFactor();
+        result["showui"] = part.ShowUi();
         return result;
     }
     Part PartFromJson(const Json::Value &v)
@@ -79,7 +80,7 @@ namespace project
             presetIndex = v["presetindex"].asInt();
         }
 
-        return Part(v["name"].asString(), v["midichannelforsharedinstruments"].asInt(), instrumentIndex, presetIndex, v["amplitudefactor"].asFloat());
+        return Part(v["name"].asString(), v["midichannelforsharedinstruments"].asInt(), instrumentIndex, presetIndex, v["amplitudefactor"].asFloat(), v["showui"].asBool());
     }
     Json::Value ToJson(const TQuickPreset &quickPreset)
     {

@@ -339,6 +339,10 @@ namespace lilvutils
         UI& operator=(const UI&) = delete;
         UI(UI&&) = delete;
         UI& operator=(UI&&) = delete;
+        LV2UI_Request_Value_Status RequestValue(LV2_URID key, LV2_URID type, const LV2_Feature *const *features)
+        {
+            return LV2UI_REQUEST_VALUE_ERR_UNSUPPORTED;
+        }
         UI(Instance &instance) : m_Instance(instance)
         {
             m_InstanceAccessFeature.URI = LV2_INSTANCE_ACCESS_URI;
@@ -351,6 +355,12 @@ namespace lilvutils
             m_DataAccessFeature.data = const_cast<void*>((const void*)extensiondata);
             m_IdleFeature.URI = LV2_UI__idleInterface;
             m_IdleFeature.data = nullptr;
+            m_RequestValueFeature.URI = LV2_UI__requestValue;
+            m_RequestValueFeature.data = &m_RequestValue;
+            m_RequestValue.handle = this;
+            m_RequestValue.request = [](LV2UI_Feature_Handle handle, LV2_URID key, LV2_URID type, const LV2_Feature *const *features) {
+                return static_cast<UI*>(handle)->RequestValue(key, type, features);
+            };
             m_Features = World::Static().Features();
             m_Features.push_back(m_Logger.Feature());
             m_Features.push_back(&m_InstanceAccessFeature);
@@ -360,9 +370,14 @@ namespace lilvutils
             m_Features.push_back(nullptr);
             lilvutils::Uri uri_extensionData(LV2_CORE__extensionData);
             lilvutils::Uri uri_showInterface(LV2_UI__showInterface);
+
+            lilvutils::Uri uri_native_ui_type("http://lv2plug.in/ns/extensions/ui#Gtk3UI");
+
+
             const LilvUI* uiToShow = nullptr;
             auto uis = lilv_plugin_get_uis(m_Instance.plugin().get());
             utils::finally fin1([&]() {  if(uis) lilv_uis_free(uis); });
+            if(uis)
             {
                 // Try to find a UI with ui:showInterface
                 LILV_FOREACH (uis, u, uis) {
@@ -372,7 +387,9 @@ namespace lilvutils
                     lilv_world_load_resource(World::Static().get(), ui_node);
                     utils::finally fin2([&]() {  lilv_world_unload_resource(World::Static().get(), ui_node); });
 
-                    bool supported = lilv_world_ask(World::Static().get(), ui_node, uri_extensionData.get(), uri_showInterface.get());
+                    //bool supported = lilv_world_ask(World::Static().get(), ui_node, uri_extensionData.get(), uri_showInterface.get());
+                    const LilvNode *ui_type = nullptr; // must not be freed by caller
+                    bool supported = lilv_ui_is_supported(ui, suil_ui_supported, uri_native_ui_type.get(), &ui_type);
 
                     if (supported) 
                     {
@@ -380,6 +397,10 @@ namespace lilvutils
                         break;
                     }
                 }
+            }
+            if(!uiToShow)
+            {
+                throw std::runtime_error("No UI found");
             }
 
             auto bundle_uri  = lilv_node_as_uri(lilv_ui_get_bundle_uri(uiToShow));
@@ -402,6 +423,7 @@ namespace lilvutils
         {
             // todo
         }
+        Instance &instance() {return m_Instance;}
     private:
         Instance &m_Instance;
         std::vector<const LV2_Feature*> m_Features;
@@ -409,6 +431,8 @@ namespace lilvutils
         LV2_Feature m_UiParentFeature;
         LV2_Feature m_DataAccessFeature;
         LV2_Feature m_IdleFeature;
+        LV2_Feature m_RequestValueFeature;
+        LV2UI_Request_Value m_RequestValue;
         logger::Logger m_Logger;
         const LilvUI* m_Ui = nullptr;
         SuilInstance *m_SuilInstance = nullptr;
