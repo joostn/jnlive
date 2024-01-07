@@ -626,5 +626,12 @@ namespace lilvutils
         }
 
     }
+    void UI::OnAtomPortMessage(uint32_t portindex, LV2_URID type, uint32_t datasize, const void *data)
+    {
+        if(m_SuilInstance)
+        {
+            suil_instance_port_event(m_SuilInstance, portindex, datasize, type, data);
+        }
+    }
 }
 

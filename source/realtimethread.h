@@ -308,6 +308,7 @@ namespace realtimethread
                                 uint32_t size      = 0;
                                 void*    body      = NULL;
                                 lv2_evbuf_get(atomportconnection->BufferIterator(), &frames, &subframes, &type, &size, &body);
+                                
                                 m_RingBufFromRtThread.Write(AtomPortEventMessage(atomportconnection, frames, subframes, type, size, body));
                                 atomportconnection->BufferIterator() = lv2_evbuf_next(atomportconnection->BufferIterator());
                             }

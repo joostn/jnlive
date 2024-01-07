@@ -321,6 +321,7 @@ namespace lilvutils
     };
     struct RealtimeThreadInterface
     {
+        /* interface for sending notifications to the plugin instance in the audio processing thread. These should be implemented externally, and passed to the constructor of Instance. */
         std::function<void (lilvutils::TConnection<lilvutils::TAtomPort>* connection, uint32_t frames, uint32_t subframes, LV2_URID type, uint32_t size, const void* body)> SendAtomPortEventFunc;
         std::function<void (lilvutils::TConnection<lilvutils::TControlPort>* connection, float value)> SendControlValueFunc;
     };
