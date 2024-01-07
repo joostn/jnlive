@@ -280,6 +280,7 @@ namespace lilvutils
             auto urid_chunk = lilvutils::World::Static().UriMapLookup(LV2_ATOM__Chunk);
             auto urid_sequence = lilvutils::World::Static().UriMapLookup(LV2_ATOM__Sequence);
             m_EvBuf = lv2_evbuf_new(bufsize, urid_chunk, urid_sequence);
+            ResetEvBuf();
         }
         virtual ~TConnection()
         {
@@ -292,6 +293,13 @@ namespace lilvutils
         Instance &instance() const {return m_Instance;}
         const TAtomPort& Port() const { return m_Port; }
         LV2_Evbuf_Iterator& BufferIterator() { return m_EvBufIterator; }
+        void ResetEvBuf()
+        {
+            bool isinput = Port().Direction() == lilvutils::TPortBase::TDirection::Input;
+            lv2_evbuf_reset(Buffer(), isinput);
+            BufferIterator() = lv2_evbuf_begin(Buffer());
+
+        }
     private:
         LV2_Evbuf* m_EvBuf = nullptr;
         LV2_Evbuf_Iterator m_EvBufIterator;
@@ -445,15 +453,16 @@ namespace lilvutils
                 suil_instance_port_event(m_SuilInstance, portindex, 4, 0, &value);
             }
         }
-        void OnAtomPortMessage(uint32_t portindex, LV2_URID type, uint32_t datasize, const void *data)
-        {
-            if(m_SuilInstance)
-            {
-                suil_instance_port_event(m_SuilInstance, portindex, datasize, type, data);
-            }
-        }
+        void OnAtomPortMessage(uint32_t portindex, LV2_URID type, uint32_t datasize, const void *data);
         uint32_t PortIndex(const char *port_symbol) const
         {
+            for(const auto &port: m_Instance.plugin().Ports())
+            {
+                if(port->Symbol() == port_symbol)
+                {
+                    return port->Index();
+                }
+            }
             return LV2UI_INVALID_PORT_INDEX; 
         }
         void PortWrite(uint32_t port_index, uint32_t buffer_size, uint32_t protocol, void const *buffer)

@@ -161,16 +161,16 @@ namespace realtimethread
         }
         void Process(jack_nframes_t nframes)
         {
-            if(!m_DataInRtThread) return;
             if(nframes > m_Bufsize)
             {
                 throw std::runtime_error("nframes > bufsize");
             }
-            ResetEvBufs();
             ProcessMessagesInRealtimeThread();
             ProcessIncomingMidi(nframes);
+            RunInstances(nframes);
             ProcessOutgoingAudio(nframes);
             ProcessOutputPorts();
+            ResetEvBufs();
             SendPendingAsyncFunctionMessages();
         }
         void SetDataFromMainThread(Data &&data)
@@ -259,6 +259,7 @@ namespace realtimethread
         }
         void ResetEvBufs()
         {
+            if(!m_DataInRtThread) return;
             const auto &data = *m_DataInRtThread;
             for(const auto &plugin: data.Plugins())
             {
@@ -267,15 +268,14 @@ namespace realtimethread
                 {
                     if(auto atomportconnection = dynamic_cast<lilvutils::TConnection<lilvutils::TAtomPort>*>(connection.get()); atomportconnection)
                     {
-                        bool isinput = atomportconnection->Port().Direction() == lilvutils::TPortBase::TDirection::Input;
-                        lv2_evbuf_reset(atomportconnection->Buffer(), isinput);
-                        atomportconnection->BufferIterator() = lv2_evbuf_begin(atomportconnection->Buffer());
+                        atomportconnection->ResetEvBuf();
                     }
                 }
             }
         }
         void ProcessOutputPorts()
         {
+            if(!m_DataInRtThread) return;
             const auto &data = *m_DataInRtThread;
             for(const auto &plugin: data.Plugins())
             {
@@ -296,7 +296,7 @@ namespace realtimethread
                     }
                     else if(auto atomportconnection = dynamic_cast<lilvutils::TConnection<lilvutils::TAtomPort>*>(connection.get()); atomportconnection)
                     {
-                        const auto &port = controlportconnection->Port();
+                        const auto &port = atomportconnection->Port();
                         if(port.Direction() == lilvutils::TPortBase::TDirection::Output)
                         {
                             while(lv2_evbuf_is_valid(atomportconnection->BufferIterator()))
@@ -308,7 +308,7 @@ namespace realtimethread
                                 uint32_t size      = 0;
                                 void*    body      = NULL;
                                 lv2_evbuf_get(atomportconnection->BufferIterator(), &frames, &subframes, &type, &size, &body);
-                                
+
                                 m_RingBufFromRtThread.Write(AtomPortEventMessage(atomportconnection, frames, subframes, type, size, body));
                                 atomportconnection->BufferIterator() = lv2_evbuf_next(atomportconnection->BufferIterator());
                             }
@@ -317,8 +317,18 @@ namespace realtimethread
                 }
             }
         }
+        void RunInstances(jack_nframes_t nframes)
+        {
+            if(!m_DataInRtThread) return;
+            const auto &data = *m_DataInRtThread;
+            for(const auto &plugin: data.Plugins())
+            {
+                plugin.PluginInstance().Run(nframes);
+            }
+        }
         void ProcessOutgoingAudio(jack_nframes_t nframes)
         {
+            if(!m_DataInRtThread) return;
             const auto &data = *m_DataInRtThread;
             std::array<float*, 2> mixedAudioPorts = {
                 (float*)jack_port_get_buffer(data.OutputAudioPorts()[0], nframes),
@@ -336,8 +346,6 @@ namespace realtimethread
             for(const auto &plugin: data.Plugins())
             {
                 auto outputAudioPortIndices = plugin.PluginInstance().plugin().OutputAudioPortIndices();
-                auto lilvinstance = plugin.PluginInstance().get();
-                plugin.PluginInstance().Run(nframes);
                 auto multiplier = plugin.AmplitudeFactor();
                 if(hasoutputaudio && outputAudioPortIndices[0] && outputAudioPortIndices[1])
                 {
@@ -355,6 +363,7 @@ namespace realtimethread
         }
         void ProcessIncomingMidi(jack_nframes_t nframes)
         {
+            if(!m_DataInRtThread) return;
             const auto &data = *m_DataInRtThread;
             for(const auto &midiport: data.MidiPorts())
             {
