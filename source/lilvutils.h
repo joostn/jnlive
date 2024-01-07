@@ -7,6 +7,7 @@
 #include <mutex>
 #include <optional>
 #include <map>
+#include <functional>
 #include "lv2/atom/atom.h"
 #include "lv2_evbuf.h"
 #include "log.h"
@@ -18,9 +19,12 @@
 #include "suil/suil.h"
 #include "lv2/instance-access/instance-access.h"
 #include "lv2/data-access/data-access.h"
+#include <gtkmm.h>
 
 namespace lilvutils
 {
+    class Instance;
+    class UI;
     class World
     {
     public:
@@ -106,7 +110,7 @@ namespace lilvutils
         uint32_t m_OptionMaxBlockLength = 4096;
         uint32_t m_OptionSequenceSize = 4096;
         float m_OptionUiUpdateRate = 30.0f;
-        float m_OptionUiScaleFactor = 1.0f;
+        float m_OptionUiScaleFactor = 2.0f;
     };
     class Uri
     {
@@ -140,13 +144,15 @@ namespace lilvutils
     {
     public:
         enum class TDirection {Input, Output};
-        TPortBase(TDirection direction, std::string &&name, std::string &&symbol, bool optional) : m_Direction(direction), m_Name(std::move(name)), m_Symbol(std::move(symbol)), m_Optional(optional) {}
+        TPortBase(size_t index, TDirection direction, std::string &&name, std::string &&symbol, bool optional) : m_Direction(direction), m_Name(std::move(name)), m_Symbol(std::move(symbol)), m_Optional(optional), m_Index(index) {}
         virtual ~TPortBase() {}
         TDirection Direction() const { return m_Direction; }
         const std::string& Name() const { return m_Name; }
         const std::string& Symbol() const { return m_Symbol; }
         bool Optional() const { return m_Optional; }
+        size_t Index() const { return m_Index; }
     private:
+        size_t m_Index;
         TDirection m_Direction;
         std::string m_Name;
         std::string m_Symbol;
@@ -156,7 +162,7 @@ namespace lilvutils
     {
     public:
         enum class TDesignation {StereoLeft, StereoRight};
-        TAudioPort(TDirection direction, std::string &&name, std::string &&symbol, std::optional<TDesignation> designation, bool optional) : TPortBase(direction, std::move(name), std::move(symbol), optional), m_Designation(designation) {}
+        TAudioPort(size_t index, TDirection direction, std::string &&name, std::string &&symbol, std::optional<TDesignation> designation, bool optional) : TPortBase(index, direction, std::move(name), std::move(symbol), optional), m_Designation(designation) {}
         virtual ~TAudioPort() {}
         std::optional<TDesignation> Designation() const { return m_Designation; }
     private:
@@ -165,14 +171,14 @@ namespace lilvutils
     class TCvPort : public TPortBase
     {
     public:
-        TCvPort(TDirection direction, std::string &&name, std::string &&symbol, bool optional) : TPortBase(direction, std::move(name), std::move(symbol), optional) {}
+        TCvPort(size_t index, TDirection direction, std::string &&name, std::string &&symbol, bool optional) : TPortBase(index, direction, std::move(name), std::move(symbol), optional) {}
         virtual ~TCvPort() {}
     };
     class TAtomPort : public TPortBase
     {
     public:
         enum class TDesignation {Control};
-        TAtomPort(TDirection direction, std::string &&name, std::string &&symbol, std::optional<TDesignation> designation, bool supportsmidi, const std::optional<int> &minbuffersize, bool optional) : TPortBase(direction, std::move(name), std::move(symbol), optional), m_Designation(designation), m_SupportsMidi(supportsmidi), m_MinBufferSize(minbuffersize) {}
+        TAtomPort(size_t index, TDirection direction, std::string &&name, std::string &&symbol, std::optional<TDesignation> designation, bool supportsmidi, const std::optional<int> &minbuffersize, bool optional) : TPortBase(index, direction, std::move(name), std::move(symbol), optional), m_Designation(designation), m_SupportsMidi(supportsmidi), m_MinBufferSize(minbuffersize) {}
         virtual ~TAtomPort() {}
         std::optional<TDesignation> Designation() const { return m_Designation; }
         bool SupportsMidi() const { return m_SupportsMidi; }
@@ -185,7 +191,7 @@ namespace lilvutils
     class TControlPort : public TPortBase
     {
     public:
-        TControlPort(TDirection direction, std::string &&name, std::string &&symbol, float minimum, float maximum, float defaultvalue, bool optional) : TPortBase(direction, std::move(name), std::move(symbol), optional), m_Minimum(minimum), m_Maximum(maximum), m_DefaultValue(defaultvalue) {}
+        TControlPort(size_t index, TDirection direction, std::string &&name, std::string &&symbol, float minimum, float maximum, float defaultvalue, bool optional) : TPortBase(index, direction, std::move(name), std::move(symbol), optional), m_Minimum(minimum), m_Maximum(maximum), m_DefaultValue(defaultvalue) {}
         virtual ~TControlPort() {}
         float Minimum() const { return m_Minimum; }
         float Maximum() const { return m_Maximum; }
@@ -235,33 +241,41 @@ namespace lilvutils
     class TConnection<TAudioPort> : public TConnectionBase
     {
     public:
-        TConnection(size_t bufsize) : m_Buffer(bufsize)
+        TConnection(Instance &instance, const TAudioPort &port, size_t bufsize) : m_Instance(instance), m_Buffer(bufsize), m_Port(port)
         {
             std::fill(m_Buffer.begin(), m_Buffer.end(), 0.0f);
         }
         virtual ~TConnection() {}
         float *Buffer() { return &m_Buffer[0]; }
+        const TAudioPort& Port() const { return m_Port; }
+        Instance &instance() const {return m_Instance;}
     private:
         std::vector<float> m_Buffer;
+        const TAudioPort &m_Port;
+        Instance &m_Instance;
     };
     template <>
     class TConnection<TCvPort> : public TConnectionBase
     {
     public:
-        TConnection(size_t bufsize) : m_Buffer(bufsize) 
+        TConnection(Instance &instance, const TCvPort &port, size_t bufsize) : m_Buffer(bufsize), m_Port(port), m_Instance(instance)
         {
             std::fill(m_Buffer.begin(), m_Buffer.end(), 0.0f);
         }
         virtual ~TConnection() {}
         float *Buffer() { return &m_Buffer[0]; }
+        const TCvPort& Port() const { return m_Port; }
+        Instance &instance() const {return m_Instance;}
     private:
         std::vector<float> m_Buffer;
+        const TCvPort& m_Port;
+        Instance &m_Instance;
     };
     template <>
     class TConnection<TAtomPort> : public TConnectionBase
     {
     public:
-        TConnection(uint32_t bufsize)
+        TConnection(Instance &instance, const TAtomPort &port, uint32_t bufsize) : m_Port(port), m_Instance(instance)
         {
             auto urid_chunk = lilvutils::World::Static().UriMapLookup(LV2_ATOM__Chunk);
             auto urid_sequence = lilvutils::World::Static().UriMapLookup(LV2_ATOM__Sequence);
@@ -275,21 +289,42 @@ namespace lilvutils
             }
         }
         LV2_Evbuf* Buffer() const { return m_EvBuf; }
+        Instance &instance() const {return m_Instance;}
+        const TAtomPort& Port() const { return m_Port; }
+        LV2_Evbuf_Iterator& BufferIterator() { return m_EvBufIterator; }
     private:
         LV2_Evbuf* m_EvBuf = nullptr;
+        LV2_Evbuf_Iterator m_EvBufIterator;
+        const TAtomPort &m_Port;
+        Instance &m_Instance;
     };
     template <>
     class TConnection<TControlPort> : public TConnectionBase
     {
     public:
-        TConnection(const float &defaultvalue) : m_Value(defaultvalue)
+        TConnection(Instance &instance, const TControlPort &port, const float &defaultvalue) : m_Value(defaultvalue), m_OrigValue(defaultvalue), m_Instance(instance), m_ValueInMainThread(defaultvalue), m_Port(port)
         {
         }
         virtual ~TConnection() {}
         float* Buffer() { return &m_Value; }
+        float& OrigValue() { return m_OrigValue;}
+        Instance &instance() const {return m_Instance;}
+        const float& ValueInMainThread() const { return m_ValueInMainThread; }
+        void SetValueInMainThread(const float& valueInMainThread, bool notify);
+        const TControlPort& Port() const { return m_Port; }
     private:
-        float m_Value;
+        float m_Value;      // accessed from realtime thread
+        float m_OrigValue; // accessed from realtime thread
+        float m_ValueInMainThread; // accessed from main thread
+        const TControlPort& m_Port;
+        Instance &m_Instance;
     };
+    struct RealtimeThreadInterface
+    {
+        std::function<void (lilvutils::TConnection<lilvutils::TAtomPort>* connection, uint32_t frames, uint32_t subframes, LV2_URID type, uint32_t size, const void* body)> SendAtomPortEventFunc;
+        std::function<void (lilvutils::TConnection<lilvutils::TControlPort>* connection, float value)> SendControlValueFunc;
+    };
+
     class Instance
     {
     public:
@@ -297,9 +332,10 @@ namespace lilvutils
         Instance& operator=(const Instance&) = delete;
         Instance(Instance&&) = delete;
         Instance& operator=(Instance&&) = delete;
-        Instance(const Plugin &plugin, double sample_rate);
+        Instance(const Plugin &plugin, double sample_rate, const RealtimeThreadInterface &realtimeThreadInterface);
         ~Instance();
-
+        void OnControlValueChanged(TConnection<TControlPort> &connection);
+        void OnAtomPortMessage(TConnection<TAtomPort> &connection, uint32_t frames, uint32_t subframes, LV2_URID type, uint32_t datasize, const void *data);
         void Run(uint32_t samplecount)
         {
             lilv_instance_run(m_Instance, samplecount);
@@ -307,21 +343,23 @@ namespace lilvutils
             {
                 m_ScheduleWorker->RunInRealtimeThread();
             }
-            for(auto index: m_PortIndicesOfAtomPorts)
-            {
-                bool isinput = m_Plugin.Ports().at(index)->Direction() == TPortBase::TDirection::Input;
-                if(auto atomconnection = dynamic_cast<TConnection<TAtomPort>*>(m_Connections.at(index).get()))
-                {
-                    lv2_evbuf_reset(atomconnection->Buffer(), isinput);
-                }
-            }
         }
         const LilvInstance* get() const { return m_Instance; }
         LV2_Handle Handle() const { return lilv_instance_get_handle(m_Instance); }
         LilvInstance* get() { return m_Instance; }
         const Plugin& plugin() const { return m_Plugin; }
         const std::vector<std::unique_ptr<TConnectionBase>>& Connections() const { return m_Connections; }
-        LV2_Evbuf* MidiInEvBuf() const;
+        void UiOpened(UI *ui)
+        {
+            if(m_Ui) throw std::runtime_error("UI already opened");
+            m_Ui = ui;
+        }
+        void UiClosed(UI *ui)
+        {
+            if(m_Ui != ui) throw std::runtime_error("UI not opened");
+            m_Ui = nullptr;
+        }
+        const RealtimeThreadInterface& realtimeThreadInterface() const { return m_RealtimeThreadInterface; }
 
     private:
         const Plugin &m_Plugin;
@@ -331,10 +369,58 @@ namespace lilvutils
         std::vector<size_t> m_PortIndicesOfAtomPorts;
         logger::Logger m_Logger;
         std::unique_ptr<schedule::Worker> m_ScheduleWorker;
+        UI *m_Ui = nullptr;
+        const RealtimeThreadInterface &m_RealtimeThreadInterface;
     };
     class UI
     {
     public:
+        class ContainerWindow : public Gtk::Window
+        {
+        public:
+            ContainerWindow(UI &ui) : m_UI(ui), Gtk::Window(Gtk::WINDOW_TOPLEVEL)
+            {
+                set_resizable(true);
+                signal_hide().connect([&](){
+
+                });
+
+                auto vbox = Gtk::make_managed<Gtk::Box>(Gtk::ORIENTATION_VERTICAL, 0);
+                add(*vbox);
+
+                m_Container = Gtk::make_managed<Gtk::EventBox>();
+                m_Container->set_halign(Gtk::ALIGN_FILL);
+                m_Container->set_hexpand(true);
+                m_Container->set_valign(Gtk::ALIGN_FILL);
+                m_Container->set_vexpand(true);
+                vbox->pack_start(*m_Container, true, true, 0);
+                m_Container->show();
+                vbox->show_all();
+
+            }
+            ~ContainerWindow()
+            {
+            }
+            GtkEventBox* Container() const 
+            { 
+                return Glib::unwrap(m_Container);
+            }
+            void AttachWidget(GtkWidget* widget)
+            {
+                Gtk::Widget* gtkmm_widget = Glib::wrap(widget);
+                m_Container->add(*gtkmm_widget);
+                gtkmm_widget->show_all();
+                gtkmm_widget->grab_focus();
+                show_all();
+            }
+            void RemoveWidget()
+            {
+                m_Container->remove();
+            }
+        private:
+            UI &m_UI;
+            Gtk::EventBox *m_Container = nullptr;
+        };
         UI(const UI&) = delete;
         UI& operator=(const UI&) = delete;
         UI(UI&&) = delete;
@@ -343,87 +429,62 @@ namespace lilvutils
         {
             return LV2UI_REQUEST_VALUE_ERR_UNSUPPORTED;
         }
-        UI(Instance &instance) : m_Instance(instance)
-        {
-            m_InstanceAccessFeature.URI = LV2_INSTANCE_ACCESS_URI;
-            m_InstanceAccessFeature.data = m_Instance.Handle();
-            m_UiParentFeature.URI = LV2_UI__parent;
-            m_UiParentFeature.data = nullptr;
+        UI(Instance &instance);
+        ~UI();
 
-            auto extensiondata = lilv_instance_get_descriptor(m_Instance.get())->extension_data;
-            m_DataAccessFeature.URI = LV2_DATA_ACCESS_URI;
-            m_DataAccessFeature.data = const_cast<void*>((const void*)extensiondata);
-            m_IdleFeature.URI = LV2_UI__idleInterface;
-            m_IdleFeature.data = nullptr;
-            m_RequestValueFeature.URI = LV2_UI__requestValue;
-            m_RequestValueFeature.data = &m_RequestValue;
-            m_RequestValue.handle = this;
-            m_RequestValue.request = [](LV2UI_Feature_Handle handle, LV2_URID key, LV2_URID type, const LV2_Feature *const *features) {
-                return static_cast<UI*>(handle)->RequestValue(key, type, features);
-            };
-            m_Features = World::Static().Features();
-            m_Features.push_back(m_Logger.Feature());
-            m_Features.push_back(&m_InstanceAccessFeature);
-            m_Features.push_back(&m_UiParentFeature);
-            m_Features.push_back(&m_DataAccessFeature);
-            m_Features.push_back(&m_IdleFeature);
-            m_Features.push_back(nullptr);
-            lilvutils::Uri uri_extensionData(LV2_CORE__extensionData);
-            lilvutils::Uri uri_showInterface(LV2_UI__showInterface);
-
-            lilvutils::Uri uri_native_ui_type("http://lv2plug.in/ns/extensions/ui#Gtk3UI");
-
-
-            const LilvUI* uiToShow = nullptr;
-            auto uis = lilv_plugin_get_uis(m_Instance.plugin().get());
-            utils::finally fin1([&]() {  if(uis) lilv_uis_free(uis); });
-            if(uis)
-            {
-                // Try to find a UI with ui:showInterface
-                LILV_FOREACH (uis, u, uis) {
-                    const LilvUI*   ui      = lilv_uis_get(uis, u);
-                    const LilvNode* ui_node = lilv_ui_get_uri(ui);
-
-                    lilv_world_load_resource(World::Static().get(), ui_node);
-                    utils::finally fin2([&]() {  lilv_world_unload_resource(World::Static().get(), ui_node); });
-
-                    //bool supported = lilv_world_ask(World::Static().get(), ui_node, uri_extensionData.get(), uri_showInterface.get());
-                    const LilvNode *ui_type = nullptr; // must not be freed by caller
-                    bool supported = lilv_ui_is_supported(ui, suil_ui_supported, uri_native_ui_type.get(), &ui_type);
-
-                    if (supported) 
-                    {
-                        uiToShow = ui;
-                        break;
-                    }
-                }
-            }
-            if(!uiToShow)
-            {
-                throw std::runtime_error("No UI found");
-            }
-
-            auto bundle_uri  = lilv_node_as_uri(lilv_ui_get_bundle_uri(uiToShow));
-            auto binary_uri  = lilv_node_as_uri(lilv_ui_get_binary_uri(uiToShow));
-            auto bundle_path = lilv_file_uri_parse(bundle_uri, NULL);
-            utils::finally fin3([&]() { if(bundle_path) lilv_free(bundle_path); });
-            auto binary_path = lilv_file_uri_parse(binary_uri, NULL);
-            utils::finally fin4([&]() { if(binary_path) lilv_free(binary_path); });
-            const char* container_type_uri = nullptr;
-            const char *ui_type_uri = nullptr;
-            auto suilinstance = suil_instance_new(World::Static().suilHost(), this, container_type_uri, lilv_node_as_uri(lilv_plugin_get_uri(m_Instance.plugin().get())), lilv_node_as_uri(lilv_ui_get_uri(uiToShow)), ui_type_uri, bundle_path, binary_path, m_Features.data());
-            if(!suilinstance)
-            {
-                throw std::runtime_error("suil_instance_new failed");
-            }
-            m_SuilInstance = suilinstance;
-            m_Ui = uiToShow;
-        }
         void CallIdle()
         {
             // todo
         }
         Instance &instance() {return m_Instance;}
+        void OnControlValueChanged(uint32_t portindex, float value)
+        {
+            if(m_SuilInstance)
+            {
+                suil_instance_port_event(m_SuilInstance, portindex, 4, 0, &value);
+            }
+        }
+        void OnAtomPortMessage(uint32_t portindex, LV2_URID type, uint32_t datasize, const void *data)
+        {
+            if(m_SuilInstance)
+            {
+                suil_instance_port_event(m_SuilInstance, portindex, datasize, type, data);
+            }
+        }
+        uint32_t PortIndex(const char *port_symbol) const
+        {
+            return LV2UI_INVALID_PORT_INDEX; 
+        }
+        void PortWrite(uint32_t port_index, uint32_t buffer_size, uint32_t protocol, void const *buffer)
+        {
+            if(port_index < m_Instance.Connections().size())
+            {
+                auto connection = m_Instance.Connections().at(port_index).get();
+                if(protocol == 0)
+                {
+                    if(auto controlconnection = dynamic_cast<TConnection<TControlPort>*>(connection))
+                    {
+                        instance().realtimeThreadInterface().SendControlValueFunc(controlconnection, *(float*)buffer);
+                    }
+                }
+                else if (protocol == m_Uridatom_eventTransfer)
+                {
+                    if(auto atomconnection = dynamic_cast<TConnection<TAtomPort>*>(connection))
+                    {
+                        auto  atom = (const LV2_Atom*)buffer;
+                        if (buffer_size == sizeof(LV2_Atom)) 
+                        {
+                            if (sizeof(LV2_Atom) + atom->size == buffer_size)
+                            {
+                                instance().realtimeThreadInterface().SendAtomPortEventFunc(atomconnection, 0, 0, atom->type, atom->size, atom + 1U);
+                            }
+                        }
+                    }
+                }
+            }
+
+        }
+
     private:
         Instance &m_Instance;
         std::vector<const LV2_Feature*> m_Features;
@@ -436,6 +497,8 @@ namespace lilvutils
         logger::Logger m_Logger;
         const LilvUI* m_Ui = nullptr;
         SuilInstance *m_SuilInstance = nullptr;
+        ContainerWindow* m_ContainerWindow = nullptr;
+        LV2_URID m_Uridatom_eventTransfer;
 
     };
 

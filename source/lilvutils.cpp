@@ -11,9 +11,15 @@ namespace
 {
     uint32_t SuilPortIndex(SuilController controller, const char *port_symbol)
     {
-        return 0;
+        auto ui = (lilvutils::UI *)(controller);
+        if(ui)
+        {
+            return ui->PortIndex(port_symbol);
+        }
+        return LV2UI_INVALID_PORT_INDEX;
     }
 
+/*
     uint32_t SuilPortSubscribe(SuilController controller, uint32_t port_index, uint32_t protocol, const LV2_Feature *const *features)
     {
         return 0;
@@ -25,10 +31,14 @@ namespace
         return 0;
 
     }
-
+*/
     void SuilPortWrite(SuilController controller, uint32_t port_index, uint32_t buffer_size, uint32_t protocol, void const *buffer)
     {
-
+        auto ui = (lilvutils::UI *)(controller);
+        if(ui)
+        {
+            ui->PortWrite(port_index, buffer_size, protocol, buffer);
+        }
     }
 
     void SuilTouch(SuilController controller, uint32_t port_index, bool grabbed)
@@ -115,7 +125,7 @@ namespace
                 {
                     designation = lilvutils::TAudioPort::TDesignation::StereoRight;
                 }
-                portbase = std::make_unique<lilvutils::TAudioPort>(direction, std::move(name), std::move(symbol), designation, optional);
+                portbase = std::make_unique<lilvutils::TAudioPort>(portindex, direction, std::move(name), std::move(symbol), designation, optional);
             }
             else if(isatomport)
             {
@@ -133,7 +143,7 @@ namespace
                     designation = lilvutils::TAtomPort::TDesignation::Control;
                 }
                 bool supportsmidi = lilv_port_supports_event(plugin, port, uri_midievent.get());
-                portbase = std::make_unique<lilvutils::TAtomPort>(direction, std::move(name), std::move(symbol), designation, supportsmidi, minbufsize, optional);
+                portbase = std::make_unique<lilvutils::TAtomPort>(portindex, direction, std::move(name), std::move(symbol), designation, supportsmidi, minbufsize, optional);
             }
             else if(iscontrolport)
             {
@@ -171,12 +181,12 @@ namespace
                 }
                 else
                 {
-                    portbase = std::make_unique<lilvutils::TControlPort>(direction, std::move(name), std::move(symbol), minv, maxv, defv, optional);
+                    portbase = std::make_unique<lilvutils::TControlPort>(portindex, direction, std::move(name), std::move(symbol), minv, maxv, defv, optional);
                 }
             }
             else if(iscvport)
             {
-                portbase = std::make_unique<lilvutils::TCvPort>(direction, std::move(name), std::move(symbol), optional);
+                portbase = std::make_unique<lilvutils::TCvPort>(portindex, direction, std::move(name), std::move(symbol), optional);
             }
             if( (!portbase) && (!optional) )
             {
@@ -207,7 +217,8 @@ namespace lilvutils
             }
         });
         suil_init(&argc, &argv, SUIL_ARG_NONE);
-        auto suilhost = suil_host_new(&SuilPortWrite, &SuilPortIndex, &SuilPortSubscribe, &SuilPortUnsubscribe);
+        // auto suilhost = suil_host_new(&SuilPortWrite, &SuilPortIndex, &SuilPortSubscribe, &SuilPortUnsubscribe);
+        auto suilhost = suil_host_new(&SuilPortWrite, &SuilPortIndex, nullptr, nullptr);
         utils::finally fin2([&](){
             if(suilhost)
             {
@@ -384,7 +395,17 @@ namespace lilvutils
         }
     }
 
-    Instance::Instance(const Plugin &plugin, double sample_rate) : m_Plugin(plugin)
+    void TConnection<TControlPort>::SetValueInMainThread(const float& valueInMainThread, bool notify) 
+    { 
+        m_ValueInMainThread = valueInMainThread;
+        if(notify)
+        {
+            m_Instance.OnControlValueChanged(*this);
+        }
+    }
+
+
+    Instance::Instance(const Plugin &plugin, double sample_rate, const RealtimeThreadInterface &realtimeThreadInterface) : m_Plugin(plugin), m_RealtimeThreadInterface(realtimeThreadInterface)
     {
         if(!plugin.CanInstantiate())
         {
@@ -413,15 +434,15 @@ namespace lilvutils
             std::unique_ptr<TConnectionBase> connection;
             if(port)
             {
-                if(dynamic_cast<const TAudioPort*>(port))
+                if(auto audioport = dynamic_cast<const TAudioPort*>(port); audioport)
                 {
-                    auto audioconnection = std::make_unique<TConnection<TAudioPort>>(audiobufsize);
+                    auto audioconnection = std::make_unique<TConnection<TAudioPort>>(*this, *audioport, audiobufsize);
                     lilv_instance_connect_port(m_Instance, (uint32_t)portindex, audioconnection->Buffer());
                     connection = std::move(audioconnection);
                 }
-                else if(dynamic_cast<const TCvPort*>(port))
+                else if(auto cvport = dynamic_cast<const TCvPort*>(port); cvport)
                 {
-                    auto audioconnection = std::make_unique<TConnection<TCvPort>>(audiobufsize);
+                    auto audioconnection = std::make_unique<TConnection<TCvPort>>(*this, *cvport, audiobufsize);
                     lilv_instance_connect_port(m_Instance, (uint32_t)portindex, audioconnection->Buffer());
                     connection = std::move(audioconnection);
                 }
@@ -430,7 +451,7 @@ namespace lilvutils
                     m_PortIndicesOfAtomPorts.push_back(portindex);
                     auto bufsize = atomport->MinBufferSize().value_or(0);
                     bufsize = std::max(bufsize, 65536);
-                    auto atomconnection = std::make_unique<TConnection<TAtomPort>>((uint32_t)bufsize);
+                    auto atomconnection = std::make_unique<TConnection<TAtomPort>>(*this, *atomport, (uint32_t)bufsize);
                     lv2_evbuf_reset(atomconnection->Buffer(), atomport->Direction() == TAtomPort::TDirection::Input);
                     auto actualbuf = lv2_evbuf_get_buffer(atomconnection->Buffer());
                     lilv_instance_connect_port(m_Instance, (uint32_t)portindex, actualbuf);
@@ -438,7 +459,7 @@ namespace lilvutils
                 }
                 else if(auto controlport = dynamic_cast<const TControlPort*>(port); controlport)
                 {
-                    auto controlconnection = std::make_unique<TConnection<TControlPort>>(controlport->DefaultValue());
+                    auto controlconnection = std::make_unique<TConnection<TControlPort>>(*this, *controlport, controlport->DefaultValue());
                     lilv_instance_connect_port(m_Instance, (uint32_t)portindex, controlconnection->Buffer());
                     connection = std::move(controlconnection);
                 }
@@ -469,16 +490,141 @@ namespace lilvutils
             lilv_instance_free(m_Instance);
         }
     }
-    LV2_Evbuf* Instance::MidiInEvBuf() const
+
+    void Instance::OnControlValueChanged(TConnection<TControlPort> &connection)
     {
-        if(m_Plugin.MidiInputIndex())
+        if(m_Ui)
         {
-            if(auto atomconnection = dynamic_cast<TConnection<TAtomPort>*>(m_Connections.at(*m_Plugin.MidiInputIndex()).get()))
-            {
-                return atomconnection->Buffer();
+            m_Ui->OnControlValueChanged(connection.Port().Index(), connection.ValueInMainThread());
+        }
+    }
+
+    void Instance::OnAtomPortMessage(TConnection<TAtomPort> &connection, uint32_t frames, uint32_t subframes, LV2_URID type, uint32_t datasize, const void *data)
+    {
+        if(m_Ui)
+        {
+            m_Ui->OnAtomPortMessage(connection.Port().Index(), type, datasize, data);
+        }
+    }
+
+    UI::UI(Instance &instance) : m_Instance(instance)
+    {
+        m_Uridatom_eventTransfer = lilvutils::World::Static().UriMapLookup(LV2_ATOM__eventTransfer);
+        auto containerWindow = new ContainerWindow(*this);
+        utils::finally fin5([&]() { if(containerWindow) delete containerWindow; });
+        m_InstanceAccessFeature.URI = LV2_INSTANCE_ACCESS_URI;
+        m_InstanceAccessFeature.data = m_Instance.Handle();
+        m_UiParentFeature.URI = LV2_UI__parent;
+        m_UiParentFeature.data = nullptr;
+
+        auto extensiondata = lilv_instance_get_descriptor(m_Instance.get())->extension_data;
+        m_DataAccessFeature.URI = LV2_DATA_ACCESS_URI;
+        m_DataAccessFeature.data = const_cast<void*>((const void*)extensiondata);
+        m_IdleFeature.URI = LV2_UI__idleInterface;
+        m_IdleFeature.data = nullptr;
+        m_RequestValueFeature.URI = LV2_UI__requestValue;
+        m_RequestValueFeature.data = &m_RequestValue;
+        m_RequestValue.handle = this;
+        m_RequestValue.request = [](LV2UI_Feature_Handle handle, LV2_URID key, LV2_URID type, const LV2_Feature *const *features) {
+            return static_cast<UI*>(handle)->RequestValue(key, type, features);
+        };
+        GtkWindow *x;
+        m_Features = World::Static().Features();
+        m_Features.push_back(m_Logger.Feature());
+        m_Features.push_back(&m_InstanceAccessFeature);
+        m_Features.push_back(&m_UiParentFeature);
+        m_Features.push_back(&m_DataAccessFeature);
+        m_Features.push_back(&m_IdleFeature);
+        const LV2_Feature parent_feature = {LV2_UI__parent, containerWindow->Container()};
+        m_Features.push_back(&parent_feature);
+        m_Features.push_back(nullptr);
+        lilvutils::Uri uri_extensionData(LV2_CORE__extensionData);
+        lilvutils::Uri uri_showInterface(LV2_UI__showInterface);
+
+        const char* container_type_uri = "http://lv2plug.in/ns/extensions/ui#Gtk3UI";
+        lilvutils::Uri uri_native_ui_type(container_type_uri);
+
+
+        const LilvUI* uiToShow = nullptr;
+        auto uis = lilv_plugin_get_uis(m_Instance.plugin().get());
+        utils::finally fin1([&]() {  if(uis) lilv_uis_free(uis); });
+        const LilvNode *ui_type = nullptr; // must not be freed by caller
+        if(uis)
+        {
+            // Try to find a UI with ui:showInterface
+            LILV_FOREACH (uis, u, uis) {
+                const LilvUI*   ui      = lilv_uis_get(uis, u);
+                const LilvNode* ui_node = lilv_ui_get_uri(ui);
+
+                lilv_world_load_resource(World::Static().get(), ui_node);
+                utils::finally fin2([&]() {  lilv_world_unload_resource(World::Static().get(), ui_node); });
+
+                //bool supported = lilv_world_ask(World::Static().get(), ui_node, uri_extensionData.get(), uri_showInterface.get());
+                ui_type = nullptr; // must not be freed by caller
+                bool supported = lilv_ui_is_supported(ui, suil_ui_supported, uri_native_ui_type.get(), &ui_type);
+
+                if (supported) 
+                {
+                    uiToShow = ui;
+                    break;
+                }
             }
         }
-        return nullptr;
+        if(!uiToShow)
+        {
+            throw std::runtime_error("No UI found");
+        }
+
+        auto bundle_uri  = lilv_node_as_uri(lilv_ui_get_bundle_uri(uiToShow));
+        auto binary_uri  = lilv_node_as_uri(lilv_ui_get_binary_uri(uiToShow));
+        auto bundle_path = lilv_file_uri_parse(bundle_uri, NULL);
+        utils::finally fin3([&]() { if(bundle_path) lilv_free(bundle_path); });
+        auto binary_path = lilv_file_uri_parse(binary_uri, NULL);
+        utils::finally fin4([&]() { if(binary_path) lilv_free(binary_path); });
+        auto suilinstance = suil_instance_new(World::Static().suilHost(), this, container_type_uri, lilv_node_as_uri(lilv_plugin_get_uri(m_Instance.plugin().get())), lilv_node_as_uri(lilv_ui_get_uri(uiToShow)), lilv_node_as_uri(ui_type), bundle_path, binary_path, m_Features.data());
+        utils::finally fin6([&]() { if(suilinstance)  suil_instance_free(suilinstance); });
+        if(!suilinstance)
+        {
+            throw std::runtime_error("suil_instance_new failed");
+        }
+        auto widget = (GtkWidget*)suil_instance_get_widget(suilinstance);
+        
+        if(!suilinstance)
+        {
+            throw std::runtime_error("suil_instance_get_widget failed");
+        }
+        containerWindow->AttachWidget(widget);
+        containerWindow->present();
+        containerWindow->show_all();
+
+        m_SuilInstance = suilinstance;
+        m_Ui = uiToShow;
+        m_ContainerWindow = containerWindow;
+        suilinstance = nullptr;
+        uiToShow = nullptr;
+        containerWindow = nullptr;
+
+        m_Instance.UiOpened(this);
+    }
+
+    UI::~UI()
+    {
+        m_Instance.UiClosed(this);
+        if(m_ContainerWindow)
+        {
+            m_ContainerWindow->RemoveWidget();
+        }
+        if(m_SuilInstance)
+        {
+            suil_instance_free(m_SuilInstance);
+            m_SuilInstance = nullptr;
+        }
+        if(m_ContainerWindow)
+        {
+            delete m_ContainerWindow;
+            m_ContainerWindow = nullptr;
+        }
+
     }
 }
 

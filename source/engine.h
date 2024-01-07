@@ -19,7 +19,7 @@ namespace engine
         PluginInstance& operator=(const PluginInstance&) = delete;
         PluginInstance(PluginInstance&&) = delete;
         PluginInstance& operator=(PluginInstance&&) = delete;
-        PluginInstance(std::string &&uri, uint32_t samplerate, const std::optional<size_t> &owningPart, size_t owningInstrumentIndex) : m_Plugin(std::make_unique<lilvutils::Plugin>(lilvutils::Uri(std::move(uri)))), m_Instance(std::make_unique<lilvutils::Instance>(*m_Plugin, samplerate)), m_OwningPart(owningPart), m_OwningInstrumentIndex(owningInstrumentIndex)
+        PluginInstance(std::string &&uri, uint32_t samplerate, const std::optional<size_t> &owningPart, size_t owningInstrumentIndex, const realtimethread::Processor &processor) : m_Plugin(std::make_unique<lilvutils::Plugin>(lilvutils::Uri(std::move(uri)))), m_Instance(std::make_unique<lilvutils::Instance>(*m_Plugin, samplerate, processor.realtimeThreadInterface())), m_OwningPart(owningPart), m_OwningInstrumentIndex(owningInstrumentIndex)
         {
         }
         lilvutils::Plugin& Plugin() const { return *m_Plugin; }
@@ -176,7 +176,7 @@ namespace engine
                                 jacksamplerate = jack_get_sample_rate(jackutils::Client::Static().get());
                             }
                             auto lv2uri = instrument.Lv2Uri();
-                            plugin_uq = std::make_unique<PluginInstance>(std::move(lv2uri), *jacksamplerate, owningpart, instrumentindex);
+                            plugin_uq = std::make_unique<PluginInstance>(std::move(lv2uri), *jacksamplerate, owningpart, instrumentindex, m_RtProcessor);
                         }
                         instrumentindex2ownedpluginindex.push_back(ownedPlugins.size());
                         ownedPlugins.push_back(std::move(plugin_uq));
