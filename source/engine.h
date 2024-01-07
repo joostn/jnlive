@@ -52,7 +52,7 @@ namespace engine
         class Part
         {
         public:
-            Part(std::vector<size_t> &&pluginIndices, std::unique_ptr<jackutils::Port> &&midiInPort, std::unique_ptr<OptionalUI> &&ui) : m_PluginIndices(std::move(pluginIndices)), m_MidiInPort(std::move(midiInPort)), m_Ui(std::move(ui))
+            Part(std::vector<size_t> &&pluginIndices, std::unique_ptr<jackutils::Port> &&midiInPort) : m_PluginIndices(std::move(pluginIndices)), m_MidiInPort(std::move(midiInPort))
             {
             }
             const std::vector<size_t>& PluginIndices() const
@@ -61,12 +61,10 @@ namespace engine
             }
             const std::unique_ptr<jackutils::Port>& MidiInPort() const { return m_MidiInPort; }
             std::unique_ptr<jackutils::Port>& MidiInPort() { return m_MidiInPort; }
-            std::unique_ptr<OptionalUI>& Ui() { return m_Ui; }
             
         private:
             std::vector<size_t> m_PluginIndices;
             std::unique_ptr<jackutils::Port> m_MidiInPort;
-            std::unique_ptr<OptionalUI> m_Ui;
         };
         Engine(uint32_t maxBlockSize, int argc, char** argv) : m_JackClient {"JN Live", [this](jack_nframes_t nframes){
             m_RtProcessor.Process(nframes);
@@ -100,20 +98,17 @@ namespace engine
                     delete ptr;
                 });  
             }
+            OnProjectChanged().Notify();
         }
         void ProcessMessages()
         {
             m_RtProcessor.ProcessMessagesInMainThread();
             ApplyJackConnections(false);
-            for(auto &part: m_Parts)
+            if(m_Ui)
             {
-                if(part.Ui())
+                if(m_Ui->ui())
                 {
-                    auto &ui = *part.Ui();
-                    if(ui.ui())
-                    {
-                        ui.ui()->CallIdle();
-                    }
+                    m_Ui->ui()->CallIdle();
                 }
             }
         }
@@ -123,6 +118,7 @@ namespace engine
             ApplyJackConnections(true);
         }
         void ApplyJackConnections(bool forceNow);
+        utils::NotifySource& OnProjectChanged() { return m_OnProjectChanged; }
 
     private:
         void SyncRtData()
@@ -200,42 +196,7 @@ namespace engine
                 {
                     pluginindices.push_back(partindex2instrumentindex2ownedpluginindex[partindex][instrumentindex]);
                 }
-                std::unique_ptr<OptionalUI> optionalui;
-                if(Project().Parts()[partindex].ShowUi())
-                {
-                    if(Project().Parts()[partindex].ActiveInstrumentIndex())
-                    {
-                        const auto &instrumentindex2ownedpluginindex = partindex2instrumentindex2ownedpluginindex[partindex];
-                        auto instrindex = *Project().Parts()[partindex].ActiveInstrumentIndex();
-                        if( (instrindex >= 0) && (instrindex < instrumentindex2ownedpluginindex.size()) )
-                        {
-                            auto ownedpluginindex = instrumentindex2ownedpluginindex[instrindex];
-                            const auto &ownedplugin = ownedPlugins[ownedpluginindex];
-                            if(ownedplugin)
-                            {
-                                auto &instance = ownedplugin->Instance();
-                                if(m_Parts[partindex].Ui() && &m_Parts[partindex].Ui()->instance() == &instance)
-                                {
-                                    optionalui = std::move(m_Parts[partindex].Ui());
-                                }
-                                else
-                                {
-                                    std::unique_ptr<lilvutils::UI> ui;
-                                    try
-                                    {
-                                        ui = std::make_unique<lilvutils::UI>(instance);
-                                    }
-                                    catch(std::exception &e)
-                                    {
-                                        std::cerr << "Failed to create UI for plugin " << instance.plugin().Lv2Uri() << ": " << e.what() << std::endl;
-                                    }
-                                    optionalui = std::make_unique<OptionalUI>(instance, std::move(ui));
-                                }
-                            }
-                        }
-                    }
-                }
-                newparts.push_back(Part(std::move(pluginindices), std::move(midiInPort), std::move(optionalui)));
+                newparts.push_back(Part(std::move(pluginindices), std::move(midiInPort)));
             }
             for(auto &part: m_Parts)
             {
@@ -251,8 +212,46 @@ namespace engine
                     pluginsToDiscard.push_back(std::move(plugin));
                 }
             }
+            std::unique_ptr<OptionalUI> optionalui;
+            if(Project().ShowUi())
+            {
+
+                if(Project().FocusedPart() && (*Project().FocusedPart() < Project().Parts().size()) && Project().Parts()[*Project().FocusedPart()].ActiveInstrumentIndex())
+                {
+                    auto partindex = *Project().FocusedPart();
+                    const auto &instrumentindex2ownedpluginindex = partindex2instrumentindex2ownedpluginindex[partindex];
+                    auto instrindex = *Project().Parts()[partindex].ActiveInstrumentIndex();
+                    if( (instrindex >= 0) && (instrindex < instrumentindex2ownedpluginindex.size()) )
+                    {
+                        auto ownedpluginindex = instrumentindex2ownedpluginindex[instrindex];
+                        const auto &ownedplugin = ownedPlugins[ownedpluginindex];
+                        if(ownedplugin)
+                        {
+                            auto &instance = ownedplugin->Instance();
+                            if(m_Ui && &m_Ui->instance() == &instance)
+                            {
+                                optionalui = std::move(m_Ui);
+                            }
+                            else
+                            {
+                                std::unique_ptr<lilvutils::UI> ui;
+                                try
+                                {
+                                    ui = std::make_unique<lilvutils::UI>(instance);
+                                }
+                                catch(std::exception &e)
+                                {
+                                    std::cerr << "Failed to create UI for plugin " << instance.plugin().Lv2Uri() << ": " << e.what() << std::endl;
+                                }
+                                optionalui = std::make_unique<OptionalUI>(instance, std::move(ui));
+                            }
+                        }
+                    }
+                }
+            }
             m_OwnedPlugins = std::move(ownedPlugins);
             m_Parts = std::move(newparts);
+            m_Ui = std::move(optionalui);
         }
         realtimethread::Data CalcRtData() const
         {
@@ -305,10 +304,12 @@ namespace engine
         project::Project m_Project;
         std::vector<std::unique_ptr<PluginInstance>> m_OwnedPlugins;
         std::vector<Part> m_Parts;
+        std::unique_ptr<OptionalUI> m_Ui;
         realtimethread::Data m_CurrentRtData;
         std::array<jackutils::Port, 2> m_AudioOutPorts;
         project::TJackConnections m_JackConnections;
         std::optional<std::chrono::steady_clock::time_point> m_LastApplyJackConnectionTime;
+        utils::NotifySource m_OnProjectChanged;
 
     };
 }

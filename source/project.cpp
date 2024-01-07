@@ -11,8 +11,8 @@ namespace project
         instruments.emplace_back("http://tytel.org/helm", false);
         instruments.emplace_back("http://www.openavproductions.com/sorcer", false);
         std::vector<Part> parts;
-        parts.emplace_back("Upper", 1, std::nullopt, std::nullopt, 1.0f, false);
-        parts.emplace_back("Lower", 2, std::nullopt, std::nullopt, 1.0f, false);
+        parts.emplace_back("Upper", 1, std::nullopt, std::nullopt, 1.0f);
+        parts.emplace_back("Lower", 2, std::nullopt, std::nullopt, 1.0f);
         std::vector<TQuickPreset> quickPresets;
         quickPresets.emplace_back(0, 0);
         quickPresets.emplace_back(1, 0);
@@ -24,11 +24,7 @@ namespace project
         quickPresets.emplace_back(2, 1);
         quickPresets.emplace_back(3, 1);
         quickPresets.emplace_back(4, 1);
-        return Project(std::move(instruments), std::move(parts), std::move(quickPresets));
-
-            // "Family 17h/19h HD Audio Controller Analog Stereo:playback_FL",
-            // "Family 17h/19h HD Audio Controller Analog Stereo:playback_FR"
-
+        return Project(std::move(instruments), std::move(parts), std::move(quickPresets), std::nullopt, false);
     }
 
     Json::Value ToJson(const Instrument &instrument)
@@ -64,7 +60,6 @@ namespace project
             result["presetindex"] = Json::Value::null;
         }
         result["amplitudefactor"] = part.AmplitudeFactor();
-        result["showui"] = part.ShowUi();
         return result;
     }
     Part PartFromJson(const Json::Value &v)
@@ -80,7 +75,7 @@ namespace project
             presetIndex = v["presetindex"].asInt();
         }
 
-        return Part(v["name"].asString(), v["midichannelforsharedinstruments"].asInt(), instrumentIndex, presetIndex, v["amplitudefactor"].asFloat(), v["showui"].asBool());
+        return Part(v["name"].asString(), v["midichannelforsharedinstruments"].asInt(), instrumentIndex, presetIndex, v["amplitudefactor"].asFloat());
     }
     Json::Value ToJson(const TQuickPreset &quickPreset)
     {
@@ -108,6 +103,15 @@ namespace project
         {
             result["quickpresets"].append(ToJson(quickPreset));
         }
+        result["showui"] = project.ShowUi();
+        if(project.FocusedPart())
+        {
+            result["focusedpart"] = *project.FocusedPart();
+        }
+        else
+        {
+            result["focusedpart"] = Json::Value::null;
+        }
         return result;
     }
     Project ProjectFromJson(const Json::Value &v)
@@ -127,7 +131,16 @@ namespace project
         {
             quickPresets.push_back(QuickPresetFromJson(quickPreset));
         }
-        return Project(std::move(instruments), std::move(parts), std::move(quickPresets));
+        std::optional<size_t> focusedPart;
+        if(v["focusedpart"].isNull())
+        {
+            focusedPart = std::nullopt;
+        }
+        else
+        {
+            focusedPart = v["focusedpart"].asInt();
+        }
+        return Project(std::move(instruments), std::move(parts), std::move(quickPresets), focusedPart, v["showui"].asBool());
     }
     Project ProjectFromFile(const std::string &filename)
     {

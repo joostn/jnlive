@@ -399,7 +399,7 @@ namespace realtimethread
         const Data* m_DataInRtThread;
         jack_nframes_t m_Bufsize;
         ringbuf::RingBuf m_RingBufToRtThread {130000, 4096};
-        ringbuf::RingBuf m_RingBufFromRtThread {130000, 4096};
+        ringbuf::RingBuf m_RingBufFromRtThread {1300000, 4096};
         LV2_URID m_UridMidiEvent;
         std::array<AsyncFunctionMessage, 400> m_BufferForAsyncFunctionMessages;
         size_t m_NumStoredAsyncFunctionMessages = 0;
