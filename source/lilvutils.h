@@ -369,6 +369,12 @@ namespace lilvutils
             m_Ui = nullptr;
         }
         const RealtimeThreadInterface& realtimeThreadInterface() const { return m_RealtimeThreadInterface; }
+        void Reset()
+        {
+            if(m_Ui) throw std::runtime_error("UI is open");
+            lilv_instance_deactivate(m_Instance);
+            lilv_instance_activate(m_Instance);
+        }
 
     private:
         const Plugin &m_Plugin;
@@ -482,7 +488,7 @@ namespace lilvutils
                     if(auto atomconnection = dynamic_cast<TConnection<TAtomPort>*>(connection))
                     {
                         auto  atom = (const LV2_Atom*)buffer;
-                        if (buffer_size == sizeof(LV2_Atom)) 
+                        if (buffer_size > sizeof(LV2_Atom)) 
                         {
                             if (sizeof(LV2_Atom) + atom->size == buffer_size)
                             {

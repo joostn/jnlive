@@ -1,8 +1,4 @@
-#include <iostream>
-#include <lilv/lilv.h>
-#include <jack/jack.h>
-#include <thread>
-
+#include "gui.h"
 #include "utils.h"
 #include "engine.h"
 #include "project.h"
@@ -13,112 +9,6 @@
 using namespace std::string_literals;
 using namespace std::chrono_literals;
 
-
-class ApplicationWindow : public Gtk::ApplicationWindow
-{
-public:
-    class PartsContainer : public Gtk::Box
-    {
-    public:
-        class PartContainer : public Gtk::Box
-        {
-        public:
-            PartContainer(PartContainer &&other) = delete;
-            PartContainer(const PartContainer &other) = delete;
-            PartContainer(engine::Engine &engine, size_t partindex) : m_PartIndex(partindex), m_Engine(engine)
-            {
-                set_orientation(Gtk::ORIENTATION_VERTICAL);
-                pack_start(m_ActivateButton);
-                m_ActivateButton.signal_clicked().connect([this](){
-                    const auto &prj = m_Engine.Project();
-                    if(m_PartIndex < prj.Parts().size())
-                    {
-                        bool isSelected = prj.FocusedPart() == m_PartIndex;
-                        if(prj.FocusedPart() != m_PartIndex)
-                        {
-                            auto newproject = prj.Change(m_PartIndex, prj.ShowUi());
-                            m_Engine.SetProject(std::move(newproject));
-                        }
-                        else
-                        {
-                            // still focused:
-                            m_ActivateButton.set_state_flags(Gtk::STATE_FLAG_CHECKED);
-                        }
-                    }
-                });
-                OnProjectChanged();
-            }
-            void OnProjectChanged()
-            {
-                const auto &prj = m_Engine.Project();
-                bool isSelected = prj.FocusedPart() == m_PartIndex;
-                if(m_PartIndex < prj.Parts().size())
-                {
-                    const auto &part = prj.Parts()[m_PartIndex];
-                    m_ActivateButton.set_label(part.Name());
-                    m_ActivateButton.set_state_flags(isSelected ? Gtk::STATE_FLAG_CHECKED : Gtk::STATE_FLAG_NORMAL, true);
-                }
-            }
-        private:
-            Gtk::ToggleButton m_ActivateButton;
-            engine::Engine &m_Engine;
-            size_t m_PartIndex;
-            utils::NotifySink m_OnProjectChanged {m_Engine.OnProjectChanged(), [this](){OnProjectChanged();}};
-        };
-        PartsContainer(engine::Engine &engine) : m_Engine(engine)
-        {
-            set_orientation(Gtk::ORIENTATION_VERTICAL);
-            OnProjectChanged();
-        }
-        void OnProjectChanged()
-        {
-            const auto &project = m_Engine.Project();
-            while(m_PartContainers.size() > project.Parts().size())
-            {
-                remove(*m_PartContainers.back());
-                m_PartContainers.pop_back();
-            }
-            while(m_PartContainers.size() < project.Parts().size())
-            {
-                auto container = std::make_unique<PartContainer>(m_Engine, m_PartContainers.size());
-                m_PartContainers.push_back(std::move(container));
-                pack_start(*m_PartContainers.back());
-            }
-            show_all_children();
-        }
-    private:
-        engine::Engine &m_Engine;
-        utils::NotifySink m_OnProjectChanged {m_Engine.OnProjectChanged(), [this](){OnProjectChanged();}};
-        std::vector<std::unique_ptr<PartContainer>> m_PartContainers;
-    };
-    ApplicationWindow(engine::Engine &engine) : m_Engine(engine), m_PartsContainer(engine)
-    {
-        set_default_size(800, 600);
-        add(m_Box);
-
-        // Left widget (Expanding)
-        m_Box.pack_start(m_LeftButton, Gtk::PACK_EXPAND_WIDGET);
-
-        m_Box.pack_start(m_PartsContainer, Gtk::PACK_SHRINK);
-        show_all_children();
-    }
-    ~ApplicationWindow()
-    {
-        m_Box.remove(m_LeftButton);
-        m_Box.remove(m_PartsContainer);
-    }
-    void OnProjectChanged()
-    {        
-    }
-
-private:
-    engine::Engine &m_Engine;
-    utils::NotifySink m_OnProjectChanged {m_Engine.OnProjectChanged(), [this](){OnProjectChanged();}};
-    PartsContainer m_PartsContainer;
-    Gtk::Box m_Box {Gtk::ORIENTATION_HORIZONTAL};
-    Gtk::Button m_LeftButton {"Left Button"};
-};
-
 class Application : public Gtk::Application
 {
 public:
@@ -128,7 +18,7 @@ public:
     }
     void on_activate() override {
         InitEngine();
-        auto window = new ApplicationWindow(m_Engine);
+        auto window = guiCreateApplicationWindow(m_Engine);
         add_window(*window);
         window->show_all();
 
@@ -185,6 +75,14 @@ public:
             auto prj = m_Engine.Project();
             prj = prj.ChangePart(0, 3, std::nullopt, 1.0f);
             prj = prj.ChangePart(1, 2, std::nullopt, 1.0f);
+            if(!prj.Parts().empty())
+            {
+                if(!prj.FocusedPart())
+                {
+                    prj = prj.Change(0,prj.ShowUi());
+
+                }
+            }
             m_Engine.SetProject(std::move(prj));
         }
 

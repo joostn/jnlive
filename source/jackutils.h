@@ -4,6 +4,8 @@
 #include <string>
 #include <atomic>
 #include "utils.h"
+#include <mutex>
+#include <condition_variable>
 
 namespace jackutils
 {
@@ -33,6 +35,13 @@ namespace jackutils
                 }
             });
             jack_set_process_callback(jackclient, &Client::processStatic, this);
+            // jack_on_shutdown(jackclient, [](void* arg){
+            //     auto theclient = (Client*)arg;
+            //     if (theclient)
+            //     {
+            //         theclient->OnShutdown();
+            //     }
+            // }, this);
             m_Client = jackclient;
             jackclient = nullptr;
             staticptr() = this;
@@ -41,6 +50,12 @@ namespace jackutils
             // https://jackaudio.org/api/group__PortFunctions.html#gae6090e81f2ee23b5c0e432a899085ec8
 
         }
+        // void OnShutdown()
+        // {
+        //     std::unique_lock<std::mutex> lock(m_Mutex);
+        //     m_HasShutdown = true;
+        //     m_Condition.notify_all();
+        // }
         void ListAllPorts()
         {
             auto ports = jack_get_ports(m_Client, nullptr, nullptr, 0);
@@ -59,9 +74,19 @@ namespace jackutils
             }
             jack_free(ports);
         }
+        void ShutDown()
+        {
+            if(m_Client) 
+            {
+                jack_deactivate(m_Client);
+                if(m_Client) jack_client_close(m_Client);
+                m_Client= nullptr;
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+        }
         ~Client()
         {
-            if(m_Client) jack_client_close(m_Client);
+            ShutDown();
             staticptr() = nullptr;
         }
         jack_client_t* get()

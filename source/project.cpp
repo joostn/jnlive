@@ -5,25 +5,19 @@ namespace project
     Project TestProject()
     {
         std::vector<Instrument> instruments;
-        instruments.emplace_back("http://gareus.org/oss/lv2/b_synth", true);
-        instruments.emplace_back("http://sfztools.github.io/sfizz", false);
-        instruments.emplace_back("http://synthv1.sourceforge.net/lv2", false);
-        instruments.emplace_back("http://tytel.org/helm", false);
-        instruments.emplace_back("http://www.openavproductions.com/sorcer", false);
+        instruments.emplace_back("http://gareus.org/oss/lv2/b_synth", true, "SetBfree");
+        instruments.emplace_back("http://sfztools.github.io/sfizz", false, "SFizz");
+        instruments.emplace_back("http://synthv1.sourceforge.net/lv2", false, "LV2");
+        instruments.emplace_back("http://tytel.org/helm", false, "Helm");
+        instruments.emplace_back("http://www.openavproductions.com/sorcer", false, "Sorcer");
         std::vector<Part> parts;
-        parts.emplace_back("Upper", 1, std::nullopt, std::nullopt, 1.0f);
-        parts.emplace_back("Lower", 2, std::nullopt, std::nullopt, 1.0f);
+        parts.emplace_back("Upper", 0, std::nullopt, std::nullopt, 1.0f);
+        parts.emplace_back("Lower", 1, std::nullopt, std::nullopt, 1.0f);
         std::vector<TQuickPreset> quickPresets;
-        quickPresets.emplace_back(0, 0);
-        quickPresets.emplace_back(1, 0);
-        quickPresets.emplace_back(2, 0);
-        quickPresets.emplace_back(3, 0);
-        quickPresets.emplace_back(4, 0);
-        quickPresets.emplace_back(0, 1);
-        quickPresets.emplace_back(1, 1);
-        quickPresets.emplace_back(2, 1);
-        quickPresets.emplace_back(3, 1);
-        quickPresets.emplace_back(4, 1);
+        quickPresets.emplace_back(0, 0, "Organ");
+        quickPresets.emplace_back(1, 0, "Piano");
+        quickPresets.emplace_back(2, 0, "Clavi");
+        quickPresets.emplace_back(3, 0, "SynLead");
         return Project(std::move(instruments), std::move(parts), std::move(quickPresets), std::nullopt, false);
     }
 
@@ -32,11 +26,12 @@ namespace project
         Json::Value result;
         result["lv2uri"] = instrument.Lv2Uri();
         result["shared"] = instrument.Shared();
+        result["name"] = instrument.Name();
         return result;
     }
     Instrument InstrumentFromJson(const Json::Value &v)
     {
-        return Instrument(v["lv2uri"].asString(), v["shared"].asBool());
+        return Instrument(v["lv2uri"].asString(), v["shared"].asBool(), v["name"].asString());
     }
     Json::Value ToJson(const Part &part)
     {
@@ -82,11 +77,12 @@ namespace project
         Json::Value result;
         result["instrumentindex"] = quickPreset.InstrumentIndex();
         result["programindex"] = quickPreset.ProgramIndex();
+        result["name"] = quickPreset.Name();
         return result;
     }
     TQuickPreset QuickPresetFromJson(const Json::Value &v)
     {
-        return TQuickPreset(v["instrumentindex"].asInt(), v["programindex"].asInt());
+        return TQuickPreset(v["instrumentindex"].asInt(), v["programindex"].asInt(), v["name"].asString());
     }
     Json::Value ToJson(const Project &project)
     {

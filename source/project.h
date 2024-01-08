@@ -10,7 +10,7 @@ namespace project
     class Instrument
     {
     public:
-        Instrument(std::string &&lv2Uri, bool shared) : m_Lv2Uri(std::move(lv2Uri)), m_Shared(shared)
+        Instrument(std::string &&lv2Uri, bool shared, std::string &&name) : m_Lv2Uri(std::move(lv2Uri)), m_Shared(shared), m_Name(std::move(name))
         {
         }
         const std::string& Lv2Uri() const
@@ -21,9 +21,14 @@ namespace project
         {
             return m_Shared;
         }
+        const std::string& Name() const
+        {
+            return m_Name;
+        }
 
     private:
         std::string m_Lv2Uri;
+        std::string m_Name;
         bool m_Shared = false;  // for hammond organ, etc: 2 keyboards per instrument
     };
     class Part  // one for each keyboard
@@ -64,12 +69,14 @@ namespace project
     class TQuickPreset
     {
     public:
-        TQuickPreset(size_t instrumentIndex, size_t programIndex) : m_InstrumentIndex(instrumentIndex), m_ProgramIndex(programIndex) {}
+        TQuickPreset(size_t instrumentIndex, size_t programIndex, std::string &&name) : m_InstrumentIndex(instrumentIndex), m_ProgramIndex(programIndex), m_Name(std::move(name)) {}
         size_t InstrumentIndex() const { return m_InstrumentIndex; }
         size_t ProgramIndex() const { return m_ProgramIndex; }
+        const std::string &Name() const {return m_Name;}
     private:
         size_t m_InstrumentIndex = 0;
         size_t m_ProgramIndex = 0;
+        std::string m_Name;
     };
     class Project
     {
@@ -105,6 +112,29 @@ namespace project
             auto instruments = m_Instruments;
             auto quickPresets = m_QuickPresets;
             return Project(std::move(instruments), std::move(parts), std::move(quickPresets), FocusedPart(), ShowUi());
+        }
+        Project SwitchToPreset(size_t partIndex, size_t presetIndex) const
+        {
+            if( (partIndex < Parts().size()) && (presetIndex < m_QuickPresets.size()) )
+            {
+                auto instrumentindex = QuickPresets()[presetIndex].InstrumentIndex();
+                return ChangePart(partIndex, instrumentindex, presetIndex, Parts()[partIndex].AmplitudeFactor());
+            }
+            else
+            {
+                return *this;
+            }
+        }
+        Project SwitchFocusedPartToPreset(size_t presetIndex) const
+        {
+            if(FocusedPart())
+            {
+                return SwitchToPreset(*FocusedPart(), presetIndex);
+            }
+            else
+            {
+                return *this;
+            }
         }
         const bool& ShowUi() const { return m_ShowUi; }
         const std::optional<size_t>& FocusedPart() const { return m_FocusedPart; }

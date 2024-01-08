@@ -17,6 +17,7 @@ add_executable (jnlive
     source/realtimethread.cpp
     source/log.cpp
     source/schedule.cpp
+    source/gui.cpp
 )
 
 

@@ -67,7 +67,7 @@ namespace schedule
                 }
             }
         }
-        if(m_WorkerInterface->end_run)
+        if(m_WorkerInterface && m_WorkerInterface->end_run)
         {
             m_WorkerInterface->end_run(m_Instance.get());
         }

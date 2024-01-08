@@ -4,6 +4,7 @@
 #include "ringbuf.h"
 #include <jack/midiport.h>
 #include "lv2/midi/midi.h"
+#include "midi.h"
 
 namespace realtimethread
 {
@@ -14,7 +15,7 @@ namespace realtimethread
         {
         public:
             Plugin() = default;
-            Plugin(lilvutils::Instance *pluginInstance, float amplitudeFactor) : m_PluginInstance(pluginInstance), m_AmplitudeFactor(amplitudeFactor)
+            Plugin(lilvutils::Instance *pluginInstance, float amplitudeFactor, bool doOverrideChannel, LV2_Evbuf_Iterator *midiInBuf) : m_PluginInstance(pluginInstance), m_AmplitudeFactor(amplitudeFactor), m_DoOverrideChannel(doOverrideChannel), m_MidiInBuf(midiInBuf)
             {
             }
             lilvutils::Instance& PluginInstance() const
@@ -25,30 +26,45 @@ namespace realtimethread
             {
                 return m_AmplitudeFactor;
             }
+            bool DoOverrideChannel() const
+            {
+                return m_DoOverrideChannel;
+            }
+            LV2_Evbuf_Iterator *MidiInBuf() const
+            {
+                return m_MidiInBuf;
+            }
             auto operator<=>(const Plugin&) const = default;
         private:
             lilvutils::Instance *m_PluginInstance = nullptr;
             float m_AmplitudeFactor = 0.0f;
+            bool m_DoOverrideChannel;
+            LV2_Evbuf_Iterator *m_MidiInBuf;
         };
         class TMidiPort
         {
         public:
             TMidiPort() = default;
-            TMidiPort(jack_port_t *port, int pluginIndex) : m_Port(port), m_PluginIndex(pluginIndex)
+            TMidiPort(jack_port_t *port, std::optional<int> pluginIndex, int overrideChannel) : m_Port(port), m_PluginIndex(pluginIndex), m_OverrideChannel(overrideChannel)
             {
             }
             jack_port_t& Port() const
             {
                 return *m_Port;
             }
-            int PluginIndex() const
+            std::optional<int> PluginIndex() const
             {
                 return m_PluginIndex;
+            }
+            int OverrideChannel() const
+            {
+                return m_OverrideChannel;
             }
             auto operator<=>(const TMidiPort&) const = default;
         private:
             jack_port_t *m_Port = nullptr;
-            int m_PluginIndex = -1;
+            std::optional<int> m_PluginIndex;
+            int m_OverrideChannel;
         };
     public:
         Data() = default;
@@ -104,7 +120,7 @@ namespace realtimethread
         The intended purpose is to defer deletion of objects until we are sure they are no longer used by the realtime thread.
         If an object is scheduled for deletion, the main thread first posts a message to the realtime thread with the modified data structures (which no longer refer to the deleted object).
         Then the main thread posts an AsyncFunctionMessage with a function that actually deletes the object.
-        The realtime thread, at the end of its run, posts back all AsyncFunctionMessages to the main thread. We can be sure that the realtime thread will no longer access the deleted objects. The main thread then executes the function, which deletes the object.
+        The realtime thread, at the end of its run, echoes back all received AsyncFunctionMessages to the main thread. At this time we can be sure that the realtime thread will no longer access the deleted objects. The main thread then receives the AsyncFunctionMessage and executes the function, which deletes the object.
         */
     public:
         AsyncFunctionMessage() : m_Function(nullptr) {}
@@ -159,240 +175,23 @@ namespace realtimethread
               SendControlValueFromMainThread(connection, value);
           };
         }
-        void Process(jack_nframes_t nframes)
-        {
-            if(nframes > m_Bufsize)
-            {
-                throw std::runtime_error("nframes > bufsize");
-            }
-            ProcessMessagesInRealtimeThread();
-            ProcessIncomingMidi(nframes);
-            RunInstances(nframes);
-            ProcessOutgoingAudio(nframes);
-            ProcessOutputPorts();
-            ResetEvBufs();
-            SendPendingAsyncFunctionMessages();
-        }
-        void SetDataFromMainThread(Data &&data)
-        {
-            auto olddata = std::move(m_CurrentData);
-            m_CurrentData = std::make_unique<Data>(std::move(data));
-            RingBufToRtThread().Write(SetDataMessage(m_CurrentData.get()));
-            auto ptr = olddata.release();
-            DeferredExecuteAfterRoundTrip([ptr](){
-                delete ptr;
-            });
-        }
-        void SendAtomPortEventFromMainThread(lilvutils::TConnection<lilvutils::TAtomPort>* connection, uint32_t frames, uint32_t subframes, LV2_URID type, uint32_t size, const void* body)
-        {
-            RingBufToRtThread().Write(realtimethread::AtomPortEventMessage(connection, frames, subframes, type, size, body));
-        }
-        void SendControlValueFromMainThread(lilvutils::TConnection<lilvutils::TControlPort>* connection, float value)
-        {
-            RingBufToRtThread().Write(realtimethread::ControlPortChangedMessage(connection, value));
-        }
-        void DeferredExecuteAfterRoundTrip(std::function<void()> &&function)
-        {
-            RingBufToRtThread().Write(realtimethread::AsyncFunctionMessage(std::move(function)));
-        }
+        void Process(jack_nframes_t nframes);
+        void SetDataFromMainThread(Data &&data);
+        void SendAtomPortEventFromMainThread(lilvutils::TConnection<lilvutils::TAtomPort>* connection, uint32_t frames, uint32_t subframes, LV2_URID type, uint32_t size, const void* body);
+        void SendControlValueFromMainThread(lilvutils::TConnection<lilvutils::TControlPort>* connection, float value);
+        void DeferredExecuteAfterRoundTrip(std::function<void()> &&function);
         ringbuf::RingBuf& RingBufToRtThread() { return m_RingBufToRtThread; }
         ringbuf::RingBuf& RingBufFromRtThread() { return m_RingBufFromRtThread; }
-        void ProcessMessagesInMainThread() // should be called regularly
-        {
-            while(true)
-            {
-                auto message = RingBufFromRtThread().Read();
-                if(!message) break;
-                if(auto asyncfunctionmessage = dynamic_cast<const realtimethread::AsyncFunctionMessage*>(message); asyncfunctionmessage)
-                {
-                    asyncfunctionmessage->Call();
-                }
-                else if(auto cpchangedmessage = dynamic_cast<const realtimethread::ControlPortChangedMessage*>(message); cpchangedmessage)
-                {
-                    cpchangedmessage->Connection()->SetValueInMainThread(cpchangedmessage->NewValue(), true);
-                }
-                else if(auto atomPortEventMessage = dynamic_cast<const AtomPortEventMessage*>(message))
-                {
-                    atomPortEventMessage->Connection()->instance().OnAtomPortMessage(*atomPortEventMessage->Connection(), atomPortEventMessage->Frames(), atomPortEventMessage->SubFrames(), atomPortEventMessage->Type(), atomPortEventMessage->AdditionalDataSize(), atomPortEventMessage->AdditionalDataBuf());
-                }
-            }
-        }
+        void ProcessMessagesInMainThread(); // should be called regularly
         const lilvutils::RealtimeThreadInterface& realtimeThreadInterface() const { return m_RealtimeThreadInterface; }
     private:
-        void ProcessMessagesInRealtimeThread()
-        {
-            while(true)
-            {
-                auto message = RingBufToRtThread().Read();
-                if(!message) break;
-                if(auto setdatamessage = dynamic_cast<const SetDataMessage*>(message))
-                {
-                    m_DataInRtThread = setdatamessage->data();
-                }
-                else if(auto asyncfunctionmessage = dynamic_cast<const AsyncFunctionMessage*>(message))
-                {
-                    if(m_NumStoredAsyncFunctionMessages >= m_BufferForAsyncFunctionMessages.size())
-                    {
-                        throw std::runtime_error("m_BufferForAsyncFunctionMessages overrun");
-                    }
-                    m_BufferForAsyncFunctionMessages[m_NumStoredAsyncFunctionMessages++] = std::move(asyncfunctionmessage->Clone());
-                }
-                else if(auto cpchangedmessage = dynamic_cast<const realtimethread::ControlPortChangedMessage*>(message); cpchangedmessage)
-                {
-                    *cpchangedmessage->Connection()->Buffer() = cpchangedmessage->NewValue();
-                }
-                else if(auto atomPortEventMessage = dynamic_cast<const AtomPortEventMessage*>(message))
-                {
-                    auto &bufferIterator = atomPortEventMessage->Connection()->BufferIterator();
-                    lv2_evbuf_write(&bufferIterator, atomPortEventMessage->Frames(), atomPortEventMessage->SubFrames(), atomPortEventMessage->Type(), atomPortEventMessage->AdditionalDataSize(), atomPortEventMessage->AdditionalDataBuf());
-                }                
-            }
-        }
-        void SendPendingAsyncFunctionMessages()
-        {
-            for(size_t i=0; i < m_NumStoredAsyncFunctionMessages; ++i)
-            {
-                // post back to main thread
-                m_RingBufFromRtThread.Write(m_BufferForAsyncFunctionMessages[i]);
-            }
-            m_NumStoredAsyncFunctionMessages = 0;
-        }
-        void ResetEvBufs()
-        {
-            if(!m_DataInRtThread) return;
-            const auto &data = *m_DataInRtThread;
-            for(const auto &plugin: data.Plugins())
-            {
-                auto &instance = plugin.PluginInstance();
-                for(auto &connection: instance.Connections())
-                {
-                    if(auto atomportconnection = dynamic_cast<lilvutils::TConnection<lilvutils::TAtomPort>*>(connection.get()); atomportconnection)
-                    {
-                        atomportconnection->ResetEvBuf();
-                    }
-                }
-            }
-        }
-        void ProcessOutputPorts()
-        {
-            if(!m_DataInRtThread) return;
-            const auto &data = *m_DataInRtThread;
-            for(const auto &plugin: data.Plugins())
-            {
-                auto &instance = plugin.PluginInstance();
-                for(auto &connection: instance.Connections())
-                {
-                    if(auto controlportconnection = dynamic_cast<lilvutils::TConnection<lilvutils::TControlPort>*>(connection.get()); controlportconnection)
-                    {
-                        const auto &port = controlportconnection->Port();
-                        if(port.Direction() == lilvutils::TPortBase::TDirection::Output)
-                        {
-                            if(*controlportconnection->Buffer() != controlportconnection->OrigValue())
-                            {
-                                controlportconnection->OrigValue() = *controlportconnection->Buffer();
-                                m_RingBufFromRtThread.Write(ControlPortChangedMessage(controlportconnection, *controlportconnection->Buffer()));
-                            }
-                        }
-                    }
-                    else if(auto atomportconnection = dynamic_cast<lilvutils::TConnection<lilvutils::TAtomPort>*>(connection.get()); atomportconnection)
-                    {
-                        const auto &port = atomportconnection->Port();
-                        if(port.Direction() == lilvutils::TPortBase::TDirection::Output)
-                        {
-                            while(lv2_evbuf_is_valid(atomportconnection->BufferIterator()))
-                            {
-                                // Get event from LV2 buffer
-                                uint32_t frames    = 0;
-                                uint32_t subframes = 0;
-                                LV2_URID type      = 0;
-                                uint32_t size      = 0;
-                                void*    body      = NULL;
-                                lv2_evbuf_get(atomportconnection->BufferIterator(), &frames, &subframes, &type, &size, &body);
-
-                                m_RingBufFromRtThread.Write(AtomPortEventMessage(atomportconnection, frames, subframes, type, size, body));
-                                atomportconnection->BufferIterator() = lv2_evbuf_next(atomportconnection->BufferIterator());
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        void RunInstances(jack_nframes_t nframes)
-        {
-            if(!m_DataInRtThread) return;
-            const auto &data = *m_DataInRtThread;
-            for(const auto &plugin: data.Plugins())
-            {
-                plugin.PluginInstance().Run(nframes);
-            }
-        }
-        void ProcessOutgoingAudio(jack_nframes_t nframes)
-        {
-            if(!m_DataInRtThread) return;
-            const auto &data = *m_DataInRtThread;
-            std::array<float*, 2> mixedAudioPorts = {
-                (float*)jack_port_get_buffer(data.OutputAudioPorts()[0], nframes),
-                (float*)jack_port_get_buffer(data.OutputAudioPorts()[1], nframes)
-            };
-            bool hasoutputaudio = mixedAudioPorts[0] && mixedAudioPorts[1];
-            if(hasoutputaudio)
-            {
-                for(size_t i = 0; i < nframes; ++i)
-                {
-                    mixedAudioPorts[0][i] = 0.0f;
-                    mixedAudioPorts[1][i] = 0.0f;
-                }
-            }
-            for(const auto &plugin: data.Plugins())
-            {
-                auto outputAudioPortIndices = plugin.PluginInstance().plugin().OutputAudioPortIndices();
-                auto multiplier = plugin.AmplitudeFactor();
-                if(hasoutputaudio && outputAudioPortIndices[0] && outputAudioPortIndices[1])
-                {
-                    std::array<float*, 2> pluginOutputAudioPorts {
-                        dynamic_cast<lilvutils::TConnection<lilvutils::TAudioPort>*>(plugin.PluginInstance().Connections().at(*outputAudioPortIndices[0]).get())->Buffer(),
-                        dynamic_cast<lilvutils::TConnection<lilvutils::TAudioPort>*>(plugin.PluginInstance().Connections().at(*outputAudioPortIndices[1]).get())->Buffer()
-                    };
-                    for(size_t i = 0; i < nframes; ++i)
-                    {
-                        mixedAudioPorts[0][i] += multiplier * pluginOutputAudioPorts[0][i];
-                        mixedAudioPorts[1][i] += multiplier * pluginOutputAudioPorts[1][i];
-                    }
-                }
-            }
-        }
-        void ProcessIncomingMidi(jack_nframes_t nframes)
-        {
-            if(!m_DataInRtThread) return;
-            const auto &data = *m_DataInRtThread;
-            for(const auto &midiport: data.MidiPorts())
-            {
-                auto buf = jack_port_get_buffer(&midiport.Port(), nframes);
-                auto evtcount = jack_midi_get_event_count(buf);
-                if(buf && (evtcount > 0))
-                {
-                    auto pluginindex = midiport.PluginIndex();
-                    if( (pluginindex >= 0) && (pluginindex < (int)data.Plugins().size()) )
-                    {
-                        auto &plugin = data.Plugins()[midiport.PluginIndex()];
-                        auto &plugininstance = plugin.PluginInstance();
-                        auto midiinputindexOrNull = plugininstance.plugin().MidiInputIndex();
-                        if(midiinputindexOrNull)
-                        {
-                            if(auto atomconnection = dynamic_cast<lilvutils::TConnection<lilvutils::TAtomPort>*>(plugininstance.Connections().at(*midiinputindexOrNull).get()))
-                            {
-                                for (uint32_t i = 0; i < jack_midi_get_event_count(buf); ++i) 
-                                {
-                                    jack_midi_event_t ev;
-                                    jack_midi_event_get(&ev, buf, i);
-                                    lv2_evbuf_write(&atomconnection->BufferIterator(), ev.time, 0, m_UridMidiEvent, ev.size, ev.buffer);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        void ProcessMessagesInRealtimeThread();
+        void SendPendingAsyncFunctionMessages();
+        void ResetEvBufs();
+        void ProcessOutputPorts();
+        void RunInstances(jack_nframes_t nframes);
+        void ProcessOutgoingAudio(jack_nframes_t nframes);
+        void ProcessIncomingMidi(jack_nframes_t nframes);
 
     private:
         std::unique_ptr<Data> m_CurrentData;
