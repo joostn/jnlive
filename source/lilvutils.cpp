@@ -490,6 +490,55 @@ namespace lilvutils
             lilv_instance_free(m_Instance);
         }
     }
+    void* Instance::GetPortValueBySymbol(const char *port_symbol, uint32_t *size, uint32_t *type)
+    {
+        for(const auto& connection: m_Connections)
+        {
+            if(auto controlconnection = dynamic_cast<TConnection<TControlPort>*>(connection.get()); controlconnection)
+            {
+                if(controlconnection->Port().Symbol() == port_symbol)
+                {
+                    if(controlconnection->Port().Direction() == TControlPort::TDirection::Input)
+                    {
+                        *size = sizeof(float);
+                        *type = jalv->forge.Float;
+                        return const_cast<void*>((const void*)&controlconnection->ValueInMainThread());
+                    }
+                }
+            }
+        }
+        return nullptr;
+    }
+
+    
+TODO:
+  lv2_atom_forge_init(&world::forge, &jalv->map);
+
+    void Instance::SaveState(const std::string &dir)
+    {
+        // generate a random tempdir in the system temporary dir:
+        auto tempdir = utils::generate_random_tempdir();
+        auto get_port_value = [](const char* port_symbol, void* user_data, uint32_t* size, uint32_t* type) -> const void* {
+            auto self = (Instance*)user_data;
+            return self->GetPortValueBySymbol(port_symbol, size, type);
+        };
+        auto state = lilv_state_new_from_instance(m_Plugin.get(), m_Instance, &World::Static().UridMap(), tempdir.c_str(), dir.c_str(), dir.c_str(), dir.c_str(), get_port_value, this, LV2_STATE_IS_POD | LV2_STATE_IS_PORTABLE, NULL);
+        if(!state)
+        {
+            throw std::runtime_error("lilv_state_new_from_instance failed");
+        }
+        utils::finally fin1([&](){
+            if(state)
+            {
+                lilv_state_free(state);
+            }
+        });
+        auto status = lilv_state_save(World::Static().get(), &World::Static().UridMap(), &World::Static().UridUnmap(), state, NULL, dir.c_str(), "state.ttl");
+        if(status)
+        {
+            throw std::runtime_error("lilv_state_save failed");
+        }
+    }
 
     void Instance::OnControlValueChanged(TConnection<TControlPort> &connection)
     {

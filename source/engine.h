@@ -155,6 +155,9 @@ namespace engine
         }
         void ApplyJackConnections(bool forceNow);
         utils::NotifySource& OnProjectChanged() { return m_OnProjectChanged; }
+        const std::string& PresetsDir() const { return m_PresetsDir; }
+        void SetPresetsDir(const std::string& presetsDir) { m_PresetsDir = presetsDir; }
+        void SaveCurrentPreset(const std::string &presetName);
 
     private:
         void SyncRtData()
@@ -185,5 +188,6 @@ namespace engine
         std::optional<std::chrono::steady_clock::time_point> m_LastApplyJackConnectionTime;
         utils::NotifySource m_OnProjectChanged;
         bool m_SafeToDestroy = false;
+        std::string m_PresetsDir;
     };
 }

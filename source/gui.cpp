@@ -216,9 +216,11 @@ public:
                 auto prj = m_ApplicationWindow.Engine().Project().Change(m_ApplicationWindow.Engine().Project().FocusedPart(), !m_ApplicationWindow.Engine().Project().ShowUi());
                 m_ApplicationWindow.Engine().SetProject(std::move(prj));
             });
+            m_MenuButton.set_popup(applicationWindow.PopupMenu());
             pack_start(m_ModePresetButton, Gtk::PACK_SHRINK);
             pack_start(m_ModeInstrumentsButton, Gtk::PACK_SHRINK);
             pack_start(m_ShowGuiButton, Gtk::PACK_SHRINK);
+            pack_start(m_MenuButton, Gtk::PACK_SHRINK);
             Update();
         }
         void Update()
@@ -232,6 +234,7 @@ public:
         Gtk::ToggleButton m_ModePresetButton {"Presets"};
         Gtk::ToggleButton m_ModeInstrumentsButton {"Instruments"};
         Gtk::ToggleButton m_ShowGuiButton {"GUI"};
+        Gtk::MenuButton m_MenuButton;
         ApplicationWindow &m_ApplicationWindow;
         utils::NotifySink m_OnProjectChanged {m_ApplicationWindow.Engine().OnProjectChanged(), [this](){Update();}};
     };
@@ -246,6 +249,11 @@ public:
         m_MainPanelStack.add(*m_PresetsPanel);
         m_MainPanelStack.add(*m_InstrumentsPanel);
         show_all_children();
+        m_SavePresetMenuItem.signal_activate().connect([this](){
+            m_Engine.SaveCurrentPreset("preset1");
+        });
+        m_PopupMenu.append(m_SavePresetMenuItem);
+        m_PopupMenu.show_all();
         Update();
     }
     void Update()
@@ -267,6 +275,7 @@ public:
         Update();
     }
     engine::Engine& Engine() { return m_Engine; }
+    Gtk::Menu& PopupMenu() { return m_PopupMenu; }
 
 private:
     FocusedTab m_FocusedTab = FocusedTab::Presets;
@@ -275,10 +284,12 @@ private:
     PartsContainer m_PartsContainer;
     Gtk::Box m_Box1 {Gtk::ORIENTATION_VERTICAL};
     Gtk::Box m_Box2 {Gtk::ORIENTATION_HORIZONTAL};
+    Gtk::Menu m_PopupMenu;
     std::unique_ptr<TopBar> m_TopBar {std::make_unique<TopBar>(*this)};
     std::unique_ptr<PresetsPanel> m_PresetsPanel { std::make_unique<PresetsPanel>(m_Engine) };
     std::unique_ptr<InstrumentsPanel> m_InstrumentsPanel { std::make_unique<InstrumentsPanel>(m_Engine) };
     Gtk::Stack m_MainPanelStack;
+    Gtk::MenuItem m_SavePresetMenuItem {"Save Preset"};
 };
 
 } // anonymous namespace

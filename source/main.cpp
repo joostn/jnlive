@@ -41,6 +41,13 @@ public:
         {
             std::filesystem::create_directory(projectdir);
         }
+        std::string presetsdir = projectdir + "/presets";
+        if(!std::filesystem::exists(presetsdir))
+        {
+            std::filesystem::create_directory(presetsdir);
+        }
+        m_Engine.SetPresetsDir(presetsdir);
+
         {
             std::string projectfile = projectdir + "/project.json";
             if(!std::filesystem::exists(projectfile))

@@ -83,6 +83,8 @@ namespace lilvutils
         const std::vector<const LV2_Feature*>& Features() const { return m_Features; }
         uint32_t MaxBlockLength() const { return m_OptionMaxBlockLength; }
         SuilHost* suilHost() const { return m_SuilHost; }
+        LV2_URID_Map& UridMap() { return m_UridMap; }   
+        LV2_URID_Unmap& UridUnmap() { return m_UridUnmap; }
 
     private:
         static World*& staticptr()
@@ -375,6 +377,10 @@ namespace lilvutils
             lilv_instance_deactivate(m_Instance);
             lilv_instance_activate(m_Instance);
         }
+        void SaveState(const std::string &dir);
+        
+    private:
+        void* GetPortValueBySymbol(const char *port_symbol, uint32_t *size, uint32_t *type);
 
     private:
         const Plugin &m_Plugin;

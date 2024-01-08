@@ -1,6 +1,7 @@
 #pragma once
 #include <functional>
 #include <set>
+#include <string>
 
 namespace utils
 {
@@ -79,5 +80,7 @@ namespace utils
         std::function<void(void)> m_Func;
         NotifySource *m_Source = nullptr;
     };
+
+    std::string generate_random_tempdir();
 
 }

@@ -238,4 +238,23 @@ namespace engine
         m_Ui = std::move(optionalui);
     }
 
+    void Engine::SaveCurrentPreset(const std::string &presetName)
+    {
+        if(Project().FocusedPart() && (*Project().FocusedPart() < Project().Parts().size()) && Project().Parts()[*Project().FocusedPart()].ActiveInstrumentIndex())
+        {
+            auto partindex = *Project().FocusedPart();
+            const auto &instrumentindex2ownedpluginindex = m_Parts[partindex].PluginIndices();
+            auto instrindex = *Project().Parts()[partindex].ActiveInstrumentIndex();
+            if( (instrindex >= 0) && (instrindex < instrumentindex2ownedpluginindex.size()) )
+            {
+                auto ownedpluginindex = instrumentindex2ownedpluginindex[instrindex];
+                const auto &ownedplugin = m_OwnedPlugins[ownedpluginindex];
+                if(ownedplugin)
+                {
+                    auto &instance = ownedplugin->Instance();
+                }
+            }
+        }
+    }
+
 }
