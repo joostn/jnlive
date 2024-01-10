@@ -1,11 +1,14 @@
 #include "lilvutils.h"
 #include "lv2/port-props/port-props.h"
 #include "lv2/atom/atom.h"
+#include "lv2/atom/forge.h"
+#include "lv2/atom/util.h"
 #include "lv2/resize-port/resize-port.h"
 #include "lv2_evbuf.h"
 #include "lv2/midi/midi.h"
 #include "lv2/port-groups/port-groups.h"
 #include "suil/suil.h"
+#include <filesystem>
 
 namespace 
 {
@@ -301,6 +304,20 @@ namespace lilvutils
         m_OptionsFeature.data = m_Options.data();
         m_OptionsFeature.URI = LV2_OPTIONS__options;
         m_Features.push_back(&m_OptionsFeature);
+        // LV2_State_Make_Path m_MakePath;
+        // LV2_Feature m_MakePathFeature;
+        // m_MakePath.handle = this;
+        // m_MakePath.path = [](LV2_State_Make_Path_Handle handle, const char* abstract_path) -> const char* {
+        //     auto world = (World*)handle;
+        //     return world->MakePath(abstract_path).c_str();
+        // };
+        // m_MakePathFeature.URI = LV2_STATE__makePath;
+        // m_MakePathFeature.data = &m_MakePath;
+        // m_Features.push_back(&m_MakePathFeature);
+        m_ThreadSafeRestoreFeature.URI = LV2_STATE__threadSafeRestore;
+        m_ThreadSafeRestoreFeature.data = nullptr;
+        m_Features.push_back(&m_ThreadSafeRestoreFeature);
+        lv2_atom_forge_init(&m_AtomForge, &m_UridMap);        
         m_World = world;
         m_Plugins = plugins;
         m_SuilHost = suilhost;
@@ -339,6 +356,7 @@ namespace lilvutils
         for(size_t portindex = 0; portindex < m_Ports.size(); portindex++)
         {
             const auto& port = m_Ports[portindex];
+            m_PortsBySymbol[port->Symbol()] = port.get();
             if(auto audioport = dynamic_cast<const TAudioPort*>(port.get()); audioport)
             {
                 if(audioport->Direction() == TAudioPort::TDirection::Output)
@@ -412,7 +430,9 @@ namespace lilvutils
             throw std::runtime_error("plugin "+plugin.Name()+" hasv nsupported ports and cannot be instantiated");
         }
         auto uri_workerinterface = lilvutils::Uri(LV2_WORKER__interface);
+        auto uri_threadsaferestore = lilvutils::Uri(LV2_STATE__threadSafeRestore);
         bool needsWorker = lilv_plugin_has_extension_data(plugin.get(),uri_workerinterface.get());
+        m_SupportsThreadSafeRestore = lilv_plugin_has_extension_data(plugin.get(), uri_threadsaferestore.get());
 
         m_Features = World::Static().Features();
         m_Features.push_back(m_Logger.Feature());
@@ -422,6 +442,18 @@ namespace lilvutils
             m_Features.push_back(&m_ScheduleWorker->ScheduleFeature());
         }
         m_Features.push_back(nullptr);
+
+        m_StateRestoreFeatures = World::Static().Features();
+        m_StateRestoreFeatures.push_back(m_Logger.Feature());
+        if(m_SupportsThreadSafeRestore)
+        {
+            m_StateRestoreWorker = std::make_unique<schedule::Worker>(*this);
+            m_StateRestoreFeatures.push_back(&m_ScheduleWorker->ScheduleFeature());
+        }
+//      &jalv->features.make_path_feature,
+//      &jalv->features.safe_restore_feature,
+        m_StateRestoreFeatures.push_back(nullptr);
+
         m_Instance = lilv_plugin_instantiate(plugin.get(), sample_rate, m_Features.data());
         if(!m_Instance)
         {
@@ -492,31 +524,86 @@ namespace lilvutils
     }
     void* Instance::GetPortValueBySymbol(const char *port_symbol, uint32_t *size, uint32_t *type)
     {
-        for(const auto& connection: m_Connections)
+        auto port = plugin().PortBySymbol(port_symbol);
+        if(port && (port->Direction() == TControlPort::TDirection::Input))
         {
+            const auto& connection = Connections().at(port->Index());
             if(auto controlconnection = dynamic_cast<TConnection<TControlPort>*>(connection.get()); controlconnection)
             {
-                if(controlconnection->Port().Symbol() == port_symbol)
-                {
-                    if(controlconnection->Port().Direction() == TControlPort::TDirection::Input)
-                    {
-                        *size = sizeof(float);
-                        *type = jalv->forge.Float;
-                        return const_cast<void*>((const void*)&controlconnection->ValueInMainThread());
-                    }
-                }
+                *size = sizeof(float);
+                *type = World::Static().AtomForge().Float;
+                return const_cast<void*>((const void*)&controlconnection->ValueInMainThread());
             }
         }
         return nullptr;
     }
 
-    
-TODO:
-  lv2_atom_forge_init(&world::forge, &jalv->map);
+
+    void Instance::SetPortValueBySymbol(const char *port_symbol, const void *value, uint32_t size, uint32_t type)
+    {
+        auto port = plugin().PortBySymbol(port_symbol);
+        if(port && (port->Direction() == TControlPort::TDirection::Input))
+        {
+            const auto& connection = Connections().at(port->Index());
+            if(auto controlconnection = dynamic_cast<TConnection<TControlPort>*>(connection.get()); controlconnection)
+            {
+                float fvalue = 0.0f;
+                if (type == World::Static().AtomForge().Float)
+                {
+                    fvalue = *(const float*)value;
+                }
+                else if (type == World::Static().AtomForge().Double)
+                {
+                    fvalue = *(const double*)value;
+                }
+                else if (type == World::Static().AtomForge().Int)
+                {
+                    fvalue = *(const int32_t*)value;
+                }
+                else if (type == World::Static().AtomForge().Long)
+                {
+                    fvalue = *(const int64_t*)value;
+                }
+                else 
+                {
+                    throw std::runtime_error("unsupported type");
+                }
+                realtimeThreadInterface().SendControlValueFunc(controlconnection, fvalue);
+            }
+        }
+    }
+
+    void Instance::LoadState(const std::string &dir)
+    {
+        if(!m_SupportsThreadSafeRestore)
+        {
+            // suspend audio thread:
+        }
+        auto statefile = dir + "/state.ttl";
+        if(!std::filesystem::exists(statefile))
+        {
+            throw std::runtime_error("statefile does not exist: "+statefile);
+        }
+        auto state = lilv_state_new_from_file(World::Static().get(), &World::Static().UridMap(), nullptr, statefile.c_str());
+        if(!state)
+        {
+            throw std::runtime_error("lilv_state_new_from_file failed");
+        }
+        auto set_port_value = [](const char *port_symbol, void *user_data, const void *value, uint32_t size, uint32_t type) {
+            auto self = (Instance*)user_data;
+            self->SetPortValueBySymbol(port_symbol, value, size, type);
+        };
+        uint32_t flags = 0;
+        lilv_state_restore(state, m_Instance, set_port_value, this, flags, m_StateRestoreFeatures.data());
+    }
 
     void Instance::SaveState(const std::string &dir)
     {
         // generate a random tempdir in the system temporary dir:
+        if(!std::filesystem::exists(dir))
+        {
+            std::filesystem::create_directory(dir);
+        }
         auto tempdir = utils::generate_random_tempdir();
         auto get_port_value = [](const char* port_symbol, void* user_data, uint32_t* size, uint32_t* type) -> const void* {
             auto self = (Instance*)user_data;
@@ -681,6 +768,27 @@ TODO:
         {
             suil_instance_port_event(m_SuilInstance, portindex, datasize, type, data);
         }
+    }
+
+    lilvutils::UI::ContainerWindow::ContainerWindow(UI &ui) : m_UI(ui), Gtk::Window(Gtk::WINDOW_TOPLEVEL)
+    {
+        set_resizable(true);
+        signal_hide().connect([&](){
+            m_UI.OnClose().Notify();
+        });
+
+        auto vbox = Gtk::make_managed<Gtk::Box>(Gtk::ORIENTATION_VERTICAL, 0);
+        add(*vbox);
+
+        m_Container = Gtk::make_managed<Gtk::EventBox>();
+        m_Container->set_halign(Gtk::ALIGN_FILL);
+        m_Container->set_hexpand(true);
+        m_Container->set_valign(Gtk::ALIGN_FILL);
+        m_Container->set_vexpand(true);
+        vbox->pack_start(*m_Container, true, true, 0);
+        m_Container->show();
+        vbox->show_all();
+
     }
 }
 

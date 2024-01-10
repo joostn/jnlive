@@ -1,4 +1,5 @@
 #include "engine.h"
+#include <filesystem>
 
 namespace engine
 {
@@ -222,6 +223,9 @@ namespace engine
                             try
                             {
                                 ui = std::make_unique<lilvutils::UI>(instance);
+                                m_UiClosedSink = std::make_unique<utils::NotifySink>(ui->OnClose(), [this](){
+                                    m_NeedCloseUi = true;
+                                });
                             }
                             catch(std::exception &e)
                             {
@@ -237,8 +241,40 @@ namespace engine
         m_Parts = std::move(newparts);
         m_Ui = std::move(optionalui);
     }
+    void Engine::LoadCurrentPreset()
+    {
+        if(Project().FocusedPart())
+        {
+            auto partindex = *Project().FocusedPart();
+            if(partindex <  Project().Parts().size())
+            {
+                const auto &part = Project().Parts()[partindex];
+                if(part.ActivePresetIndex())
+                {
+                    auto presetindex = *part.ActivePresetIndex();
+                    if(presetindex < Project().QuickPresets().size())
+                    {
+                        const auto &preset = Project().QuickPresets()[presetindex];
+                        if(preset)
+                        {
+                            auto instrumentindex = preset.value().InstrumentIndex();
+                            auto pluginindex = m_Parts.at(partindex).PluginIndices().at(instrumentindex);
+                            const auto &ownedplugin = m_OwnedPlugins.at(pluginindex);
+                            if(ownedplugin)
+                            {
+                                std::string presetdir = PresetsDir() + "/" + preset->PresetSubDir();
+                                auto &instance = ownedplugin->Instance();
+                                ownedplugin->Instance().LoadState(presetdir);
+                            }
+                        }
+                    }
+                
+                }
+            }
+        }
+    }
 
-    void Engine::SaveCurrentPreset(const std::string &presetName)
+    void Engine::SaveCurrentPreset(size_t presetindex, const std::string &name)
     {
         if(Project().FocusedPart() && (*Project().FocusedPart() < Project().Parts().size()) && Project().Parts()[*Project().FocusedPart()].ActiveInstrumentIndex())
         {
@@ -251,10 +287,179 @@ namespace engine
                 const auto &ownedplugin = m_OwnedPlugins[ownedpluginindex];
                 if(ownedplugin)
                 {
+                    std::string dirtemplate = PresetsDir() + "/state_XXXXXX";
+                    char* presetDirPtr = mkdtemp(const_cast<char*>(dirtemplate.c_str()));
+                    if(!presetDirPtr)
+                    {
+                        throw std::runtime_error("Failed to create directory for preset");
+                    }
+                    std::string presetDir = presetDirPtr;
+                    // change permissions to 0755:
+                    if(chmod(presetDir.c_str(), S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH) != 0)
+                    {
+                        throw std::runtime_error("Failed to change permissions for preset directory");
+                    }
+                    auto dirToDelete = presetDir;
+                    utils::finally fin1([&](){
+                        if(!dirToDelete.empty())
+                        {
+                            std::filesystem::remove_all(dirToDelete);
+                        }
+                    });
+                    auto relativePresetDir = std::filesystem::relative(presetDir, PresetsDir());
+
                     auto &instance = ownedplugin->Instance();
+                    instance.SaveState(presetDir);
+                    auto newproject = Project();
+                    auto presets = newproject.QuickPresets();
+                    if(presetindex >= presets.size())
+                    {
+                        presets.resize(presetindex + 1);
+                    }
+                    dirToDelete.clear();
+                    if(presets[presetindex])
+                    {
+                        dirToDelete = PresetsDir() + "/" + presets[presetindex]->PresetSubDir();
+                    }
+                    presets[presetindex] = project::TQuickPreset(instrindex, std::string(name), std::move(relativePresetDir));
+                    newproject.SetPresets(std::move(presets));
+                    newproject = newproject.ChangePart(partindex, instrindex, presetindex, newproject.Parts().at(partindex).AmplitudeFactor());
+                    SetProject(std::move(newproject));
+                    SaveProject();
                 }
             }
         }
-    }
 
+    }
+    Engine::Engine(uint32_t maxBlockSize, int argc, char** argv, std::string &&projectdir) : m_JackClient {"JN Live", [this](jack_nframes_t nframes){
+        m_RtProcessor.Process(nframes);
+    }}, m_LilvWorld(m_JackClient.SampleRate(), maxBlockSize, argc, argv), m_ProjectDir(std::move(projectdir))
+    {
+        {
+            auto errcode = jack_set_buffer_size(jackutils::Client::Static().get(), 256);
+            if(errcode)
+            {
+                throw std::runtime_error("jack_set_buffer_size failed");
+            }
+        }
+        {
+            auto errcode = jack_activate(jackutils::Client::Static().get());
+            if(errcode)
+            {
+                throw std::runtime_error("jack_activate failed");
+            }
+        }
+        m_AudioOutPorts.push_back(std::make_unique<jackutils::Port>("out_l", jackutils::Port::Kind::Audio, jackutils::Port::Direction::Output));
+        m_AudioOutPorts.push_back(std::make_unique<jackutils::Port>("out_r", jackutils::Port::Kind::Audio, jackutils::Port::Direction::Output));
+        if(!std::filesystem::exists(m_ProjectDir))
+        {
+            std::filesystem::create_directory(m_ProjectDir);
+        }
+        LoadProject();
+        auto presetsdir = PresetsDir();
+        if(!std::filesystem::exists(presetsdir))
+        {
+            std::filesystem::create_directory(presetsdir);
+        }
+    }
+    void Engine::LoadProject()
+    {
+        std::string projectfile = ProjectFile();
+        if(!std::filesystem::exists(projectfile))
+        {
+            auto prj = project::Project();
+            ProjectToFile(prj, projectfile);
+        }
+        {
+            auto prj = project::ProjectFromFile(projectfile);
+            prj = prj.Change(0,false);
+            SetProject(std::move(prj));
+        }
+    }
+    void Engine::SaveProject()
+    {
+        std::string projectfile = ProjectFile();
+        ProjectToFile(Project(), projectfile);
+    }
+    Engine::~Engine()
+    {
+        // this will deferredly delete the plugins and midi in ports that are no longer needed:
+        SetProject(project::Project());
+        for(auto &port: m_AudioOutPorts)
+        {
+            auto ptr = port.release();
+            m_RtProcessor.DeferredExecuteAfterRoundTrip([ptr](){
+                delete ptr;
+            });  
+        }
+        m_AudioOutPorts.clear();
+        m_RtProcessor.DeferredExecuteAfterRoundTrip([this](){
+            m_SafeToDestroy = true;
+        });
+        while(!m_SafeToDestroy)
+        {
+            ProcessMessages();
+        }
+        m_JackClient.ShutDown();
+    }
+    void Engine::SetProject(project::Project &&project)
+    {
+        m_Project = std::move(project);
+        std::vector<std::unique_ptr<jackutils::Port>> midiInPortsToDiscard;
+        std::vector<std::unique_ptr<PluginInstance>> pluginsToDiscard;
+        SyncPlugins(midiInPortsToDiscard, pluginsToDiscard);
+        SyncRtData();
+        /*
+        After syncing, we may have plugins and midi in ports that are no longer needed. We cannot delete these right now, because the real-time thread may still be accessing them. Therefore, we post a message to the realtime thread indicating the objects that can be discarded. The realtime thread will simply post the messages back to the main thread. When we receive those messages in ProcessMessages(), we know it's safe to delete the objects.
+        */
+        for(auto &midiport: midiInPortsToDiscard)
+        {
+            auto ptr = midiport.release();
+            m_RtProcessor.DeferredExecuteAfterRoundTrip([ptr](){
+                delete ptr;
+            });  
+        }
+        for(auto &plugin: pluginsToDiscard)
+        {
+            auto ptr = plugin.release();
+            m_RtProcessor.DeferredExecuteAfterRoundTrip([ptr](){
+                delete ptr;
+            });  
+        }
+        OnProjectChanged().Notify();
+    }
+    void Engine::ProcessMessages()
+    {
+        m_RtProcessor.ProcessMessagesInMainThread();
+        ApplyJackConnections(false);
+        if(m_Ui)
+        {
+            if(m_Ui->ui())
+            {
+                m_Ui->ui()->CallIdle();
+            }
+        }
+        if(m_NeedCloseUi)
+        {
+            m_NeedCloseUi = false;
+            if(Project().ShowUi())
+            {
+                SetProject(Project().Change(Project().FocusedPart(), false));
+            }
+        }
+    }
+    void Engine::SetJackConnections(project::TJackConnections &&con)
+    {
+        m_JackConnections = std::move(con);
+        ApplyJackConnections(true);
+    }
+    void Engine::SyncRtData()
+    {
+        auto rtdata = CalcRtData();
+        if(rtdata != m_CurrentRtData)
+        {
+            m_CurrentRtData = rtdata;
+            m_RtProcessor.SetDataFromMainThread(std::move(rtdata));
+        }
+    }
 }

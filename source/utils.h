@@ -38,6 +38,7 @@ namespace utils
         NotifySource(NotifySource&&) = delete;
         NotifySource& operator=(NotifySource&&) = delete;
         NotifySource() {}
+        ~NotifySource();
         void Notify() const;
     private:
         void AddSink(NotifySink *sink)
@@ -53,6 +54,7 @@ namespace utils
 
     class NotifySink
     {
+        friend NotifySource;
     public:
         NotifySink(const NotifySink&) = delete;
         NotifySink& operator=(const NotifySink&) = delete;
@@ -72,10 +74,13 @@ namespace utils
                 m_Source->RemoveSink(this);
             }
         }
+
+    private:
         void Notify() const
         {
             m_Func();
         }
+
     private:
         std::function<void(void)> m_Func;
         NotifySource *m_Source = nullptr;

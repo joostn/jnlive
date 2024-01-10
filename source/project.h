@@ -69,23 +69,23 @@ namespace project
     class TQuickPreset
     {
     public:
-        TQuickPreset(size_t instrumentIndex, size_t programIndex, std::string &&name) : m_InstrumentIndex(instrumentIndex), m_ProgramIndex(programIndex), m_Name(std::move(name)) {}
+        TQuickPreset(size_t instrumentIndex, std::string &&name, std::string &&presetSubDir) : m_InstrumentIndex(instrumentIndex), m_PresetSubDir(presetSubDir), m_Name(std::move(name)) {}
         size_t InstrumentIndex() const { return m_InstrumentIndex; }
-        size_t ProgramIndex() const { return m_ProgramIndex; }
         const std::string &Name() const {return m_Name;}
+        const std::string &PresetSubDir() const {return m_PresetSubDir;}
     private:
         size_t m_InstrumentIndex = 0;
-        size_t m_ProgramIndex = 0;
         std::string m_Name;
+        std::string m_PresetSubDir;
     };
     class Project
     {
     public:
         Project() {}
-        Project(std::vector<Instrument>&& instruments, std::vector<Part>&& parts, std::vector<TQuickPreset> &&quickPresets, std::optional<size_t> focusedPart, bool showUi) : m_Instruments(std::move(instruments)), m_Parts(std::move(parts)), m_QuickPresets(std::move(quickPresets)), m_FocusedPart(focusedPart), m_ShowUi(showUi)  {}
+        Project(std::vector<Instrument>&& instruments, std::vector<Part>&& parts, std::vector<std::optional<TQuickPreset>> &&quickPresets, std::optional<size_t> focusedPart, bool showUi) : m_Instruments(std::move(instruments)), m_Parts(std::move(parts)), m_QuickPresets(std::move(quickPresets)), m_FocusedPart(focusedPart), m_ShowUi(showUi)  {}
         const std::vector<Instrument>& Instruments() const { return m_Instruments; }
         const std::vector<Part>& Parts() const { return m_Parts; }
-        const std::vector<TQuickPreset>& QuickPresets() const { return m_QuickPresets; }
+        const std::vector<std::optional<TQuickPreset>>& QuickPresets() const { return m_QuickPresets; }
         Project Change(std::optional<size_t> focusedPart, bool showUi) const
         {
             auto parts = m_Parts;
@@ -117,13 +117,14 @@ namespace project
         {
             if( (partIndex < Parts().size()) && (presetIndex < m_QuickPresets.size()) )
             {
-                auto instrumentindex = QuickPresets()[presetIndex].InstrumentIndex();
-                return ChangePart(partIndex, instrumentindex, presetIndex, Parts()[partIndex].AmplitudeFactor());
+                const auto &preset = QuickPresets()[presetIndex];
+                if(preset)
+                {
+                    auto instrumentindex = preset.value().InstrumentIndex();
+                    return ChangePart(partIndex, instrumentindex, presetIndex, Parts()[partIndex].AmplitudeFactor());
+                }
             }
-            else
-            {
-                return *this;
-            }
+            return *this;
         }
         Project SwitchFocusedPartToPreset(size_t presetIndex) const
         {
@@ -138,11 +139,15 @@ namespace project
         }
         const bool& ShowUi() const { return m_ShowUi; }
         const std::optional<size_t>& FocusedPart() const { return m_FocusedPart; }
+        void SetPresets(std::vector<std::optional<TQuickPreset>> &&quickPresets)
+        {
+            m_QuickPresets = std::move(quickPresets);
+        }
 
     private:
         std::vector<Part> m_Parts;
         std::vector<Instrument> m_Instruments;
-        std::vector<TQuickPreset> m_QuickPresets;
+        std::vector<std::optional<TQuickPreset>> m_QuickPresets;
         std::optional<size_t> m_FocusedPart;
         bool m_ShowUi = false;
     };

@@ -66,109 +66,25 @@ namespace engine
             std::vector<size_t> m_PluginIndices;
             std::unique_ptr<jackutils::Port> m_MidiInPort;
         };
-        Engine(uint32_t maxBlockSize, int argc, char** argv) : m_JackClient {"JN Live", [this](jack_nframes_t nframes){
-            m_RtProcessor.Process(nframes);
-        }}, m_LilvWorld(m_JackClient.SampleRate(), maxBlockSize, argc, argv)
-        {
-            {
-                auto errcode = jack_set_buffer_size(jackutils::Client::Static().get(), 256);
-                if(errcode)
-                {
-                    throw std::runtime_error("jack_set_buffer_size failed");
-                }
-            }
-            {
-                auto errcode = jack_activate(jackutils::Client::Static().get());
-                if(errcode)
-                {
-                    throw std::runtime_error("jack_activate failed");
-                }
-            }
-            m_AudioOutPorts.push_back(std::make_unique<jackutils::Port>("out_l", jackutils::Port::Kind::Audio, jackutils::Port::Direction::Output));
-            m_AudioOutPorts.push_back(std::make_unique<jackutils::Port>("out_r", jackutils::Port::Kind::Audio, jackutils::Port::Direction::Output));
-
-        }
+        Engine(uint32_t maxBlockSize, int argc, char** argv, std::string &&projectdir);
         const project::Project& Project() const { return m_Project; }
-        ~Engine()
-        {
-            // this will deferredly delete the plugins and midi in ports that are no longer needed:
-            SetProject(project::Project());
-            for(auto &port: m_AudioOutPorts)
-            {
-                auto ptr = port.release();
-                m_RtProcessor.DeferredExecuteAfterRoundTrip([ptr](){
-                    delete ptr;
-                });  
-            }
-            m_AudioOutPorts.clear();
-            m_RtProcessor.DeferredExecuteAfterRoundTrip([this](){
-                m_SafeToDestroy = true;
-            });
-            while(!m_SafeToDestroy)
-            {
-                ProcessMessages();
-            }
-            m_JackClient.ShutDown();
-        }
-        void SetProject(project::Project &&project)
-        {
-            m_Project = std::move(project);
-            std::vector<std::unique_ptr<jackutils::Port>> midiInPortsToDiscard;
-            std::vector<std::unique_ptr<PluginInstance>> pluginsToDiscard;
-            SyncPlugins(midiInPortsToDiscard, pluginsToDiscard);
-            SyncRtData();
-            /*
-            After syncing, we may have plugins and midi in ports that are no longer needed. We cannot delete these right now, because the real-time thread may still be accessing them. Therefore, we post a message to the realtime thread indicating the objects that can be discarded. The realtime thread will simply post the messages back to the main thread. When we receive those messages in ProcessMessages(), we know it's safe to delete the objects.
-            */
-            for(auto &midiport: midiInPortsToDiscard)
-            {
-                auto ptr = midiport.release();
-                m_RtProcessor.DeferredExecuteAfterRoundTrip([ptr](){
-                    delete ptr;
-                });  
-            }
-            for(auto &plugin: pluginsToDiscard)
-            {
-                auto ptr = plugin.release();
-                m_RtProcessor.DeferredExecuteAfterRoundTrip([ptr](){
-                    delete ptr;
-                });  
-            }
-            OnProjectChanged().Notify();
-        }
-        void ProcessMessages()
-        {
-            m_RtProcessor.ProcessMessagesInMainThread();
-            ApplyJackConnections(false);
-            if(m_Ui)
-            {
-                if(m_Ui->ui())
-                {
-                    m_Ui->ui()->CallIdle();
-                }
-            }
-        }
-        void SetJackConnections(project::TJackConnections &&con)
-        {
-            m_JackConnections = std::move(con);
-            ApplyJackConnections(true);
-        }
+        ~Engine();
+        void SetProject(project::Project &&project);
+        void ProcessMessages();
+        void SetJackConnections(project::TJackConnections &&con);
         void ApplyJackConnections(bool forceNow);
         utils::NotifySource& OnProjectChanged() { return m_OnProjectChanged; }
-        const std::string& PresetsDir() const { return m_PresetsDir; }
-        void SetPresetsDir(const std::string& presetsDir) { m_PresetsDir = presetsDir; }
-        void SaveCurrentPreset(const std::string &presetName);
+        const std::string& ProjectDir() const { return m_ProjectDir; }
+        std::string PresetsDir() const { return m_ProjectDir + "/presets"; }
+        std::string ProjectFile() const { return m_ProjectDir + "/project.json"; }
+        void SaveCurrentPreset(size_t presetindex, const std::string &name);
+        void LoadCurrentPreset();
+
+        void LoadProject();
+        void SaveProject();
 
     private:
-        void SyncRtData()
-        {
-            auto rtdata = CalcRtData();
-            if(rtdata != m_CurrentRtData)
-            {
-                m_CurrentRtData = rtdata;
-                m_RtProcessor.SetDataFromMainThread(std::move(rtdata));
-            }
-        }
+        void SyncRtData();
         void SyncPlugins(std::vector<std::unique_ptr<jackutils::Port>> &midiInPortsToDiscard, std::vector<std::unique_ptr<PluginInstance>> &pluginsToDiscard);
         realtimethread::Data CalcRtData() const;
         const std::vector<std::unique_ptr<PluginInstance>>& OwnedPlugins() const { return m_OwnedPlugins; }
@@ -188,6 +104,8 @@ namespace engine
         std::optional<std::chrono::steady_clock::time_point> m_LastApplyJackConnectionTime;
         utils::NotifySource m_OnProjectChanged;
         bool m_SafeToDestroy = false;
-        std::string m_PresetsDir;
+        std::string m_ProjectDir;
+        std::unique_ptr<utils::NotifySink> m_UiClosedSink;
+        bool m_NeedCloseUi = false;
     };
 }

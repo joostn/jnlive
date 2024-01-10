@@ -8,6 +8,142 @@
 namespace 
 {
 
+void DoAndShowException(std::function<void()> f)
+{
+    try
+    {
+        f();
+    }
+    catch(const std::exception &e)
+    {
+        std::string msg = e.what();
+        // show in gtk messafe box:
+        Gtk::MessageDialog dialog(msg, false, Gtk::MESSAGE_ERROR, Gtk::BUTTONS_OK, true);
+        dialog.run();
+    }
+}
+
+class PresetSelectorDialog : public Gtk::Dialog
+{
+public:
+    PresetSelectorDialog(PresetSelectorDialog &&other) = delete;
+    PresetSelectorDialog(const PresetSelectorDialog &other) = delete;
+    PresetSelectorDialog(const project::Project &project) : m_Project(project)
+    {
+        set_title("Select Preset");
+        set_default_size(400, 300);
+        add_button("Cancel", Gtk::RESPONSE_CANCEL);
+        m_OkButton = add_button("OK", Gtk::RESPONSE_OK);
+        m_PresetListScrolledWindow.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC);
+        m_PresetListScrolledWindow.add(m_PresetList);
+
+// Add a text box for entering the name of the preset
+        //m_PresetNameEntry.set_text("Enter preset name");
+        get_vbox()->set_spacing(5);
+        get_vbox()->pack_start(m_PresetListScrolledWindow, Gtk::PACK_EXPAND_WIDGET);
+
+        get_vbox()->pack_start(m_PresetNameEntry, Gtk::PACK_SHRINK);
+
+        //m_PresetList.set_selection_mode(Gtk::SELECTION_SINGLE);
+        m_PresetList.signal_cursor_changed().connect([this](){
+            Gtk::TreeModel::Path path;
+            Gtk::TreeViewColumn* focus_column;
+            m_PresetList.get_cursor(path, focus_column);
+            const project::TQuickPreset *preset = nullptr;
+            if(path)
+            {
+                auto iter = m_ListStore->get_iter(path);
+                if(iter)
+                {
+                    m_SelectedPreset = iter->get_value(m_Columns.m_Number);
+                    if(m_SelectedPreset && *m_SelectedPreset < m_Project.QuickPresets().size())
+                    {
+                        if(m_Project.QuickPresets()[*m_SelectedPreset])
+                        {
+                            preset = &m_Project.QuickPresets()[*m_SelectedPreset].value();
+                        }
+                    }
+
+                }
+            }
+            if(preset)
+            {
+                m_PresetNameEntry.set_text(preset->Name());
+            }
+            else
+            {
+                m_PresetNameEntry.set_text("");
+            }
+            enableItems();
+        });
+        m_PresetList.set_model(m_ListStore);
+        m_PresetList.append_column("Number", m_Columns.m_Number);
+        m_PresetList.append_column("Name", m_Columns.m_Name);
+        show_all();
+        m_PresetNameEntry.signal_changed().connect([this](){
+            enableItems();
+        });
+        Populate();
+        enableItems();
+    }
+    void enableItems()
+    {
+        bool canok = true;
+        if(m_PresetNameEntry.get_text().empty())
+        {
+            canok = false;
+        }
+        if(!m_SelectedPreset)
+        {
+            canok = false;
+        }
+        m_OkButton->set_sensitive(canok);
+    }
+    std::optional<size_t> SelectedPreset() const { return m_SelectedPreset; }
+    std::string PresetName() const { return m_PresetNameEntry.get_text(); }
+    void Populate()
+    {
+        m_ListStore->clear();
+        size_t numpresets = std::max((size_t)128, m_Project.QuickPresets().size());
+        for(size_t i = 0; i < numpresets; i++)
+        {
+            const project::TQuickPreset *preset = nullptr;
+            if(i < m_Project.QuickPresets().size())
+            {
+                if(m_Project.QuickPresets()[i])
+                {
+                    preset = &m_Project.QuickPresets()[i].value();
+                }
+            }
+            Gtk::TreeModel::Row row = *(m_ListStore->append());
+            row[m_Columns.m_Number] = i;
+            row[m_Columns.m_Name] = preset ? preset->Name() : "(empty)";
+        }
+    }
+private:
+    class Columns : public Gtk::TreeModel::ColumnRecord
+    {
+    public:
+        Columns()
+        {
+            add(m_Number);
+            add(m_Name);
+        }
+        Gtk::TreeModelColumn<size_t> m_Number;
+        Gtk::TreeModelColumn<std::string> m_Name;
+    };
+    const project::Project &m_Project;
+    Gtk::ScrolledWindow m_PresetListScrolledWindow;
+    std::optional<size_t> m_SelectedPreset;
+    Columns m_Columns;
+    Glib::RefPtr<Gtk::ListStore> m_ListStore {Gtk::ListStore::create(m_Columns)};
+    Gtk::TreeView m_PresetList;
+    Gtk::Entry m_PresetNameEntry;
+    Gtk::Button *m_OkButton = nullptr;
+};
+
+
+
 class ApplicationWindow : public Gtk::ApplicationWindow
 {
 public:
@@ -25,21 +161,23 @@ public:
                 set_orientation(Gtk::ORIENTATION_VERTICAL);
                 pack_start(m_ActivateButton);
                 m_ActivateButton.signal_clicked().connect([this](){
-                    const auto &prj = m_Engine.Project();
-                    if(m_PartIndex < prj.Parts().size())
-                    {
-                        bool isSelected = prj.FocusedPart() == m_PartIndex;
-                        if(prj.FocusedPart() != m_PartIndex)
+                    DoAndShowException([this](){
+                        const auto &prj = m_Engine.Project();
+                        if(m_PartIndex < prj.Parts().size())
                         {
-                            auto newproject = prj.Change(m_PartIndex, prj.ShowUi());
-                            m_Engine.SetProject(std::move(newproject));
+                            bool isSelected = prj.FocusedPart() == m_PartIndex;
+                            if(prj.FocusedPart() != m_PartIndex)
+                            {
+                                auto newproject = prj.Change(m_PartIndex, prj.ShowUi());
+                                m_Engine.SetProject(std::move(newproject));
+                            }
+                            else
+                            {
+                                // still focused:
+                                m_ActivateButton.set_state_flags(Gtk::STATE_FLAG_CHECKED);
+                            }
                         }
-                        else
-                        {
-                            // still focused:
-                            m_ActivateButton.set_state_flags(Gtk::STATE_FLAG_CHECKED);
-                        }
-                    }
+                    });
                 });
                 OnProjectChanged();
             }
@@ -117,9 +255,12 @@ public:
                 auto button = std::make_unique<Gtk::ToggleButton>();
                 size_t presetindex = m_PresetButtons.size();
                 button->signal_clicked().connect([this, presetindex](){
-                    auto newproject = m_Engine.Project().SwitchFocusedPartToPreset(presetindex);
-                    m_Engine.SetProject(std::move(newproject));
-                    OnProjectChanged();
+                    DoAndShowException([this, presetindex](){
+                        auto newproject = m_Engine.Project().SwitchFocusedPartToPreset(presetindex);
+                        m_Engine.SetProject(std::move(newproject));
+                        OnProjectChanged();
+                        m_Engine.LoadCurrentPreset();
+                    });
                 });
                 m_PresetButtons.push_back(std::move(button));
                 m_PresetsBox.add(*m_PresetButtons.back());
@@ -127,8 +268,17 @@ public:
             for(size_t i = 0; i < m_PresetButtons.size(); i++)
             {
                 const auto &preset = project.QuickPresets()[i];
+                std::string label = std::to_string(i) + " ";
+                if(preset)
+                {
+                    label += preset.value().Name();
+                }
+                else
+                {
+                    label += "(empty)";
+                }
                 auto &button = *m_PresetButtons[i];
-                button.set_label(preset.Name());
+                button.set_label(label);
                 button.set_state_flags(activePreset && *activePreset == i ? Gtk::STATE_FLAG_CHECKED : Gtk::STATE_FLAG_NORMAL, true);
             }
             show_all_children();
@@ -170,14 +320,16 @@ public:
                 auto button = std::make_unique<Gtk::ToggleButton>();
                 size_t instrumentindex = m_InstrumentButtons.size();
                 button->signal_clicked().connect([this, instrumentindex](){
-                    const auto &project = m_Engine.Project();
-                    if(project.FocusedPart() && (*project.FocusedPart() < project.Parts().size()))
-                    {
-                        const auto &part = project.Parts()[*project.FocusedPart()];
-                        auto newproject = project.ChangePart(*project.FocusedPart(), instrumentindex, std::nullopt, part.AmplitudeFactor());
-                        m_Engine.SetProject(std::move(newproject));
-                    }
-                    OnProjectChanged();
+                    DoAndShowException([this, instrumentindex](){
+                        const auto &project = m_Engine.Project();
+                        if(project.FocusedPart() && (*project.FocusedPart() < project.Parts().size()))
+                        {
+                            const auto &part = project.Parts()[*project.FocusedPart()];
+                            auto newproject = project.ChangePart(*project.FocusedPart(), instrumentindex, std::nullopt, part.AmplitudeFactor());
+                            m_Engine.SetProject(std::move(newproject));
+                        }
+                        OnProjectChanged();
+                    });
                 });
                 m_InstrumentButtons.push_back(std::move(button));
                 m_InstrumentsBox.add(*m_InstrumentButtons.back());
@@ -213,8 +365,10 @@ public:
                 Update();
             });
             m_ShowGuiButton.signal_clicked().connect([this](){
-                auto prj = m_ApplicationWindow.Engine().Project().Change(m_ApplicationWindow.Engine().Project().FocusedPart(), !m_ApplicationWindow.Engine().Project().ShowUi());
-                m_ApplicationWindow.Engine().SetProject(std::move(prj));
+                DoAndShowException([this](){
+                    auto prj = m_ApplicationWindow.Engine().Project().Change(m_ApplicationWindow.Engine().Project().FocusedPart(), !m_ApplicationWindow.Engine().Project().ShowUi());
+                    m_ApplicationWindow.Engine().SetProject(std::move(prj));
+                });
             });
             m_MenuButton.set_popup(applicationWindow.PopupMenu());
             pack_start(m_ModePresetButton, Gtk::PACK_SHRINK);
@@ -250,7 +404,16 @@ public:
         m_MainPanelStack.add(*m_InstrumentsPanel);
         show_all_children();
         m_SavePresetMenuItem.signal_activate().connect([this](){
-            m_Engine.SaveCurrentPreset("preset1");
+            auto project_copy = m_Engine.Project();
+            PresetSelectorDialog dialog(project_copy);
+            int result = dialog.run();
+            if(result == Gtk::RESPONSE_OK)
+            {
+                if(dialog.SelectedPreset())
+                {
+                    m_Engine.SaveCurrentPreset(*dialog.SelectedPreset(), dialog.PresetName());
+                }
+            }
         });
         m_PopupMenu.append(m_SavePresetMenuItem);
         m_PopupMenu.show_all();

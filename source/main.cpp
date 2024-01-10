@@ -13,7 +13,7 @@ class Application : public Gtk::Application
 {
 public:
     static constexpr uint32_t cMaxBlockSize = 4096;
-    Application(int argc, char** argv) : m_Engine(cMaxBlockSize, argc, argv), Gtk::Application("nl.newhouse.jnlive")
+    Application(int argc, char** argv) : m_Engine(cMaxBlockSize, argc, argv, GetProjectDir()), Gtk::Application("nl.newhouse.jnlive")
     {
     }
     void on_activate() override {
@@ -33,35 +33,16 @@ public:
         // called every 1 ms:
         m_Engine.ProcessMessages();
     }
-    void InitEngine()
+    static std::string GetProjectDir()
     {
         std::string homedir = getenv("HOME");
         std::string projectdir = homedir + "/.config/jn-live";
-        if(!std::filesystem::exists(projectdir))
+        return projectdir;
+    }
+    void InitEngine()
+    {
         {
-            std::filesystem::create_directory(projectdir);
-        }
-        std::string presetsdir = projectdir + "/presets";
-        if(!std::filesystem::exists(presetsdir))
-        {
-            std::filesystem::create_directory(presetsdir);
-        }
-        m_Engine.SetPresetsDir(presetsdir);
-
-        {
-            std::string projectfile = projectdir + "/project.json";
-            if(!std::filesystem::exists(projectfile))
-            {
-                auto prj = project::TestProject();
-                ProjectToFile(prj, projectfile);
-            }
-            {
-                auto prj = project::ProjectFromFile(projectfile);
-                m_Engine.SetProject(std::move(prj));
-            }
-        }
-        {
-            std::string jackconnectionfile = projectdir + "/jackconnection.json";
+            std::string jackconnectionfile = m_Engine.ProjectDir() + "/jackconnection.json";
             if(!std::filesystem::exists(jackconnectionfile))
             {
                 std::array<std::string, 2> m_AudioOutputs {
@@ -76,24 +57,7 @@ public:
                 auto jackconn = project::JackConnectionsFromFile(jackconnectionfile);
                 m_Engine.SetJackConnections(std::move(jackconn));
             }
-        }
-
-        {
-            auto prj = m_Engine.Project();
-            prj = prj.ChangePart(0, 3, std::nullopt, 1.0f);
-            prj = prj.ChangePart(1, 2, std::nullopt, 1.0f);
-            if(!prj.Parts().empty())
-            {
-                if(!prj.FocusedPart())
-                {
-                    prj = prj.Change(0,prj.ShowUi());
-
-                }
-            }
-            m_Engine.SetProject(std::move(prj));
-        }
-
-        
+        }        
     }
 private:
     engine::Engine m_Engine;

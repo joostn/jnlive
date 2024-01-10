@@ -13,11 +13,7 @@ namespace project
         std::vector<Part> parts;
         parts.emplace_back("Upper", 0, std::nullopt, std::nullopt, 1.0f);
         parts.emplace_back("Lower", 1, std::nullopt, std::nullopt, 1.0f);
-        std::vector<TQuickPreset> quickPresets;
-        quickPresets.emplace_back(0, 0, "Organ");
-        quickPresets.emplace_back(1, 0, "Piano");
-        quickPresets.emplace_back(2, 0, "Clavi");
-        quickPresets.emplace_back(3, 0, "SynLead");
+        std::vector<std::optional<TQuickPreset>> quickPresets;
         return Project(std::move(instruments), std::move(parts), std::move(quickPresets), std::nullopt, false);
     }
 
@@ -76,13 +72,13 @@ namespace project
     {
         Json::Value result;
         result["instrumentindex"] = quickPreset.InstrumentIndex();
-        result["programindex"] = quickPreset.ProgramIndex();
         result["name"] = quickPreset.Name();
+        result["subdir"] = quickPreset.PresetSubDir();
         return result;
     }
     TQuickPreset QuickPresetFromJson(const Json::Value &v)
     {
-        return TQuickPreset(v["instrumentindex"].asInt(), v["programindex"].asInt(), v["name"].asString());
+        return TQuickPreset(v["instrumentindex"].asInt(), v["name"].asString(), v["subdir"].asString());
     }
     Json::Value ToJson(const Project &project)
     {
@@ -97,7 +93,14 @@ namespace project
         }
         for (const auto &quickPreset : project.QuickPresets())
         {
-            result["quickpresets"].append(ToJson(quickPreset));
+            if(quickPreset)
+            {
+                result["quickpresets"].append(ToJson(*quickPreset));
+            }
+            else
+            {
+                result["quickpresets"].append(Json::Value::null);
+            }
         }
         result["showui"] = project.ShowUi();
         if(project.FocusedPart())
@@ -122,10 +125,17 @@ namespace project
         {
             parts.push_back(PartFromJson(part));
         }
-        std::vector<TQuickPreset> quickPresets;
+        std::vector<std::optional<TQuickPreset>> quickPresets;
         for (const auto &quickPreset : v["quickpresets"])
         {
-            quickPresets.push_back(QuickPresetFromJson(quickPreset));
+            if(v.isNull())
+            {
+                quickPresets.push_back(std::nullopt);
+            }
+            else
+            {
+                quickPresets.push_back(QuickPresetFromJson(quickPreset));
+            }
         }
         std::optional<size_t> focusedPart;
         if(v["focusedpart"].isNull())

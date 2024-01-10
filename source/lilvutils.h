@@ -9,6 +9,7 @@
 #include <map>
 #include <functional>
 #include "lv2/atom/atom.h"
+#include "lv2/atom/forge.h"
 #include "lv2_evbuf.h"
 #include "log.h"
 #include "lv2/log/log.h"
@@ -85,6 +86,7 @@ namespace lilvutils
         SuilHost* suilHost() const { return m_SuilHost; }
         LV2_URID_Map& UridMap() { return m_UridMap; }   
         LV2_URID_Unmap& UridUnmap() { return m_UridUnmap; }
+        LV2_Atom_Forge& AtomForge() { return m_AtomForge; }
 
     private:
         static World*& staticptr()
@@ -105,6 +107,10 @@ namespace lilvutils
         LV2_Feature m_MapFeature;
         LV2_Feature m_UnmapFeature;
         LV2_Feature m_OptionsFeature;
+        LV2_Feature m_ThreadSafeRestoreFeature;
+        //LV2_State_Make_Path m_MakePath;
+        //LV2_Feature m_MakePathFeature;
+        
         std::vector<const LV2_Feature*> m_Features;
         std::vector<LV2_Options_Option> m_Options;
         float m_OptionSampleRate = 0.0f;
@@ -113,6 +119,7 @@ namespace lilvutils
         uint32_t m_OptionSequenceSize = 4096;
         float m_OptionUiUpdateRate = 30.0f;
         float m_OptionUiScaleFactor = 2.0f;
+        LV2_Atom_Forge m_AtomForge;
     };
     class Uri
     {
@@ -222,6 +229,18 @@ namespace lilvutils
         const std::vector<std::unique_ptr<TPortBase>>& Ports() const { return m_Ports; }
         bool CanInstantiate() const { return m_CanInstantiate; }
         const std::string& Name() const { return m_Name; }
+        const TPortBase* PortBySymbol(const std::string &name) const
+        {
+            auto it = m_PortsBySymbol.find(name);
+            if(it != m_PortsBySymbol.end())
+            {
+                return it->second;
+            }
+            else
+            {
+                return nullptr;
+            }
+        }
 
     private:
         std::string m_Uri;
@@ -229,6 +248,7 @@ namespace lilvutils
         const LilvPlugin *m_Plugin = nullptr;
         std::optional<uint32_t> m_MidiInputIndex;
         std::vector<std::unique_ptr<TPortBase>> m_Ports;
+        std::map<std::string, TPortBase*> m_PortsBySymbol;
         bool m_CanInstantiate = false;
         std::array<std::optional<uint32_t>,2> m_AudioOutputIndex;
     };
@@ -378,20 +398,25 @@ namespace lilvutils
             lilv_instance_activate(m_Instance);
         }
         void SaveState(const std::string &dir);
-        
+        void LoadState(const std::string &dir);
+
     private:
         void* GetPortValueBySymbol(const char *port_symbol, uint32_t *size, uint32_t *type);
+        void SetPortValueBySymbol(const char *port_symbol, const void *value, uint32_t size, uint32_t type);
 
     private:
         const Plugin &m_Plugin;
         std::vector<const LV2_Feature*> m_Features;
+        std::vector<const LV2_Feature*> m_StateRestoreFeatures;
         LilvInstance *m_Instance = nullptr;
         std::vector<std::unique_ptr<TConnectionBase>> m_Connections;
         std::vector<size_t> m_PortIndicesOfAtomPorts;
         logger::Logger m_Logger;
         std::unique_ptr<schedule::Worker> m_ScheduleWorker;
+        std::unique_ptr<schedule::Worker> m_StateRestoreWorker;
         UI *m_Ui = nullptr;
         const RealtimeThreadInterface &m_RealtimeThreadInterface;
+        bool m_SupportsThreadSafeRestore = false;
     };
     class UI
     {
@@ -399,26 +424,7 @@ namespace lilvutils
         class ContainerWindow : public Gtk::Window
         {
         public:
-            ContainerWindow(UI &ui) : m_UI(ui), Gtk::Window(Gtk::WINDOW_TOPLEVEL)
-            {
-                set_resizable(true);
-                signal_hide().connect([&](){
-
-                });
-
-                auto vbox = Gtk::make_managed<Gtk::Box>(Gtk::ORIENTATION_VERTICAL, 0);
-                add(*vbox);
-
-                m_Container = Gtk::make_managed<Gtk::EventBox>();
-                m_Container->set_halign(Gtk::ALIGN_FILL);
-                m_Container->set_hexpand(true);
-                m_Container->set_valign(Gtk::ALIGN_FILL);
-                m_Container->set_vexpand(true);
-                vbox->pack_start(*m_Container, true, true, 0);
-                m_Container->show();
-                vbox->show_all();
-
-            }
+            ContainerWindow(UI &ui);
             ~ContainerWindow()
             {
             }
@@ -457,6 +463,7 @@ namespace lilvutils
         {
             // todo
         }
+        utils::NotifySource& OnClose() {return m_OnClose;}
         Instance &instance() {return m_Instance;}
         void OnControlValueChanged(uint32_t portindex, float value)
         {
@@ -468,12 +475,11 @@ namespace lilvutils
         void OnAtomPortMessage(uint32_t portindex, LV2_URID type, uint32_t datasize, const void *data);
         uint32_t PortIndex(const char *port_symbol) const
         {
-            for(const auto &port: m_Instance.plugin().Ports())
+            std::string port_symbol_str(port_symbol);
+            auto port = m_Instance.plugin().PortBySymbol(port_symbol_str);
+            if(port)
             {
-                if(port->Symbol() == port_symbol)
-                {
-                    return port->Index();
-                }
+                return (uint32_t)port->Index();
             }
             return LV2UI_INVALID_PORT_INDEX; 
         }
@@ -521,6 +527,7 @@ namespace lilvutils
         SuilInstance *m_SuilInstance = nullptr;
         ContainerWindow* m_ContainerWindow = nullptr;
         LV2_URID m_Uridatom_eventTransfer;
+        utils::NotifySource m_OnClose;
 
     };
 
