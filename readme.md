@@ -9,3 +9,6 @@ cd build
 cmake .. -DSFIZZ_JACK=OFF -DSFIZZ_SHARED=OFF -DSFIZZ_RENDER=OFF -DPLUGIN_LV2_UI=ON -DPLUGIN_VST3=OFF
 cmake --build .
 cmake --install .
+
+Heel veel:
+distrho-ports-lv2

@@ -78,11 +78,51 @@ namespace project
         std::string m_Name;
         std::string m_PresetSubDir;
     };
+    class TReverb
+    {
+    public:
+        TReverb() {}
+        TReverb(std::string &&reverbPresetSubDir, std::string &&reverbLv2Uri, float mixLevel, bool showGui) : m_ReverbPresetSubDir(reverbPresetSubDir), m_ReverbLv2Uri(reverbLv2Uri), m_MixLevel(mixLevel), m_ShowGui(showGui) {}
+        const std::string &ReverbPresetSubDir() const {return m_ReverbPresetSubDir;}
+        const std::string &ReverbLv2Uri() const {return m_ReverbLv2Uri;}
+        float MixLevel() const {return m_MixLevel;}
+        bool ShowGui() const {return m_ShowGui;}
+        TReverb ChangeShowGui(bool showgui) const
+        {
+            auto result = *this;
+            result.m_ShowGui = showgui;
+            return result;
+        }
+        TReverb ChangeMixLevel(float mixLevel) const
+        {
+            auto result = *this;
+            result.m_MixLevel = mixLevel;
+            return result;
+        }
+        TReverb ChangeReverbPresetSubDir(std::string &&reverbPresetSubDir) const
+        {
+            auto result = *this;
+            result.m_ReverbPresetSubDir = reverbPresetSubDir;
+            return result;
+        }
+        TReverb ChangeReverbLv2Uri(std::string &&reverbPresetSubDir) const
+        {
+            auto result = *this;
+            result.m_ReverbLv2Uri = reverbPresetSubDir;
+            return result;
+        }
+    private:
+        std::string m_ReverbPresetSubDir; // or empty for default preset
+        std::string m_ReverbLv2Uri;       // or empty (no reverb)
+        float m_MixLevel = 0.2f;
+        bool m_ShowGui = false;
+    };
+    
     class Project
     {
     public:
         Project() {}
-        Project(std::vector<Instrument>&& instruments, std::vector<Part>&& parts, std::vector<std::optional<TQuickPreset>> &&quickPresets, std::optional<size_t> focusedPart, bool showUi) : m_Instruments(std::move(instruments)), m_Parts(std::move(parts)), m_QuickPresets(std::move(quickPresets)), m_FocusedPart(focusedPart), m_ShowUi(showUi)  {}
+        Project(std::vector<Instrument>&& instruments, std::vector<Part>&& parts, std::vector<std::optional<TQuickPreset>> &&quickPresets, std::optional<size_t> focusedPart, bool showUi, TReverb &&reverb) : m_Instruments(std::move(instruments)), m_Parts(std::move(parts)), m_QuickPresets(std::move(quickPresets)), m_FocusedPart(focusedPart), m_ShowUi(showUi), m_Reverb(std::move(reverb))  {}
         const std::vector<Instrument>& Instruments() const { return m_Instruments; }
         const std::vector<Part>& Parts() const { return m_Parts; }
         const std::vector<std::optional<TQuickPreset>>& QuickPresets() const { return m_QuickPresets; }
@@ -91,7 +131,17 @@ namespace project
             auto parts = m_Parts;
             auto instruments = m_Instruments;
             auto quickPresets = m_QuickPresets;
-            return Project(std::move(instruments), std::move(parts), std::move(quickPresets), focusedPart, showUi);
+            auto reverb = Reverb();
+            return Project(std::move(instruments), std::move(parts), std::move(quickPresets), focusedPart, showUi, std::move(reverb));
+        }
+        Project ChangeReverb(TReverb &&reverb) const
+        {
+            auto parts = m_Parts;
+            auto instruments = m_Instruments;
+            auto quickPresets = m_QuickPresets;
+            auto focusedPart = FocusedPart();
+            auto showUi = ShowUi();
+            return Project(std::move(instruments), std::move(parts), std::move(quickPresets), focusedPart, showUi, std::move(reverb));
         }
         Project ChangePart(size_t partIndex, std::optional<size_t> activeInstrumentIndex,
         std::optional<size_t> activePresetIndex,
@@ -111,7 +161,8 @@ namespace project
             }
             auto instruments = m_Instruments;
             auto quickPresets = m_QuickPresets;
-            return Project(std::move(instruments), std::move(parts), std::move(quickPresets), FocusedPart(), ShowUi());
+            auto reverb = Reverb();
+            return Project(std::move(instruments), std::move(parts), std::move(quickPresets), FocusedPart(), ShowUi(), std::move(reverb));
         }
         Project SwitchToPreset(size_t partIndex, size_t presetIndex) const
         {
@@ -143,6 +194,7 @@ namespace project
         {
             m_QuickPresets = std::move(quickPresets);
         }
+        const TReverb& Reverb() const { return m_Reverb; }
 
     private:
         std::vector<Part> m_Parts;
@@ -150,6 +202,7 @@ namespace project
         std::vector<std::optional<TQuickPreset>> m_QuickPresets;
         std::optional<size_t> m_FocusedPart;
         bool m_ShowUi = false;
+        TReverb m_Reverb;
     };
     class TJackConnections
     {
@@ -164,6 +217,8 @@ namespace project
         std::vector<std::string> m_MidiInputs;
     };
 
+    Json::Value ToJson(const TReverb &reverb);
+    TReverb ReverbFromJson(const Json::Value &v);
     Json::Value ToJson(const Instrument &instrument);
     Instrument InstrumentFromJson(const Json::Value &v);
     Json::Value ToJson(const Part &part);

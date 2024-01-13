@@ -4,6 +4,7 @@
 #include "project.h"
 #include <filesystem>
 #include <gtkmm.h>
+#include "lilvutils.h"
 
 namespace 
 {
@@ -22,6 +23,88 @@ void DoAndShowException(std::function<void()> f)
         dialog.run();
     }
 }
+
+class PluginSelectorDialog : public Gtk::Dialog
+{
+public:
+    PluginSelectorDialog(PluginSelectorDialog &&other) = delete;
+    PluginSelectorDialog(const PluginSelectorDialog &other) = delete;
+    PluginSelectorDialog()
+    {
+        set_title("Select Plugin");
+        set_default_size(400, 300);
+        add_button("Cancel", Gtk::RESPONSE_CANCEL);
+        m_OkButton = add_button("OK", Gtk::RESPONSE_OK);
+        m_PluginListScrolledWindow.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC);
+        m_PluginListScrolledWindow.add(m_PluginList);
+        get_vbox()->pack_start(m_PluginListScrolledWindow, Gtk::PACK_EXPAND_WIDGET);
+
+        m_PluginList.signal_cursor_changed().connect([this](){
+            Gtk::TreeModel::Path path;
+            Gtk::TreeViewColumn* focus_column;
+            m_PluginList.get_cursor(path, focus_column);
+            std::optional<std::string> selectedpluginuri;
+            if(path)
+            {
+                auto iter = m_ListStore->get_iter(path);
+                if(iter)
+                {
+                    selectedpluginuri = iter->get_value(m_Columns.m_Lv2Uri);
+                }
+            }
+            m_SelectedPluginUri = selectedpluginuri;
+            enableItems();
+        });
+        m_PluginList.set_model(m_ListStore);
+        m_PluginList.append_column("Name", m_Columns.m_Name);
+        m_PluginList.append_column("Class", m_Columns.m_Class);
+        Populate();
+        enableItems();
+        show_all();
+    }
+    void enableItems()
+    {
+        bool canok = true;
+        if(!m_SelectedPluginUri)
+        {
+            canok = false;
+        }
+        m_OkButton->set_sensitive(canok);
+    }
+    void Populate()
+    {
+        const auto &pluginlist = lilvutils::World::Static().PluginList();
+        for(const auto &plugin: pluginlist.Plugins())
+        {
+            Gtk::TreeModel::Row row = *(m_ListStore->append());
+            row[m_Columns.m_Name] = plugin.Name();
+            row[m_Columns.m_Lv2Uri] = plugin.Uri();
+            row[m_Columns.m_Class] = pluginlist.Classes().at(plugin.ClassIndex()).Description();
+        }
+    }
+    std::optional<std::string> SelectedPluginUri() const { return m_SelectedPluginUri; }
+
+private:
+    class Columns : public Gtk::TreeModel::ColumnRecord
+    {
+    public:
+        Columns()
+        {
+            add(m_Name);
+            add(m_Class);
+            add(m_Lv2Uri);
+        }
+        Gtk::TreeModelColumn<std::string> m_Name;
+        Gtk::TreeModelColumn<std::string> m_Class;
+        Gtk::TreeModelColumn<std::string> m_Lv2Uri;
+    };
+    Gtk::ScrolledWindow m_PluginListScrolledWindow;
+    std::optional<std::string> m_SelectedPluginUri;
+    Columns m_Columns;
+    Glib::RefPtr<Gtk::ListStore> m_ListStore {Gtk::ListStore::create(m_Columns)};
+    Gtk::TreeView m_PluginList;
+    Gtk::Button *m_OkButton = nullptr;
+};
 
 class PresetSelectorDialog : public Gtk::Dialog
 {
@@ -404,18 +487,52 @@ public:
         m_MainPanelStack.add(*m_InstrumentsPanel);
         show_all_children();
         m_SavePresetMenuItem.signal_activate().connect([this](){
-            auto project_copy = m_Engine.Project();
-            PresetSelectorDialog dialog(project_copy);
-            int result = dialog.run();
-            if(result == Gtk::RESPONSE_OK)
-            {
-                if(dialog.SelectedPreset())
+            DoAndShowException([this](){
+                auto project_copy = m_Engine.Project();
+                PresetSelectorDialog dialog(project_copy);
+                int result = dialog.run();
+                if(result == Gtk::RESPONSE_OK)
                 {
-                    m_Engine.SaveCurrentPreset(*dialog.SelectedPreset(), dialog.PresetName());
+                    if(dialog.SelectedPreset())
+                    {
+                        m_Engine.SaveCurrentPreset(*dialog.SelectedPreset(), dialog.PresetName());
+                    }
                 }
-            }
+            });
+        });
+        m_SaveProjectMenuItem.signal_activate().connect([this](){
+            DoAndShowException([this](){
+                m_Engine.SaveProject();
+            });
+        });
+        m_ReverbGuiMenuItem.signal_activate().connect([this](){
+            DoAndShowException([this](){
+                auto reverb = m_Engine.Project().Reverb().ChangeShowGui(!m_Engine.Project().Reverb().ShowGui());
+                auto project = m_Engine.Project().ChangeReverb(std::move(reverb));
+                m_Engine.SetProject(std::move(project));
+            });
+        });
+        m_ReverbChoosePluginMenuItem.signal_activate().connect([this](){
+            DoAndShowException([this](){
+                PluginSelectorDialog dialog;
+                int result = dialog.run();
+                if(result == Gtk::RESPONSE_OK)
+                {
+                    auto reverburi = dialog.SelectedPluginUri().value();
+                    m_Engine.ChangeReverbLv2Uri(std::move(reverburi));
+                }
+            });
+        });
+        m_ReverbStorePresetMenuItem.signal_activate().connect([this](){
+            DoAndShowException([this](){
+                m_Engine.StoreReverbPreset();
+            });
         });
         m_PopupMenu.append(m_SavePresetMenuItem);
+        m_PopupMenu.append(m_SaveProjectMenuItem);
+        m_PopupMenu.append(m_ReverbGuiMenuItem);
+        m_PopupMenu.append(m_ReverbStorePresetMenuItem);
+        m_PopupMenu.append(m_ReverbChoosePluginMenuItem);
         m_PopupMenu.show_all();
         Update();
     }
@@ -453,6 +570,10 @@ private:
     std::unique_ptr<InstrumentsPanel> m_InstrumentsPanel { std::make_unique<InstrumentsPanel>(m_Engine) };
     Gtk::Stack m_MainPanelStack;
     Gtk::MenuItem m_SavePresetMenuItem {"Save Preset"};
+    Gtk::MenuItem m_SaveProjectMenuItem {"Save Project"};
+    Gtk::MenuItem m_ReverbGuiMenuItem {"Reverb: Gui"};
+    Gtk::MenuItem m_ReverbStorePresetMenuItem {"Reverb: Store Preset"};
+    Gtk::MenuItem m_ReverbChoosePluginMenuItem {"Reverb: Choose plugin"};
 };
 
 } // anonymous namespace

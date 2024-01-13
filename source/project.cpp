@@ -14,7 +14,8 @@ namespace project
         parts.emplace_back("Upper", 0, std::nullopt, std::nullopt, 1.0f);
         parts.emplace_back("Lower", 1, std::nullopt, std::nullopt, 1.0f);
         std::vector<std::optional<TQuickPreset>> quickPresets;
-        return Project(std::move(instruments), std::move(parts), std::move(quickPresets), std::nullopt, false);
+        project::TReverb reverb;
+        return Project(std::move(instruments), std::move(parts), std::move(quickPresets), std::nullopt, false, {});
     }
 
     Json::Value ToJson(const Instrument &instrument)
@@ -111,6 +112,7 @@ namespace project
         {
             result["focusedpart"] = Json::Value::null;
         }
+        result["reverb"] = ToJson(project.Reverb());
         return result;
     }
     Project ProjectFromJson(const Json::Value &v)
@@ -146,7 +148,12 @@ namespace project
         {
             focusedPart = v["focusedpart"].asInt();
         }
-        return Project(std::move(instruments), std::move(parts), std::move(quickPresets), focusedPart, v["showui"].asBool());
+        TReverb reverb;
+        if(!v["reverb"].isNull())
+        {
+            reverb = ReverbFromJson(v["reverb"]);
+        }
+        return Project(std::move(instruments), std::move(parts), std::move(quickPresets), focusedPart, v["showui"].asBool(), std::move(reverb));
     }
     Project ProjectFromFile(const std::string &filename)
     {
@@ -220,6 +227,19 @@ namespace project
             throw std::runtime_error("Could not open file for writing: " + filename);
         }
         ofs << v;
+    }
+    Json::Value ToJson(const TReverb &reverb)
+    {
+        Json::Value result;
+        result["presetdir"] = reverb.ReverbPresetSubDir();
+        result["pluginuri"] = reverb.ReverbLv2Uri();
+        result["showgui"] = reverb.ShowGui();
+        result["mixlevel"] = reverb.MixLevel();
+        return result;
+    }
+    TReverb ReverbFromJson(const Json::Value &v)
+    {
+        return TReverb(v["presetdir"].asString(), v["pluginuri"].asString(), v["mixlevel"].asFloat(), v["showgui"].asBool());
     }
 
 }

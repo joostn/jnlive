@@ -79,7 +79,9 @@ namespace engine
         std::string ProjectFile() const { return m_ProjectDir + "/project.json"; }
         void SaveCurrentPreset(size_t presetindex, const std::string &name);
         void LoadCurrentPreset();
-
+        std::string SavePresetForInstance(lilvutils::Instance &instance);
+        void StoreReverbPreset();
+        void ChangeReverbLv2Uri(std::string &&uri);
         void LoadProject();
         void SaveProject();
 
@@ -96,6 +98,7 @@ namespace engine
         realtimethread::Processor m_RtProcessor {8192};
         project::Project m_Project;
         std::vector<std::unique_ptr<PluginInstance>> m_OwnedPlugins;
+        std::unique_ptr<PluginInstance> m_ReverbInstance;
         std::vector<Part> m_Parts;
         std::unique_ptr<OptionalUI> m_Ui;
         realtimethread::Data m_CurrentRtData;

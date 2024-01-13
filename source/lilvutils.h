@@ -26,6 +26,42 @@ namespace lilvutils
 {
     class Instance;
     class UI;
+    class TPluginList
+    {
+    public:
+        class TClass
+        {
+        public:
+            TClass() = default;
+            TClass(std::string &&uri, std::string &&description) : m_Description(std::move(description)), m_Uri(std::move(uri)) {}
+            const std::string& Description() const { return m_Description; }
+            const std::string& Uri() const { return m_Uri; }
+
+        private:
+            std::string m_Uri;
+            std::string m_Description;
+        };
+        class TPlugin
+        {
+        public:
+            TPlugin(std::string &&name, std::string &&uri, size_t classIndex) : m_Name(std::move(name)), m_Uri(std::move(uri)), m_ClassIndex(classIndex) {}
+            const std::string& Name() const { return m_Name; }
+            const std::string& Uri() const { return m_Uri; }
+            size_t ClassIndex() const { return m_ClassIndex; }
+        private:
+            std::string m_Name;
+            std::string m_Uri;
+            size_t m_ClassIndex;
+        };
+    public:
+        TPluginList() = default;
+        TPluginList(std::vector<TClass> &&classes, std::vector<TPlugin> &&plugins) : m_Classes(std::move(classes)), m_Plugins(std::move(plugins)) {}
+        const std::vector<TClass>& Classes() const { return m_Classes; }
+        const std::vector<TPlugin>& Plugins() const { return m_Plugins; }
+    private:
+        std::vector<TClass> m_Classes;
+        std::vector<TPlugin> m_Plugins;
+    };
     class World
     {
     public:
@@ -87,6 +123,7 @@ namespace lilvutils
         LV2_URID_Map& UridMap() { return m_UridMap; }   
         LV2_URID_Unmap& UridUnmap() { return m_UridUnmap; }
         LV2_Atom_Forge& AtomForge() { return m_AtomForge; }
+        const TPluginList& PluginList() const { return m_PluginList; }
 
     private:
         static World*& staticptr()
@@ -94,6 +131,7 @@ namespace lilvutils
             static World *s_World = nullptr;
             return s_World;
         }
+        static TPluginList BuildPluginList(const LilvWorld* m_World);
 
     private:
         std::mutex m_Mutex;
@@ -120,6 +158,7 @@ namespace lilvutils
         float m_OptionUiUpdateRate = 30.0f;
         float m_OptionUiScaleFactor = 2.0f;
         LV2_Atom_Forge m_AtomForge;
+        TPluginList m_PluginList;
     };
     class Uri
     {

@@ -1,8 +1,39 @@
 #include "engine.h"
 #include <filesystem>
 
+namespace
+{
+}
+
 namespace engine
 {
+    std::string Engine::SavePresetForInstance(lilvutils::Instance &instance)
+    {
+        std::string dirtemplate = PresetsDir() + "/state_XXXXXX";
+        char* presetDirPtr = mkdtemp(const_cast<char*>(dirtemplate.c_str()));
+        if(!presetDirPtr)
+        {
+            throw std::runtime_error("Failed to create directory for preset");
+        }
+        std::string presetDir = presetDirPtr;
+        // change permissions to 0755:
+        if(chmod(presetDir.c_str(), S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH) != 0)
+        {
+            throw std::runtime_error("Failed to change permissions for preset directory");
+        }
+        auto dirToDelete = presetDir;
+        utils::finally fin1([&](){
+            if(!dirToDelete.empty())
+            {
+                std::filesystem::remove_all(dirToDelete);
+            }
+        });
+        auto relativePresetDir = std::filesystem::relative(presetDir, PresetsDir());
+        instance.SaveState(presetDir);
+        dirToDelete.clear();
+        return presetDir;
+    }
+
     void Engine::ApplyJackConnections(bool forceNow)
     {
         auto now = std::chrono::steady_clock::now();
@@ -273,7 +304,43 @@ namespace engine
             }
         }
     }
-
+    void Engine::ChangeReverbLv2Uri(std::string &&uri)
+    {
+        if(uri != Project().Reverb().ReverbLv2Uri())
+        {
+            auto oldpresetdir = Project().Reverb().ReverbPresetSubDir();
+            auto reverb = Project().Reverb().ChangeReverbLv2Uri(std::move(uri)).ChangeReverbPresetSubDir(std::string());
+            SetProject(Project().ChangeReverb(std::move(reverb)));
+            SaveProject();
+            if(!oldpresetdir.empty())
+            {
+                auto dirToDelete = PresetsDir() + "/" + oldpresetdir;
+                std::filesystem::remove_all(dirToDelete);
+            }
+        }
+    }
+    void Engine::StoreReverbPreset()
+    {
+        if(!m_ReverbInstance)
+        {
+            throw std::runtime_error("No reverb plugin loaded");
+        }
+        auto presetDir = SavePresetForInstance(m_ReverbInstance->Instance());
+        auto dirToDelete = presetDir;
+        utils::finally fin1([&](){
+            if(!dirToDelete.empty()) std::filesystem::remove_all(dirToDelete);
+        });
+        auto relativePresetDir = std::filesystem::relative(presetDir, PresetsDir());
+        auto oldpresetdir = Project().Reverb().ReverbPresetSubDir();
+        auto reverb = Project().Reverb().ChangeReverbPresetSubDir(std::move(relativePresetDir));
+        SetProject(Project().ChangeReverb(std::move(reverb)));
+        SaveProject();
+        dirToDelete.clear();
+        if(!oldpresetdir.empty())
+        {
+            dirToDelete = PresetsDir() + "/" + oldpresetdir;
+        }
+    }
     void Engine::SaveCurrentPreset(size_t presetindex, const std::string &name)
     {
         if(Project().FocusedPart() && (*Project().FocusedPart() < Project().Parts().size()) && Project().Parts()[*Project().FocusedPart()].ActiveInstrumentIndex())
@@ -287,49 +354,33 @@ namespace engine
                 const auto &ownedplugin = m_OwnedPlugins[ownedpluginindex];
                 if(ownedplugin)
                 {
-                    std::string dirtemplate = PresetsDir() + "/state_XXXXXX";
-                    char* presetDirPtr = mkdtemp(const_cast<char*>(dirtemplate.c_str()));
-                    if(!presetDirPtr)
-                    {
-                        throw std::runtime_error("Failed to create directory for preset");
-                    }
-                    std::string presetDir = presetDirPtr;
-                    // change permissions to 0755:
-                    if(chmod(presetDir.c_str(), S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH) != 0)
-                    {
-                        throw std::runtime_error("Failed to change permissions for preset directory");
-                    }
+                    auto presetDir = SavePresetForInstance(ownedplugin->Instance());
                     auto dirToDelete = presetDir;
                     utils::finally fin1([&](){
-                        if(!dirToDelete.empty())
-                        {
-                            std::filesystem::remove_all(dirToDelete);
-                        }
+                        if(!dirToDelete.empty()) std::filesystem::remove_all(dirToDelete);
                     });
                     auto relativePresetDir = std::filesystem::relative(presetDir, PresetsDir());
 
-                    auto &instance = ownedplugin->Instance();
-                    instance.SaveState(presetDir);
                     auto newproject = Project();
                     auto presets = newproject.QuickPresets();
                     if(presetindex >= presets.size())
                     {
                         presets.resize(presetindex + 1);
                     }
-                    dirToDelete.clear();
-                    if(presets[presetindex])
-                    {
-                        dirToDelete = PresetsDir() + "/" + presets[presetindex]->PresetSubDir();
-                    }
+                    auto oldpresetdir = presets[presetindex]->PresetSubDir();
                     presets[presetindex] = project::TQuickPreset(instrindex, std::string(name), std::move(relativePresetDir));
                     newproject.SetPresets(std::move(presets));
                     newproject = newproject.ChangePart(partindex, instrindex, presetindex, newproject.Parts().at(partindex).AmplitudeFactor());
                     SetProject(std::move(newproject));
                     SaveProject();
+                    dirToDelete.clear();
+                    if(!oldpresetdir.empty())
+                    {
+                        dirToDelete = PresetsDir() + "/" + oldpresetdir;
+                    }
                 }
             }
         }
-
     }
     Engine::Engine(uint32_t maxBlockSize, int argc, char** argv, std::string &&projectdir) : m_JackClient {"JN Live", [this](jack_nframes_t nframes){
         m_RtProcessor.Process(nframes);

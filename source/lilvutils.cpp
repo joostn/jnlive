@@ -317,7 +317,8 @@ namespace lilvutils
         m_ThreadSafeRestoreFeature.URI = LV2_STATE__threadSafeRestore;
         m_ThreadSafeRestoreFeature.data = nullptr;
         m_Features.push_back(&m_ThreadSafeRestoreFeature);
-        lv2_atom_forge_init(&m_AtomForge, &m_UridMap);        
+        lv2_atom_forge_init(&m_AtomForge, &m_UridMap);  
+        m_PluginList = BuildPluginList(world);      
         m_World = world;
         m_Plugins = plugins;
         m_SuilHost = suilhost;
@@ -326,6 +327,40 @@ namespace lilvutils
         suilhost = nullptr;
         staticptr() = this;
     }
+    TPluginList World::BuildPluginList(const LilvWorld* world)
+    {
+        const LilvPluginClasses *lilvpluginclasses = lilv_world_get_plugin_classes(world); // Returned list is owned by world and must not be freed by the caller
+        std::map<const LilvPluginClass*, size_t> class2Index;
+        std::vector<TPluginList::TClass> classes;
+        LILV_FOREACH(plugin_classes, i, lilvpluginclasses)
+        {
+            auto lilvpluginclass = lilv_plugin_classes_get(lilvpluginclasses, i);
+            if(lilvpluginclass)
+            {
+                std::string uri = lilv_node_as_uri(lilv_plugin_class_get_uri(lilvpluginclass));
+                std::string label = lilv_node_as_string(lilv_plugin_class_get_label(lilvpluginclass));
+                class2Index[lilvpluginclass] = classes.size();
+                classes.emplace_back(std::move(uri), std::move(label));
+            }
+        }
+        auto lilvplugis = lilv_world_get_all_plugins(world); // Returned list is owned by world and must not be freed by the caller
+        std::vector<TPluginList::TPlugin> plugins;
+        LILV_FOREACH(plugins, i, lilvplugis)
+        {
+            auto plugin = lilv_plugins_get(lilvplugis, i);
+            if(plugin)
+            {
+                auto lilvpluginclass = lilv_plugin_get_class(plugin);
+                auto classindex = class2Index[lilvpluginclass];
+                std::string uri = lilv_node_as_uri(lilv_plugin_get_uri(plugin));
+                std::string label = lilv_node_as_string(lilv_plugin_get_name(plugin));
+                plugins.emplace_back(std::move(label), std::move(uri), classindex);
+            }
+        }
+        return TPluginList(std::move(classes), std::move(plugins));
+    }
+
+
     Plugin::Plugin(const Uri &uri) : m_Uri(uri.str())
     {
         auto lilvworld = World::Static().get();
