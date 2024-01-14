@@ -130,7 +130,7 @@ namespace project
         std::vector<std::optional<TQuickPreset>> quickPresets;
         for (const auto &quickPreset : v["quickpresets"])
         {
-            if(v.isNull())
+            if(quickPreset.isNull())
             {
                 quickPresets.push_back(std::nullopt);
             }
@@ -240,6 +240,48 @@ namespace project
     TReverb ReverbFromJson(const Json::Value &v)
     {
         return TReverb(v["presetdir"].asString(), v["pluginuri"].asString(), v["mixlevel"].asFloat(), v["showgui"].asBool());
+    }
+
+    Project Project::DeleteInstrument(size_t index) const
+    {
+        std::vector<std::optional<TQuickPreset>> newQuickPresets;
+        for (const auto &quickPreset : m_QuickPresets)
+        {
+            if(quickPreset)
+            {
+                if(quickPreset->InstrumentIndex() == index)
+                {
+                    newQuickPresets.push_back(std::nullopt);
+                }
+                else if(quickPreset->InstrumentIndex() > index)
+                {
+                    newQuickPresets.push_back(quickPreset.value().ChangeInstrumentIndex(quickPreset->InstrumentIndex() - 1));
+                }
+                else
+                {
+                    newQuickPresets.push_back(*quickPreset);
+                }
+            }
+            else
+            {
+                newQuickPresets.push_back(std::nullopt);
+            }
+        }
+        std::vector<Part> newparts;
+        for (const auto &part : m_Parts)
+        {
+            newparts.push_back(part.ChangeActiveInstrumentIndex(std::nullopt).ChangeActivePresetIndex(std::nullopt));
+        }
+        std::vector<Instrument> newInstruments;
+        for (size_t i = 0; i < m_Instruments.size(); i++)
+        {
+            if(i != index)
+            {
+                newInstruments.push_back(m_Instruments[i]);
+            }
+        }
+        auto reverb = Reverb();
+        return Project(std::move(newInstruments), std::move(newparts), std::move(newQuickPresets), FocusedPart(), ShowUi(), std::move(reverb));
     }
 
 }

@@ -9,6 +9,7 @@
 #include "lv2/port-groups/port-groups.h"
 #include "suil/suil.h"
 #include <filesystem>
+#include "lv2_external_ui.h"
 
 namespace 
 {
@@ -360,7 +361,6 @@ namespace lilvutils
         return TPluginList(std::move(classes), std::move(plugins));
     }
 
-
     Plugin::Plugin(const Uri &uri) : m_Uri(uri.str())
     {
         auto lilvworld = World::Static().get();
@@ -394,33 +394,33 @@ namespace lilvutils
             m_PortsBySymbol[port->Symbol()] = port.get();
             if(auto audioport = dynamic_cast<const TAudioPort*>(port.get()); audioport)
             {
-                if(audioport->Direction() == TAudioPort::TDirection::Output)
+                auto &portindices = (audioport->Direction() == TAudioPort::TDirection::Output)? m_AudioOutputIndex:m_AudioInputIndex;
                 {
                     if(audioport->Designation() == TAudioPort::TDesignation::StereoLeft)
                     {
-                        m_AudioOutputIndex[0] = portindex;
-                        if(!m_AudioOutputIndex[1])
+                        portindices[0] = portindex;
+                        if(!portindices[1])
                         {
-                            m_AudioOutputIndex[1] = portindex;
+                            portindices[1] = portindex;
                         }
                     }
                     else if(audioport->Designation() == TAudioPort::TDesignation::StereoRight)
                     {
-                        m_AudioOutputIndex[1] = portindex;
-                        if(!m_AudioOutputIndex[0])
+                        portindices[1] = portindex;
+                        if(!portindices[0])
                         {
-                            m_AudioOutputIndex[0] = portindex;
+                            portindices[0] = portindex;
                         }
                     }
                     else
                     {
-                        if(!m_AudioOutputIndex[0])
+                        if(!portindices[0])
                         {
-                            m_AudioOutputIndex[0] = portindex;
+                            portindices[0] = portindex;
                         }
-                        if(!m_AudioOutputIndex[1])
+                        if(!portindices[1])
                         {
-                            m_AudioOutputIndex[1] = portindex;
+                            portindices[1] = portindex;
                         }
                     }
                 }
@@ -677,110 +677,244 @@ namespace lilvutils
             m_Ui->OnAtomPortMessage(connection.Port().Index(), type, datasize, data);
         }
     }
-
-    UI::UI(Instance &instance) : m_Instance(instance)
+    
+    UI::TUiToShow UI::FindUiToShow(const LilvUIs *uis) const
     {
-        m_Uridatom_eventTransfer = lilvutils::World::Static().UriMapLookup(LV2_ATOM__eventTransfer);
-        auto containerWindow = new ContainerWindow(*this);
-        utils::finally fin5([&]() { if(containerWindow) delete containerWindow; });
-        m_InstanceAccessFeature.URI = LV2_INSTANCE_ACCESS_URI;
-        m_InstanceAccessFeature.data = m_Instance.Handle();
-        m_UiParentFeature.URI = LV2_UI__parent;
-        m_UiParentFeature.data = nullptr;
-
-        auto extensiondata = lilv_instance_get_descriptor(m_Instance.get())->extension_data;
-        m_DataAccessFeature.URI = LV2_DATA_ACCESS_URI;
-        m_DataAccessFeature.data = const_cast<void*>((const void*)extensiondata);
-        m_IdleFeature.URI = LV2_UI__idleInterface;
-        m_IdleFeature.data = nullptr;
-        m_RequestValueFeature.URI = LV2_UI__requestValue;
-        m_RequestValueFeature.data = &m_RequestValue;
-        m_RequestValue.handle = this;
-        m_RequestValue.request = [](LV2UI_Feature_Handle handle, LV2_URID key, LV2_URID type, const LV2_Feature *const *features) {
-            return static_cast<UI*>(handle)->RequestValue(key, type, features);
-        };
-        GtkWindow *x;
-        m_Features = World::Static().Features();
-        m_Features.push_back(m_Logger.Feature());
-        m_Features.push_back(&m_InstanceAccessFeature);
-        m_Features.push_back(&m_UiParentFeature);
-        m_Features.push_back(&m_DataAccessFeature);
-        m_Features.push_back(&m_IdleFeature);
-        const LV2_Feature parent_feature = {LV2_UI__parent, containerWindow->Container()};
-        m_Features.push_back(&parent_feature);
-        m_Features.push_back(nullptr);
-        lilvutils::Uri uri_extensionData(LV2_CORE__extensionData);
-        lilvutils::Uri uri_showInterface(LV2_UI__showInterface);
-
-        const char* container_type_uri = "http://lv2plug.in/ns/extensions/ui#Gtk3UI";
-        lilvutils::Uri uri_native_ui_type(container_type_uri);
-
-
-        const LilvUI* uiToShow = nullptr;
-        auto uis = lilv_plugin_get_uis(m_Instance.plugin().get());
-        utils::finally fin1([&]() {  if(uis) lilv_uis_free(uis); });
-        const LilvNode *ui_type = nullptr; // must not be freed by caller
+        UI::TUiToShow result;
+        lilvutils::Uri uri_native_ui_type("http://lv2plug.in/ns/extensions/ui#Gtk3UI");
+        //LV2_External_UI_Widget* extuiptr = nullptr;
         if(uis)
         {
             // Try to find a UI with ui:showInterface
             LILV_FOREACH (uis, u, uis) {
-                const LilvUI*   ui      = lilv_uis_get(uis, u);
-                const LilvNode* ui_node = lilv_ui_get_uri(ui);
-
-                lilv_world_load_resource(World::Static().get(), ui_node);
-                utils::finally fin2([&]() {  lilv_world_unload_resource(World::Static().get(), ui_node); });
-
-                //bool supported = lilv_world_ask(World::Static().get(), ui_node, uri_extensionData.get(), uri_showInterface.get());
-                ui_type = nullptr; // must not be freed by caller
-                bool supported = lilv_ui_is_supported(ui, suil_ui_supported, uri_native_ui_type.get(), &ui_type);
-
-                if (supported) 
+                auto ui = lilv_uis_get(uis, u);
+                auto ui_node = lilv_ui_get_uri(ui);
+                if(ui_node)
                 {
-                    uiToShow = ui;
-                    break;
+                    lilv_world_load_resource(World::Static().get(), ui_node);
+                    utils::finally fin2([&]() {  lilv_world_unload_resource(World::Static().get(), ui_node); });
+                    const LilvNode *ui_type = nullptr; // must not be freed by caller
+                    bool supported = lilv_ui_is_supported(ui, suil_ui_supported, uri_native_ui_type.get(), &ui_type);
+                    if (supported) 
+                    {
+                        // ok, we have an embeddable UI which can be instantiated as a GTK3 widget:
+                        if(!ui_type)
+                        {
+                            throw std::runtime_error("ui_type is null");
+                        }
+                        result.m_Ui = ui;
+                        result.m_IsExternalUi = false;
+                        result.m_UiTypeUri = lilv_node_as_uri(ui_type);
+                        return result;
+                    }
+                    else
+                    {
+                        auto types = lilv_ui_get_classes(ui); // result must not be freed
+                        LILV_FOREACH(nodes, t, types) {
+                            auto pt = lilv_node_as_uri(lilv_nodes_get(types, t));
+                            if(pt)
+                            {
+                                std::string typestr = pt;
+                                if( (typestr == "http://kxstudio.sf.net/ns/lv2ext/external-ui#Widget") || (typestr == "http://lv2plug.in/ns/extensions/ui#external") )
+                                {
+                                    result.m_Ui = ui;
+                                    result.m_IsExternalUi = true;
+                                    result.m_UiTypeUri = typestr;
+                                    return result;
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
-        if(!uiToShow)
-        {
-            throw std::runtime_error("No UI found");
-        }
+        return TUiToShow{}; // with m_Ui == nullptr
+    }
 
-        auto bundle_uri  = lilv_node_as_uri(lilv_ui_get_bundle_uri(uiToShow));
-        auto binary_uri  = lilv_node_as_uri(lilv_ui_get_binary_uri(uiToShow));
+    UI::UI(Instance &instance) : m_Instance(instance)
+    {
+        auto uis = lilv_plugin_get_uis(m_Instance.plugin().get());
+        utils::finally fin1([&]() {  if(uis) lilv_uis_free(uis); });
+        auto uiToShow = FindUiToShow(uis);
+        if(!uiToShow.m_Ui)
+        {
+            throw std::runtime_error("No suitable UI found");
+        }
+        m_Uridatom_eventTransfer = lilvutils::World::Static().UriMapLookup(LV2_ATOM__eventTransfer);
+        auto features = World::Static().Features();
+        ContainerWindow* containerWindow = nullptr;
+        utils::finally fin5([&]() { if(containerWindow) delete containerWindow; });
+        LV2_Feature uiParentFeature;
+        if(!uiToShow.m_IsExternalUi)
+        {
+            containerWindow = new ContainerWindow(*this);
+            uiParentFeature.URI = LV2_UI__parent;
+            uiParentFeature.data = containerWindow;
+            features.push_back(&uiParentFeature);
+        }
+        LV2_Feature instanceAccessFeature;
+        instanceAccessFeature.URI = LV2_INSTANCE_ACCESS_URI;
+        instanceAccessFeature.data = m_Instance.Handle();
+        features.push_back(&instanceAccessFeature);
+        auto extensiondata = lilv_instance_get_descriptor(m_Instance.get())->extension_data;
+        LV2_Feature dataAccessFeature;
+        dataAccessFeature.URI = LV2_DATA_ACCESS_URI;
+        dataAccessFeature.data = const_cast<void*>((const void*)extensiondata);
+        features.push_back(&dataAccessFeature);
+        LV2_Feature idleFeature;
+        idleFeature.URI = LV2_UI__idleInterface;
+        idleFeature.data = nullptr;
+        features.push_back(&idleFeature);
+        LV2_Feature requestValueFeature;
+        requestValueFeature.URI = LV2_UI__requestValue;
+        requestValueFeature.data = &m_RequestValue;
+        m_RequestValue.handle = this;
+        m_RequestValue.request = [](LV2UI_Feature_Handle handle, LV2_URID key, LV2_URID type, const LV2_Feature *const *features) {
+            return static_cast<UI*>(handle)->RequestValue(key, type, features);
+        };
+        features.push_back(m_Logger.Feature());
+        m_ExternalUiHost.ui_closed = [](LV2UI_Controller controller){
+            auto self = (UI*)controller;
+            if(self)
+            {
+                self->m_ExternalUiWidget = nullptr;
+                self->OnClose().Notify();
+            }
+        };
+        m_ExternalUiHost.plugin_human_id = nullptr;
+		LV2_Feature external_lv_feature = { LV2_EXTERNAL_UI_DEPRECATED_URI, &m_ExternalUiHost };
+        features.push_back(&external_lv_feature);
+		LV2_Feature external_kx_feature = { LV2_EXTERNAL_UI__Host, &m_ExternalUiHost };
+        features.push_back(&external_kx_feature);
+        features.push_back(nullptr);
+
+        // lilvutils::Uri uri_extensionData(LV2_CORE__extensionData);
+        // lilvutils::Uri uri_showInterface(LV2_UI__showInterface);
+
+        // lilvutils::Uri uri_native_ui_type(container_type_uri);
+        // const LilvUI* uiToShow = nullptr;
+        // auto uis = lilv_plugin_get_uis(m_Instance.plugin().get());
+        // utils::finally fin1([&]() {  if(uis) lilv_uis_free(uis); });
+        // //LV2_External_UI_Widget* extuiptr = nullptr;
+        // const LilvNode *ui_type = nullptr; // must not be freed by caller
+        // bool externalUi = false;
+        // if(uis)
+        // {
+        //     // Try to find a UI with ui:showInterface
+        //     LILV_FOREACH (uis, u, uis) {
+        //         const LilvUI*   ui      = lilv_uis_get(uis, u);
+        //         const LilvNode* ui_node = lilv_ui_get_uri(ui);
+
+        //         lilv_world_load_resource(World::Static().get(), ui_node);
+        //         utils::finally fin2([&]() {  lilv_world_unload_resource(World::Static().get(), ui_node); });
+
+        //         ui_type = nullptr; // must not be freed by caller
+        //         bool supported = lilv_ui_is_supported(ui, suil_ui_supported, uri_native_ui_type.get(), &ui_type);
+
+        //         if (supported) 
+        //         {
+        //             uiToShow = ui;
+        //             break;
+        //         }
+        //         else
+        //         {
+        //             // bool supported2 = lilv_world_ask(World::Static().get(), ui_node, uri_extensionData.get(), uri_showInterface.get());
+        //             // if(supported2)
+        //             // {
+        //             //     uiToShow = ui;
+        //             //     break;
+        //             // }
+
+
+		// 	const LilvNodes* types = lilv_ui_get_classes(ui);
+		// 	LILV_FOREACH(nodes, t, types) {
+		// 		const char * pt = lilv_node_as_uri(lilv_nodes_get(types, t));
+		// 		if (!strcmp(pt, "http://kxstudio.sf.net/ns/lv2ext/external-ui#Widget")) {
+		// 			externalUi = true;
+		// 			uiToShow = ui;
+		// 			ui_type = jalv.nodes.ui_externalkx;
+		// 		} else if (!strcmp(pt, "http://lv2plug.in/ns/extensions/ui#external")) {
+		// 			externalUi = true;
+		// 			ui_type = jalv.nodes.ui_externallv;
+		// 			uiToShow = ui;
+		// 		}
+		// 	}
+		// }
+
+        //         }
+
+        //     }
+        // }
+        // if(!uiToShow)
+        // {
+        //     throw std::runtime_error("No UI found");
+        // }
+
+        std::string container_type_uri;
+        if(uiToShow.m_IsExternalUi)
+        {
+            container_type_uri = uiToShow.m_UiTypeUri;
+        }
+        else
+        {
+            container_type_uri = "http://lv2plug.in/ns/extensions/ui#Gtk3UI";
+        }
+        auto bundle_uri  = lilv_node_as_uri(lilv_ui_get_bundle_uri(uiToShow.m_Ui));
+        auto binary_uri  = lilv_node_as_uri(lilv_ui_get_binary_uri(uiToShow.m_Ui));
         auto bundle_path = lilv_file_uri_parse(bundle_uri, NULL);
         utils::finally fin3([&]() { if(bundle_path) lilv_free(bundle_path); });
         auto binary_path = lilv_file_uri_parse(binary_uri, NULL);
         utils::finally fin4([&]() { if(binary_path) lilv_free(binary_path); });
-        auto suilinstance = suil_instance_new(World::Static().suilHost(), this, container_type_uri, lilv_node_as_uri(lilv_plugin_get_uri(m_Instance.plugin().get())), lilv_node_as_uri(lilv_ui_get_uri(uiToShow)), lilv_node_as_uri(ui_type), bundle_path, binary_path, m_Features.data());
+        auto pluginuri = m_Instance.plugin().Lv2Uri();
+        auto ui_node = lilv_ui_get_uri(uiToShow.m_Ui);
+        if(!ui_node)
+        {
+            throw std::runtime_error("ui_node is null");
+        }
+        auto ui_node_char = lilv_node_as_uri(ui_node);
+        if(!ui_node_char)
+        {
+            throw std::runtime_error("ui_node_char is null");
+        }
+        auto suilinstance = suil_instance_new(World::Static().suilHost(), this, container_type_uri.c_str(), pluginuri.c_str(), ui_node_char, uiToShow.m_UiTypeUri.c_str(), bundle_path, binary_path, features.data());
         utils::finally fin6([&]() { if(suilinstance)  suil_instance_free(suilinstance); });
         if(!suilinstance)
         {
             throw std::runtime_error("suil_instance_new failed");
         }
-        auto widget = (GtkWidget*)suil_instance_get_widget(suilinstance);
-        
-        if(!suilinstance)
+        auto widget = suil_instance_get_widget(suilinstance);        
+        if(!widget)
         {
             throw std::runtime_error("suil_instance_get_widget failed");
         }
-        containerWindow->AttachWidget(widget);
-        containerWindow->present();
-        containerWindow->show_all();
-
+        if(uiToShow.m_IsExternalUi)
+        {
+            m_ExternalUiWidget = (LV2_External_UI_Widget*)widget;
+            m_ExternalUiWidget->show(m_ExternalUiWidget);
+        }
+        else
+        {
+            auto gtkwidget = (GtkWidget*)widget;
+            containerWindow->AttachWidget(gtkwidget);
+            containerWindow->present();
+            containerWindow->show_all();
+        }
         m_SuilInstance = suilinstance;
-        m_Ui = uiToShow;
+        m_Ui = uiToShow.m_Ui;
         m_ContainerWindow = containerWindow;
         suilinstance = nullptr;
-        uiToShow = nullptr;
         containerWindow = nullptr;
-
         m_Instance.UiOpened(this);
     }
 
     UI::~UI()
     {
         m_Instance.UiClosed(this);
+        if(m_ExternalUiWidget)
+        {
+            m_ExternalUiWidget->hide(m_ExternalUiWidget);
+            m_ExternalUiWidget = nullptr;
+        }
         if(m_ContainerWindow)
         {
             m_ContainerWindow->RemoveWidget();
@@ -824,6 +958,19 @@ namespace lilvutils
         m_Container->show();
         vbox->show_all();
 
+    }
+
+    void UI::CallIdle()
+    {
+        auto now = std::chrono::steady_clock::now();
+        if(now > m_LastExternalUiRunCall + std::chrono::milliseconds(30))
+        {
+            m_LastExternalUiRunCall = now;
+            if(m_ExternalUiWidget)
+            {
+                m_ExternalUiWidget->run(m_ExternalUiWidget);
+            }
+        }
     }
 }
 

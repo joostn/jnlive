@@ -48,13 +48,21 @@ namespace project
         const std::optional<size_t>& ActiveInstrumentIndex() const { return m_ActiveInstrumentIndex; }
         const std::optional<size_t>& ActivePresetIndex() const { return m_ActivePresetIndex; }
         float AmplitudeFactor() const { return m_AmplitudeFactor; }
-        Part Change(std::optional<size_t> activeInstrumentIndex,
-        std::optional<size_t> activePresetIndex,
-        float amplitudeFactor) const
+        Part ChangeActiveInstrumentIndex(std::optional<size_t> activeInstrumentIndex) const
         {
             auto result = *this;
             result.m_ActiveInstrumentIndex = activeInstrumentIndex;
+            return result;
+        }
+        Part ChangeActivePresetIndex(std::optional<size_t> activePresetIndex) const
+        {
+            auto result = *this;
             result.m_ActivePresetIndex = activePresetIndex;
+            return result;
+        }
+        Part ChangeAmplitudeFactor(float amplitudeFactor) const
+        {
+            auto result = *this;
             result.m_AmplitudeFactor = amplitudeFactor;
             return result;
         }
@@ -73,6 +81,24 @@ namespace project
         size_t InstrumentIndex() const { return m_InstrumentIndex; }
         const std::string &Name() const {return m_Name;}
         const std::string &PresetSubDir() const {return m_PresetSubDir;}
+        TQuickPreset ChangeName(std::string &&name) const
+        {
+            auto result = *this;
+            result.m_Name = name;
+            return result;
+        }
+        TQuickPreset ChangePresetSubDir(std::string &&presetSubDir) const
+        {
+            auto result = *this;
+            result.m_PresetSubDir = presetSubDir;
+            return result;
+        }
+        TQuickPreset ChangeInstrumentIndex(size_t instrumentIndex) const
+        {
+            auto result = *this;
+            result.m_InstrumentIndex = instrumentIndex;
+            return result;
+        }
     private:
         size_t m_InstrumentIndex = 0;
         std::string m_Name;
@@ -143,16 +169,14 @@ namespace project
             auto showUi = ShowUi();
             return Project(std::move(instruments), std::move(parts), std::move(quickPresets), focusedPart, showUi, std::move(reverb));
         }
-        Project ChangePart(size_t partIndex, std::optional<size_t> activeInstrumentIndex,
-        std::optional<size_t> activePresetIndex,
-        float amplitudeFactor) const
+        Project ChangePart(size_t partIndex, Part &&part) const
         {
             std::vector<Part> parts;
             for(size_t i=0; i < m_Parts.size(); ++i)
             {
                 if(i == partIndex)
                 {
-                    parts.push_back(m_Parts[i].Change(activeInstrumentIndex, activePresetIndex, amplitudeFactor));
+                    parts.push_back(std::move(part));
                 }
                 else
                 {
@@ -172,10 +196,20 @@ namespace project
                 if(preset)
                 {
                     auto instrumentindex = preset.value().InstrumentIndex();
-                    return ChangePart(partIndex, instrumentindex, presetIndex, Parts()[partIndex].AmplitudeFactor());
+                    auto part = Parts().at(partIndex).ChangeActiveInstrumentIndex(instrumentindex).ChangeActivePresetIndex(presetIndex);
+                    return ChangePart(partIndex, std::move(part));
                 }
             }
             return *this;
+        }
+        Project ChangePreset(size_t presetIndex, std::optional<TQuickPreset> &&preset) const
+        {
+            auto quickPresets = m_QuickPresets;
+            quickPresets[presetIndex] = std::move(preset);
+            auto parts = m_Parts;
+            auto instruments = m_Instruments;
+            auto reverb = Reverb();
+            return Project(std::move(instruments), std::move(parts), std::move(quickPresets), FocusedPart(), ShowUi(), std::move(reverb));
         }
         Project SwitchFocusedPartToPreset(size_t presetIndex) const
         {
@@ -195,6 +229,16 @@ namespace project
             m_QuickPresets = std::move(quickPresets);
         }
         const TReverb& Reverb() const { return m_Reverb; }
+        Project AddInstrument(Instrument &&inst) const
+        {
+            auto instruments = m_Instruments;
+            instruments.push_back(std::move(inst));
+            auto parts = m_Parts;
+            auto quickPresets = m_QuickPresets;
+            auto reverb = Reverb();
+            return Project(std::move(instruments), std::move(parts), std::move(quickPresets), FocusedPart(), ShowUi(), std::move(reverb));
+        }
+        Project DeleteInstrument(size_t index) const;
 
     private:
         std::vector<Part> m_Parts;

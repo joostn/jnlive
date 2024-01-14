@@ -21,6 +21,7 @@
 #include "lv2/instance-access/instance-access.h"
 #include "lv2/data-access/data-access.h"
 #include <gtkmm.h>
+#include "lv2_external_ui.h"
 
 namespace lilvutils
 {
@@ -264,6 +265,7 @@ namespace lilvutils
         const LilvPlugin* get() const { return m_Plugin; }
         const std::optional<uint32_t>& MidiInputIndex() const { return m_MidiInputIndex; }
         const std::array<std::optional<uint32_t>,2>& OutputAudioPortIndices() const { return m_AudioOutputIndex; }
+        const std::array<std::optional<uint32_t>,2>& InputAudioPortIndices() const { return m_AudioInputIndex; }
         const std::string& Lv2Uri() const { return m_Uri; }
         const std::vector<std::unique_ptr<TPortBase>>& Ports() const { return m_Ports; }
         bool CanInstantiate() const { return m_CanInstantiate; }
@@ -290,6 +292,7 @@ namespace lilvutils
         std::map<std::string, TPortBase*> m_PortsBySymbol;
         bool m_CanInstantiate = false;
         std::array<std::optional<uint32_t>,2> m_AudioOutputIndex;
+        std::array<std::optional<uint32_t>,2> m_AudioInputIndex;
     };
     class TConnectionBase
     {
@@ -498,10 +501,7 @@ namespace lilvutils
         UI(Instance &instance);
         ~UI();
 
-        void CallIdle()
-        {
-            // todo
-        }
+        void CallIdle();
         utils::NotifySource& OnClose() {return m_OnClose;}
         Instance &instance() {return m_Instance;}
         void OnControlValueChanged(uint32_t portindex, float value)
@@ -551,15 +551,18 @@ namespace lilvutils
             }
 
         }
+    private:
+        struct TUiToShow
+        {
+            const LilvUI* m_Ui = nullptr;
+            std::string m_UiTypeUri;
+            bool m_IsExternalUi = false;
+        };
+        TUiToShow FindUiToShow(const LilvUIs *uis) const;
+
 
     private:
         Instance &m_Instance;
-        std::vector<const LV2_Feature*> m_Features;
-        LV2_Feature m_InstanceAccessFeature;
-        LV2_Feature m_UiParentFeature;
-        LV2_Feature m_DataAccessFeature;
-        LV2_Feature m_IdleFeature;
-        LV2_Feature m_RequestValueFeature;
         LV2UI_Request_Value m_RequestValue;
         logger::Logger m_Logger;
         const LilvUI* m_Ui = nullptr;
@@ -567,6 +570,9 @@ namespace lilvutils
         ContainerWindow* m_ContainerWindow = nullptr;
         LV2_URID m_Uridatom_eventTransfer;
         utils::NotifySource m_OnClose;
+        LV2_External_UI_Host m_ExternalUiHost;
+        LV2_External_UI_Widget* m_ExternalUiWidget = nullptr;
+        std::chrono::steady_clock::time_point m_LastExternalUiRunCall;
 
     };
 

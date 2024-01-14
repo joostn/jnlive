@@ -68,16 +68,21 @@ namespace realtimethread
         };
     public:
         Data() = default;
-        Data(const std::vector<Plugin>& plugins, const std::vector<TMidiPort>& midiPorts, const std::array<jack_port_t*, 2>& outputAudioPorts) : m_Plugins(plugins), m_MidiPorts(midiPorts), m_OutputAudioPorts(outputAudioPorts) {}
+        Data(const std::vector<Plugin>& plugins, const std::vector<TMidiPort>& midiPorts, const std::array<jack_port_t*, 2>& outputAudioPorts, lilvutils::Instance *reverbInstance,
+        float reverbLevel) : m_Plugins(plugins), m_MidiPorts(midiPorts), m_OutputAudioPorts(outputAudioPorts), m_ReverbInstance(reverbInstance), m_ReverbLevel(reverbLevel) {}
         const std::vector<Plugin>& Plugins() const { return m_Plugins; }
         const std::vector<TMidiPort>& MidiPorts() const { return m_MidiPorts; }
         const std::array<jack_port_t*, 2>& OutputAudioPorts() const { return m_OutputAudioPorts; }
         auto operator<=>(const Data&) const = default;
+        lilvutils::Instance *ReverbInstance() const { return m_ReverbInstance; }
+        float ReverbLevel() const { return m_ReverbLevel; }
         
     private:
         std::vector<Plugin> m_Plugins;
         std::vector<TMidiPort> m_MidiPorts;
-        std::array<jack_port_t*, 2> m_OutputAudioPorts = {nullptr, nullptr};    
+        std::array<jack_port_t*, 2> m_OutputAudioPorts = {nullptr, nullptr};
+        lilvutils::Instance *m_ReverbInstance = nullptr;
+        float m_ReverbLevel = 0.0f;
     };
     class SetDataMessage : public ringbuf::PacketBase
     {
@@ -192,6 +197,8 @@ namespace realtimethread
         void RunInstances(jack_nframes_t nframes);
         void ProcessOutgoingAudio(jack_nframes_t nframes);
         void ProcessIncomingMidi(jack_nframes_t nframes);
+        void RunReverbInstance(jack_nframes_t nframes);
+        void AddReverb(jack_nframes_t nframes);
 
     private:
         std::unique_ptr<Data> m_CurrentData;

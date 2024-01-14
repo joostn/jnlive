@@ -108,15 +108,15 @@ namespace engine
                     }
                 }
                 LV2_Evbuf_Iterator *midiInBuf = nullptr;
-                if(ownedplugin->Plugin().MidiInputIndex())
+                if(ownedplugin->pluginInstance()->Plugin().MidiInputIndex())
                 {
-                    if(auto atomconnection = dynamic_cast<lilvutils::TConnection<lilvutils::TAtomPort>*>(ownedplugin->Instance().Connections().at(*ownedplugin->Plugin().MidiInputIndex()).get()))
+                    if(auto atomconnection = dynamic_cast<lilvutils::TConnection<lilvutils::TAtomPort>*>(ownedplugin->pluginInstance()->Instance().Connections().at(*ownedplugin->pluginInstance()->Plugin().MidiInputIndex()).get()))
                     {
                         midiInBuf = &atomconnection->BufferIterator();
                     }
                 }
                 ownedPluginIndex2RtPluginIndex.push_back(plugins.size());
-                plugins.emplace_back(&ownedplugin->Instance(), amplitude, doOverridePort, midiInBuf);
+                plugins.emplace_back(&ownedplugin->pluginInstance()->Instance(), amplitude, doOverridePort, midiInBuf);
             }
             else
             {
@@ -128,7 +128,7 @@ namespace engine
         {
             std::optional<int> pluginindex;
             auto instrumentIndexOrNull = Project().Parts()[partindex].ActiveInstrumentIndex();
-            if(instrumentIndexOrNull)
+            if(instrumentIndexOrNull && (*instrumentIndexOrNull < m_Parts[partindex].PluginIndices().size()))
             {
                 auto ownedpluginindex = pluginindex = m_Parts[partindex].PluginIndices()[*instrumentIndexOrNull];
                 if(ownedpluginindex)
@@ -143,13 +143,15 @@ namespace engine
             m_AudioOutPorts.size() > 0? m_AudioOutPorts[0]->get() : nullptr,
             m_AudioOutPorts.size() > 1?m_AudioOutPorts[1]->get() : nullptr
         };
-        return realtimethread::Data(std::move(plugins), std::move(midiPorts), std::move(outputAudioPorts));
+        auto reverbinstance = m_ReverbInstance? &m_ReverbInstance->Instance() : nullptr;
+        auto reverblevel = Project().Reverb().MixLevel();
+        return realtimethread::Data(std::move(plugins), std::move(midiPorts), std::move(outputAudioPorts), reverbinstance, reverblevel);
     }
 
     void Engine::SyncPlugins(std::vector<std::unique_ptr<jackutils::Port>> &midiInPortsToDiscard, std::vector<std::unique_ptr<PluginInstance>> &pluginsToDiscard)
     {
         std::optional<jack_nframes_t> jacksamplerate;
-        std::vector<std::unique_ptr<PluginInstance>> ownedPlugins;
+        std::vector<std::unique_ptr<PluginInstanceForPart>> ownedPlugins;
         std::vector<std::vector<size_t>> partindex2instrumentindex2ownedpluginindex(Project().Parts().size());
         for(size_t instrumentindex = 0; instrumentindex < Project().Instruments().size(); ++instrumentindex)
         {
@@ -169,13 +171,13 @@ namespace engine
                 }
                 else
                 {
-                    std::unique_ptr<PluginInstance> plugin_uq;
+                    std::unique_ptr<PluginInstanceForPart> plugin_uq;
                     auto pluginindex = ownedPlugins.size();
                     sharedpluginindex = pluginindex;
                     if(m_OwnedPlugins.size() > pluginindex)
                     {
                         auto &existingownedplugin = m_OwnedPlugins[pluginindex];
-                        if(existingownedplugin && (existingownedplugin->Lv2Uri() == instrument.Lv2Uri()) && (existingownedplugin->OwningPart() == owningpart) && (existingownedplugin->OwningInstrumentIndex() == instrumentindex) )
+                        if(existingownedplugin && (existingownedplugin->pluginInstance()->Lv2Uri() == instrument.Lv2Uri()) && (existingownedplugin->OwningPart() == owningpart) && (existingownedplugin->OwningInstrumentIndex() == instrumentindex) )
                         {
                             // re-use:
                             plugin_uq = std::move(existingownedplugin);
@@ -188,7 +190,7 @@ namespace engine
                             jacksamplerate = jack_get_sample_rate(jackutils::Client::Static().get());
                         }
                         auto lv2uri = instrument.Lv2Uri();
-                        plugin_uq = std::make_unique<PluginInstance>(std::move(lv2uri), *jacksamplerate, owningpart, instrumentindex, m_RtProcessor);
+                        plugin_uq = std::make_unique<PluginInstanceForPart>(std::move(lv2uri), *jacksamplerate, owningpart, instrumentindex, m_RtProcessor);
                     }
                     instrumentindex2ownedpluginindex.push_back(ownedPlugins.size());
                     ownedPlugins.push_back(std::move(plugin_uq));
@@ -225,13 +227,13 @@ namespace engine
         {
             if(plugin)
             {
-                pluginsToDiscard.push_back(std::move(plugin));
+                pluginsToDiscard.push_back(std::move(plugin->pluginInstance()));
+                plugin = {};
             }
         }
         std::unique_ptr<OptionalUI> optionalui;
         if(Project().ShowUi())
         {
-
             if(Project().FocusedPart() && (*Project().FocusedPart() < Project().Parts().size()) && Project().Parts()[*Project().FocusedPart()].ActiveInstrumentIndex())
             {
                 auto partindex = *Project().FocusedPart();
@@ -243,7 +245,7 @@ namespace engine
                     const auto &ownedplugin = ownedPlugins[ownedpluginindex];
                     if(ownedplugin)
                     {
-                        auto &instance = ownedplugin->Instance();
+                        auto &instance = ownedplugin->pluginInstance()->Instance();
                         if(m_Ui && &m_Ui->instance() == &instance)
                         {
                             optionalui = std::move(m_Ui);
@@ -268,9 +270,58 @@ namespace engine
                 }
             }
         }
+
+        if(!Project().Reverb().ReverbLv2Uri().empty())
+        {
+            auto uri = Project().Reverb().ReverbLv2Uri();
+            if(m_ReverbInstance && (m_ReverbInstance->Lv2Uri() != Project().Reverb().ReverbLv2Uri()))
+            {
+                pluginsToDiscard.push_back(std::move(m_ReverbInstance));
+            }
+            if(!m_ReverbInstance)
+            {
+                m_ReverbInstance = std::make_unique<PluginInstance>(std::move(uri), *jacksamplerate, m_RtProcessor);
+            }
+        }
+        else
+        {
+            if(m_ReverbInstance)
+            {
+                pluginsToDiscard.push_back(std::move(m_ReverbInstance));
+            }
+        }
+
+        std::unique_ptr<OptionalUI> optionaluiforreverb;
+        if(Project().Reverb().ShowGui())
+        {
+            if(m_ReverbInstance)
+            {
+                if(m_UiForReverb && &m_UiForReverb->instance() == &m_ReverbInstance->Instance())
+                {
+                    optionaluiforreverb = std::move(m_UiForReverb);
+                }
+                else
+                {
+                    std::unique_ptr<lilvutils::UI> ui;
+                    try
+                    {
+                        ui = std::make_unique<lilvutils::UI>(m_ReverbInstance->Instance());
+                        m_ReverbUiClosedSink = std::make_unique<utils::NotifySink>(ui->OnClose(), [this](){
+                            m_NeedCloseReverbUi = true;
+                        });
+                    }
+                    catch(std::exception &e)
+                    {
+                        std::cerr << "Failed to create UI for reverb plugin " << m_ReverbInstance->Instance().plugin().Lv2Uri() << ": " << e.what() << std::endl;
+                    }
+                    optionaluiforreverb = std::make_unique<OptionalUI>(m_ReverbInstance->Instance(), std::move(ui));
+                }
+            }
+        }
         m_OwnedPlugins = std::move(ownedPlugins);
         m_Parts = std::move(newparts);
         m_Ui = std::move(optionalui);
+        m_UiForReverb = std::move(optionaluiforreverb);
     }
     void Engine::LoadCurrentPreset()
     {
@@ -294,8 +345,8 @@ namespace engine
                             if(ownedplugin)
                             {
                                 std::string presetdir = PresetsDir() + "/" + preset->PresetSubDir();
-                                auto &instance = ownedplugin->Instance();
-                                ownedplugin->Instance().LoadState(presetdir);
+                                auto &instance = ownedplugin->pluginInstance()->Instance();
+                                ownedplugin->pluginInstance()->Instance().LoadState(presetdir);
                             }
                         }
                     }
@@ -341,6 +392,46 @@ namespace engine
             dirToDelete = PresetsDir() + "/" + oldpresetdir;
         }
     }
+    void Engine::LoadReverbPreset()
+    {
+        if(m_ReverbInstance)
+        {
+            auto presetSubdir = Project().Reverb().ReverbPresetSubDir();
+            if(!presetSubdir.empty())
+            {
+                std::string presetdir = PresetsDir() + "/" + presetSubdir;
+                m_ReverbInstance->Instance().LoadState(presetdir);
+            }
+        }
+    }
+    void Engine::DeletePreset(size_t presetindex)
+    {
+        if(presetindex < Project().QuickPresets().size())
+        {
+            auto preset = Project().QuickPresets()[presetindex];
+            if(preset)
+            {
+                auto presetSubdir = preset->PresetSubDir();
+                auto newproject = Project().ChangePreset(presetindex, {});
+                for(size_t partindex = 0; partindex < Project().Parts().size(); ++partindex)
+                {
+                    auto &part = newproject.Parts()[partindex];
+                    if(part.ActivePresetIndex() && (*part.ActivePresetIndex() == presetindex))
+                    {
+                        auto newpart = part.ChangeActivePresetIndex(std::nullopt);
+                        newproject = newproject.ChangePart(partindex, std::move(newpart));
+                    }
+                }
+                SetProject(std::move(newproject));
+                SaveProject();
+                if(!presetSubdir.empty())
+                {
+                    auto dirToDelete = PresetsDir() + "/" + presetSubdir;
+                    std::filesystem::remove_all(dirToDelete);
+                }
+            }
+        }
+    }
     void Engine::SaveCurrentPreset(size_t presetindex, const std::string &name)
     {
         if(Project().FocusedPart() && (*Project().FocusedPart() < Project().Parts().size()) && Project().Parts()[*Project().FocusedPart()].ActiveInstrumentIndex())
@@ -354,7 +445,7 @@ namespace engine
                 const auto &ownedplugin = m_OwnedPlugins[ownedpluginindex];
                 if(ownedplugin)
                 {
-                    auto presetDir = SavePresetForInstance(ownedplugin->Instance());
+                    auto presetDir = SavePresetForInstance(ownedplugin->pluginInstance()->Instance());
                     auto dirToDelete = presetDir;
                     utils::finally fin1([&](){
                         if(!dirToDelete.empty()) std::filesystem::remove_all(dirToDelete);
@@ -363,14 +454,22 @@ namespace engine
 
                     auto newproject = Project();
                     auto presets = newproject.QuickPresets();
+                    std::string oldpresetdir;
                     if(presetindex >= presets.size())
                     {
                         presets.resize(presetindex + 1);
                     }
-                    auto oldpresetdir = presets[presetindex]->PresetSubDir();
+                    else
+                    {
+                        if(presets[presetindex])
+                        {
+                            oldpresetdir = presets[presetindex]->PresetSubDir();
+                        }
+                    }
                     presets[presetindex] = project::TQuickPreset(instrindex, std::string(name), std::move(relativePresetDir));
                     newproject.SetPresets(std::move(presets));
-                    newproject = newproject.ChangePart(partindex, instrindex, presetindex, newproject.Parts().at(partindex).AmplitudeFactor());
+                    auto newpart = newproject.Parts().at(partindex).ChangeActivePresetIndex(presetindex).ChangeActiveInstrumentIndex(instrindex);
+                    newproject = newproject.ChangePart(partindex, std::move(newpart));
                     SetProject(std::move(newproject));
                     SaveProject();
                     dirToDelete.clear();
@@ -426,6 +525,46 @@ namespace engine
             prj = prj.Change(0,false);
             SetProject(std::move(prj));
         }
+        LoadReverbPreset();
+    }
+    void Engine::AddInstrument(const std::string &uri, bool shared)
+    {
+        std::string name;
+        {
+            auto uricopy = uri;
+            auto plugin = lilvutils::Plugin(lilvutils::Uri(std::move(uricopy)));
+            name = plugin.Name();
+        }
+        auto uricopy = uri;
+        project::Instrument newinstrument(std::move(uricopy), shared, std::move(name));
+        auto newproject = Project().AddInstrument(std::move(newinstrument));
+        SetProject(std::move(newproject));
+        SaveProject();
+    }
+    void Engine::DeleteInstrument(size_t instrumentindex)
+    {
+        std::vector<std::string> presetSubdirsToDelete;
+        for(const auto &preset: Project().QuickPresets())
+        {
+            if(preset)
+            {
+                if(preset->InstrumentIndex() == instrumentindex)
+                {
+                    if(!preset->PresetSubDir().empty())
+                    {
+                        presetSubdirsToDelete.push_back(preset->PresetSubDir());
+                    }
+                }
+            }
+        }
+        auto newproject = Project().DeleteInstrument(instrumentindex);
+        SetProject(std::move(newproject));
+        SaveProject();
+        for(const auto &presetSubdir: presetSubdirsToDelete)
+        {
+            auto dirToDelete = PresetsDir() + "/" + presetSubdir;
+            std::filesystem::remove_all(dirToDelete);
+        }
     }
     void Engine::SaveProject()
     {
@@ -452,6 +591,14 @@ namespace engine
             ProcessMessages();
         }
         m_JackClient.ShutDown();
+    }
+    std::string Engine::ReverbPluginName() const
+    {
+        if(m_ReverbInstance)
+        {
+            return m_ReverbInstance->Instance().plugin().Name();
+        }
+        return {};
     }
     void Engine::SetProject(project::Project &&project)
     {
@@ -483,12 +630,13 @@ namespace engine
     {
         m_RtProcessor.ProcessMessagesInMainThread();
         ApplyJackConnections(false);
-        if(m_Ui)
+        if(m_Ui && m_Ui->ui())
         {
-            if(m_Ui->ui())
-            {
-                m_Ui->ui()->CallIdle();
-            }
+            m_Ui->ui()->CallIdle();
+        }
+        if(m_UiForReverb && m_UiForReverb->ui())
+        {
+            m_UiForReverb->ui()->CallIdle();
         }
         if(m_NeedCloseUi)
         {
@@ -496,6 +644,15 @@ namespace engine
             if(Project().ShowUi())
             {
                 SetProject(Project().Change(Project().FocusedPart(), false));
+            }
+        }
+        if(m_NeedCloseReverbUi)
+        {
+            m_NeedCloseReverbUi = false;
+            if(Project().Reverb().ShowGui())
+            {
+                auto reverb = Project().Reverb().ChangeShowGui(false);
+                SetProject(Project().ChangeReverb(std::move(reverb)));
             }
         }
     }

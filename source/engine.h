@@ -19,18 +19,30 @@ namespace engine
         PluginInstance& operator=(const PluginInstance&) = delete;
         PluginInstance(PluginInstance&&) = delete;
         PluginInstance& operator=(PluginInstance&&) = delete;
-        PluginInstance(std::string &&uri, uint32_t samplerate, const std::optional<size_t> &owningPart, size_t owningInstrumentIndex, const realtimethread::Processor &processor) : m_Plugin(std::make_unique<lilvutils::Plugin>(lilvutils::Uri(std::move(uri)))), m_Instance(std::make_unique<lilvutils::Instance>(*m_Plugin, samplerate, processor.realtimeThreadInterface())), m_OwningPart(owningPart), m_OwningInstrumentIndex(owningInstrumentIndex)
+        PluginInstance(std::string &&uri, uint32_t samplerate, const realtimethread::Processor &processor) : m_Plugin(std::make_unique<lilvutils::Plugin>(lilvutils::Uri(std::move(uri)))), m_Instance(std::make_unique<lilvutils::Instance>(*m_Plugin, samplerate, processor.realtimeThreadInterface()))
         {
         }
         lilvutils::Plugin& Plugin() const { return *m_Plugin; }
         lilvutils::Instance& Instance() const { return *m_Instance; }
         const std::string& Lv2Uri() const { return Plugin().Lv2Uri(); }
-        const std::optional<size_t>& OwningPart() const { return m_OwningPart; }
-        const size_t& OwningInstrumentIndex() const { return m_OwningInstrumentIndex; }
 
     private:
         std::unique_ptr<lilvutils::Plugin> m_Plugin;
         std::unique_ptr<lilvutils::Instance> m_Instance;
+    };
+    class PluginInstanceForPart
+    {
+    public:
+        PluginInstanceForPart(std::string &&uri, uint32_t samplerate, const std::optional<size_t> &owningPart, size_t owningInstrumentIndex, const realtimethread::Processor &processor) : m_PluginInstance(std::make_unique<PluginInstance>(std::move(uri), samplerate,  processor)), m_OwningInstrumentIndex(owningInstrumentIndex), m_OwningPart(owningPart)
+        {
+        }
+        const std::unique_ptr<PluginInstance>& pluginInstance() const { return m_PluginInstance; }
+        std::unique_ptr<PluginInstance>& pluginInstance() { return m_PluginInstance; }
+        const size_t& OwningInstrumentIndex() const { return m_OwningInstrumentIndex; }
+        const std::optional<size_t>& OwningPart() const { return m_OwningPart; }
+
+    private:
+        std::unique_ptr<PluginInstance> m_PluginInstance;
         std::optional<size_t> m_OwningPart;
         size_t m_OwningInstrumentIndex;
     };
@@ -84,12 +96,17 @@ namespace engine
         void ChangeReverbLv2Uri(std::string &&uri);
         void LoadProject();
         void SaveProject();
+        std::string ReverbPluginName() const;
+        void LoadReverbPreset();
+        void DeletePreset(size_t presetindex);
+        void AddInstrument(const std::string &uri, bool shared);
+        void DeleteInstrument(size_t instrumentindex);
 
     private:
         void SyncRtData();
         void SyncPlugins(std::vector<std::unique_ptr<jackutils::Port>> &midiInPortsToDiscard, std::vector<std::unique_ptr<PluginInstance>> &pluginsToDiscard);
         realtimethread::Data CalcRtData() const;
-        const std::vector<std::unique_ptr<PluginInstance>>& OwnedPlugins() const { return m_OwnedPlugins; }
+        const std::vector<std::unique_ptr<PluginInstanceForPart>>& OwnedPlugins() const { return m_OwnedPlugins; }
         const std::vector<Part>& Parts() const { return m_Parts; }
 
     private:
@@ -97,10 +114,11 @@ namespace engine
         lilvutils::World m_LilvWorld;
         realtimethread::Processor m_RtProcessor {8192};
         project::Project m_Project;
-        std::vector<std::unique_ptr<PluginInstance>> m_OwnedPlugins;
+        std::vector<std::unique_ptr<PluginInstanceForPart>> m_OwnedPlugins;
         std::unique_ptr<PluginInstance> m_ReverbInstance;
         std::vector<Part> m_Parts;
         std::unique_ptr<OptionalUI> m_Ui;
+        std::unique_ptr<OptionalUI> m_UiForReverb;
         realtimethread::Data m_CurrentRtData;
         std::vector<std::unique_ptr<jackutils::Port>> m_AudioOutPorts;
         project::TJackConnections m_JackConnections;
@@ -109,6 +127,8 @@ namespace engine
         bool m_SafeToDestroy = false;
         std::string m_ProjectDir;
         std::unique_ptr<utils::NotifySink> m_UiClosedSink;
+        std::unique_ptr<utils::NotifySink> m_ReverbUiClosedSink;
         bool m_NeedCloseUi = false;
+        bool m_NeedCloseReverbUi = false;
     };
 }

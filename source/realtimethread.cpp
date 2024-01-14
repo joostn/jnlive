@@ -14,6 +14,8 @@ namespace realtimethread
             ProcessIncomingMidi(nframes);
             RunInstances(nframes);
             ProcessOutgoingAudio(nframes);
+            RunReverbInstance(nframes);
+            AddReverb(nframes);
             ProcessOutputPorts();
             ResetEvBufs();
             SendPendingAsyncFunctionMessages();
@@ -169,6 +171,44 @@ namespace realtimethread
                 plugin.PluginInstance().Run(nframes);
             }
         }
+        void Processor::RunReverbInstance(jack_nframes_t nframes)
+        {
+            if(!m_DataInRtThread) return;
+            const auto &data = *m_DataInRtThread;
+            if(data.ReverbInstance())
+            {
+                data.ReverbInstance()->Run(nframes);
+            }
+        }
+        void Processor::AddReverb(jack_nframes_t nframes)
+        {
+            if(!m_DataInRtThread) return;
+            const auto &data = *m_DataInRtThread;
+            std::array<float*, 2> mixedAudioPorts = {
+                data.OutputAudioPorts()[0]? (float*)jack_port_get_buffer(data.OutputAudioPorts()[0], nframes) : nullptr,
+                data.OutputAudioPorts()[1]? (float*)jack_port_get_buffer(data.OutputAudioPorts()[1], nframes) : nullptr
+            };
+            bool hasoutputaudio = mixedAudioPorts[0] && mixedAudioPorts[1];
+            if(hasoutputaudio && data.ReverbInstance() && data.ReverbLevel() != 0.0f)
+            {
+                // copy mixed audio to reverb input:
+                for(size_t channel: {0,1})
+                {
+                    auto portindexOrNull = data.ReverbInstance()->plugin().OutputAudioPortIndices()[channel];
+                    if(portindexOrNull)
+                    {
+                        auto portindex = *portindexOrNull;
+                        auto outputAudioPort = dynamic_cast<lilvutils::TConnection<lilvutils::TAudioPort>*>(data.ReverbInstance()->Connections().at(portindex).get());
+                        auto reverbOutputBuffer = outputAudioPort->Buffer();
+                        auto mixedAudioBuffer = mixedAudioPorts[channel];
+                        for(size_t i = 0; i < nframes; ++i)
+                        {
+                            mixedAudioBuffer[i] += data.ReverbLevel() * reverbOutputBuffer[i];
+                        }
+                    }
+                }
+            }
+        }
         void Processor::ProcessOutgoingAudio(jack_nframes_t nframes)
         {
             if(!m_DataInRtThread) return;
@@ -203,6 +243,23 @@ namespace realtimethread
                     }
                 }
             }
+            if(hasoutputaudio && data.ReverbInstance())
+            {
+                // copy mixed audio to reverb input:
+                for(size_t channel: {0,1})
+                {
+                    auto portindexOrNull = data.ReverbInstance()->plugin().InputAudioPortIndices()[channel];
+                    if(portindexOrNull)
+                    {
+                        auto portindex = *portindexOrNull;
+                        auto inputAudioPort = dynamic_cast<lilvutils::TConnection<lilvutils::TAudioPort>*>(data.ReverbInstance()->Connections().at(portindex).get());
+                        auto reverbInputBuffer = inputAudioPort->Buffer();
+                        auto mixedAudioBuffer = mixedAudioPorts[channel];
+                        std::copy(mixedAudioBuffer, mixedAudioBuffer + nframes, reverbInputBuffer);
+                    }
+                }
+            }
+
         }
         void Processor::ProcessIncomingMidi(jack_nframes_t nframes)
         {
