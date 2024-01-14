@@ -494,63 +494,18 @@ namespace lilvutils
         UI& operator=(const UI&) = delete;
         UI(UI&&) = delete;
         UI& operator=(UI&&) = delete;
-        LV2UI_Request_Value_Status RequestValue(LV2_URID key, LV2_URID type, const LV2_Feature *const *features)
-        {
-            return LV2UI_REQUEST_VALUE_ERR_UNSUPPORTED;
-        }
+        LV2UI_Request_Value_Status RequestValue(LV2_URID key, LV2_URID type, const LV2_Feature *const *features);
         UI(Instance &instance);
         ~UI();
 
         void CallIdle();
         utils::NotifySource& OnClose() {return m_OnClose;}
         Instance &instance() {return m_Instance;}
-        void OnControlValueChanged(uint32_t portindex, float value)
-        {
-            if(m_SuilInstance)
-            {
-                suil_instance_port_event(m_SuilInstance, portindex, 4, 0, &value);
-            }
-        }
+        void OnControlValueChanged(uint32_t portindex, float value);
         void OnAtomPortMessage(uint32_t portindex, LV2_URID type, uint32_t datasize, const void *data);
-        uint32_t PortIndex(const char *port_symbol) const
-        {
-            std::string port_symbol_str(port_symbol);
-            auto port = m_Instance.plugin().PortBySymbol(port_symbol_str);
-            if(port)
-            {
-                return (uint32_t)port->Index();
-            }
-            return LV2UI_INVALID_PORT_INDEX; 
-        }
-        void PortWrite(uint32_t port_index, uint32_t buffer_size, uint32_t protocol, void const *buffer)
-        {
-            if(port_index < m_Instance.Connections().size())
-            {
-                auto connection = m_Instance.Connections().at(port_index).get();
-                if(protocol == 0)
-                {
-                    if(auto controlconnection = dynamic_cast<TConnection<TControlPort>*>(connection))
-                    {
-                        instance().realtimeThreadInterface().SendControlValueFunc(controlconnection, *(float*)buffer);
-                    }
-                }
-                else if (protocol == m_Uridatom_eventTransfer)
-                {
-                    if(auto atomconnection = dynamic_cast<TConnection<TAtomPort>*>(connection))
-                    {
-                        auto  atom = (const LV2_Atom*)buffer;
-                        if (buffer_size > sizeof(LV2_Atom)) 
-                        {
-                            if (sizeof(LV2_Atom) + atom->size == buffer_size)
-                            {
-                                instance().realtimeThreadInterface().SendAtomPortEventFunc(atomconnection, 0, 0, atom->type, atom->size, atom + 1U);
-                            }
-                        }
-                    }
-                }
-            }
+        uint32_t PortIndex(const char *port_symbol) const;
+        void PortWrite(uint32_t port_index, uint32_t buffer_size, uint32_t protocol, void const *buffer);
 
-        }
     private:
         struct TUiToShow
         {

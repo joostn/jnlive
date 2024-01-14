@@ -10,6 +10,7 @@
 #include "suil/suil.h"
 #include <filesystem>
 #include "lv2_external_ui.h"
+#include <iostream>
 
 namespace 
 {
@@ -388,6 +389,8 @@ namespace lilvutils
         bool canInstantiate = false;
         m_Ports = GetPluginPorts(m_Plugin, canInstantiate);
         m_CanInstantiate = canInstantiate;
+        std::vector<size_t> unnamedOutputAudioPorts;
+        std::vector<size_t> unnamedInputAudioPorts;
         for(size_t portindex = 0; portindex < m_Ports.size(); portindex++)
         {
             const auto& port = m_Ports[portindex];
@@ -395,33 +398,19 @@ namespace lilvutils
             if(auto audioport = dynamic_cast<const TAudioPort*>(port.get()); audioport)
             {
                 auto &portindices = (audioport->Direction() == TAudioPort::TDirection::Output)? m_AudioOutputIndex:m_AudioInputIndex;
+                auto &unnamedportindices = (audioport->Direction() == TAudioPort::TDirection::Output)? unnamedOutputAudioPorts:unnamedInputAudioPorts;
                 {
                     if(audioport->Designation() == TAudioPort::TDesignation::StereoLeft)
                     {
                         portindices[0] = portindex;
-                        if(!portindices[1])
-                        {
-                            portindices[1] = portindex;
-                        }
                     }
                     else if(audioport->Designation() == TAudioPort::TDesignation::StereoRight)
                     {
                         portindices[1] = portindex;
-                        if(!portindices[0])
-                        {
-                            portindices[0] = portindex;
-                        }
                     }
                     else
                     {
-                        if(!portindices[0])
-                        {
-                            portindices[0] = portindex;
-                        }
-                        if(!portindices[1])
-                        {
-                            portindices[1] = portindex;
-                        }
+                        unnamedportindices.push_back(portindex);
                     }
                 }
             }
@@ -445,6 +434,38 @@ namespace lilvutils
                     }
                 }
             }
+        }
+        if(!m_AudioOutputIndex[0])
+        {
+            if(unnamedOutputAudioPorts.size() >= 1)
+            {
+                m_AudioOutputIndex[0] = unnamedOutputAudioPorts[0];
+            }        
+        }
+        if(!m_AudioOutputIndex[1])
+        {
+            if(unnamedOutputAudioPorts.size() >= 2)
+            {
+                m_AudioOutputIndex[1] = unnamedOutputAudioPorts[1];
+            }        
+            else if(unnamedOutputAudioPorts.size() >= 2)
+            {
+                m_AudioOutputIndex[1] = unnamedOutputAudioPorts[0];
+            }        
+        }
+        if(!m_AudioInputIndex[0])
+        {
+            if(unnamedInputAudioPorts.size() >= 1)
+            {
+                m_AudioInputIndex[0] = unnamedInputAudioPorts[0];
+            }        
+        }
+        if(!m_AudioInputIndex[1])
+        {
+            if(unnamedInputAudioPorts.size() >= 2)
+            {
+                m_AudioInputIndex[1] = unnamedInputAudioPorts[1];
+            }        
         }
     }
 
@@ -570,6 +591,7 @@ namespace lilvutils
                 return const_cast<void*>((const void*)&controlconnection->ValueInMainThread());
             }
         }
+        std::cout << "GetPortValueBySymbol: port not found: " << port_symbol << std::endl;
         return nullptr;
     }
 
@@ -604,8 +626,10 @@ namespace lilvutils
                     throw std::runtime_error("unsupported type");
                 }
                 realtimeThreadInterface().SendControlValueFunc(controlconnection, fvalue);
+                return;
             }
         }
+        std::cout << "SetPortValueBySymbol: port not found: " << port_symbol << std::endl;
     }
 
     void Instance::LoadState(const std::string &dir)
@@ -789,68 +813,6 @@ namespace lilvutils
         features.push_back(&external_kx_feature);
         features.push_back(nullptr);
 
-        // lilvutils::Uri uri_extensionData(LV2_CORE__extensionData);
-        // lilvutils::Uri uri_showInterface(LV2_UI__showInterface);
-
-        // lilvutils::Uri uri_native_ui_type(container_type_uri);
-        // const LilvUI* uiToShow = nullptr;
-        // auto uis = lilv_plugin_get_uis(m_Instance.plugin().get());
-        // utils::finally fin1([&]() {  if(uis) lilv_uis_free(uis); });
-        // //LV2_External_UI_Widget* extuiptr = nullptr;
-        // const LilvNode *ui_type = nullptr; // must not be freed by caller
-        // bool externalUi = false;
-        // if(uis)
-        // {
-        //     // Try to find a UI with ui:showInterface
-        //     LILV_FOREACH (uis, u, uis) {
-        //         const LilvUI*   ui      = lilv_uis_get(uis, u);
-        //         const LilvNode* ui_node = lilv_ui_get_uri(ui);
-
-        //         lilv_world_load_resource(World::Static().get(), ui_node);
-        //         utils::finally fin2([&]() {  lilv_world_unload_resource(World::Static().get(), ui_node); });
-
-        //         ui_type = nullptr; // must not be freed by caller
-        //         bool supported = lilv_ui_is_supported(ui, suil_ui_supported, uri_native_ui_type.get(), &ui_type);
-
-        //         if (supported) 
-        //         {
-        //             uiToShow = ui;
-        //             break;
-        //         }
-        //         else
-        //         {
-        //             // bool supported2 = lilv_world_ask(World::Static().get(), ui_node, uri_extensionData.get(), uri_showInterface.get());
-        //             // if(supported2)
-        //             // {
-        //             //     uiToShow = ui;
-        //             //     break;
-        //             // }
-
-
-		// 	const LilvNodes* types = lilv_ui_get_classes(ui);
-		// 	LILV_FOREACH(nodes, t, types) {
-		// 		const char * pt = lilv_node_as_uri(lilv_nodes_get(types, t));
-		// 		if (!strcmp(pt, "http://kxstudio.sf.net/ns/lv2ext/external-ui#Widget")) {
-		// 			externalUi = true;
-		// 			uiToShow = ui;
-		// 			ui_type = jalv.nodes.ui_externalkx;
-		// 		} else if (!strcmp(pt, "http://lv2plug.in/ns/extensions/ui#external")) {
-		// 			externalUi = true;
-		// 			ui_type = jalv.nodes.ui_externallv;
-		// 			uiToShow = ui;
-		// 		}
-		// 	}
-		// }
-
-        //         }
-
-        //     }
-        // }
-        // if(!uiToShow)
-        // {
-        //     throw std::runtime_error("No UI found");
-        // }
-
         std::string container_type_uri;
         if(uiToShow.m_IsExternalUi)
         {
@@ -973,5 +935,61 @@ namespace lilvutils
             }
         }
     }
+
+    void UI::OnControlValueChanged(uint32_t portindex, float value)
+    {
+        if(m_SuilInstance)
+        {
+            suil_instance_port_event(m_SuilInstance, portindex, 4, 0, &value);
+        }
+    }
+    uint32_t UI::PortIndex(const char *port_symbol) const
+    {
+        std::string port_symbol_str(port_symbol);
+        auto port = m_Instance.plugin().PortBySymbol(port_symbol_str);
+        if(port)
+        {
+            return (uint32_t)port->Index();
+        }
+        return LV2UI_INVALID_PORT_INDEX; 
+    }
+    void UI::PortWrite(uint32_t port_index, uint32_t buffer_size, uint32_t protocol, void const *buffer)
+    {
+        if(port_index < m_Instance.Connections().size())
+        {
+            auto connection = m_Instance.Connections().at(port_index).get();
+            if(protocol == 0)
+            {
+                if(auto controlconnection = dynamic_cast<TConnection<TControlPort>*>(connection))
+                {
+                    instance().realtimeThreadInterface().SendControlValueFunc(controlconnection, *(float*)buffer);
+                    return;
+                }
+            }
+            else if (protocol == m_Uridatom_eventTransfer)
+            {
+                if(auto atomconnection = dynamic_cast<TConnection<TAtomPort>*>(connection))
+                {
+                    auto  atom = (const LV2_Atom*)buffer;
+                    if (buffer_size > sizeof(LV2_Atom)) 
+                    {
+                        if (sizeof(LV2_Atom) + atom->size == buffer_size)
+                        {
+                            instance().realtimeThreadInterface().SendAtomPortEventFunc(atomconnection, 0, 0, atom->type, atom->size, atom + 1U);
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+        std::cout << "UI::PortWrite: failed" << std::endl;
+
+    }
+
+    LV2UI_Request_Value_Status UI::RequestValue(LV2_URID key, LV2_URID type, const LV2_Feature *const *features)
+    {
+        return LV2UI_REQUEST_VALUE_ERR_UNSUPPORTED;
+    }
+
 }
 
