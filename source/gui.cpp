@@ -496,13 +496,19 @@ public:
             }
 
             std::vector<std::unique_ptr<Gtk::ToggleButton>> presetButtons;
+            for(const auto &b: m_PresetButtons)
+            {
+                m_PresetsFlowBox.remove(*b);
+            }
+            m_PresetButtons.clear();
             for(size_t presetIndex = 0; presetIndex < project.QuickPresets().size(); presetIndex++)
             {
                 const auto &preset = project.QuickPresets()[presetIndex];
                 if(preset)
                 {
                     std::unique_ptr<Gtk::ToggleButton> button;
-                    if(m_PresetButtons.size() > presetButtons.size())
+                    //if(m_PresetButtons.size() > presetButtons.size())
+                    if(false)
                     {
                         button = std::move(m_PresetButtons[presetButtons.size()]);
                     }

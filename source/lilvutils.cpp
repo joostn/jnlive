@@ -781,7 +781,8 @@ namespace lilvutils
                 self->OnClose().Notify();
             }
         };
-        m_ExternalUiHost.plugin_human_id = nullptr;
+        auto human_id = m_Instance.plugin().Name();
+        m_ExternalUiHost.plugin_human_id = human_id.c_str();
 		LV2_Feature external_lv_feature = { LV2_EXTERNAL_UI_DEPRECATED_URI, &m_ExternalUiHost };
         features.push_back(&external_lv_feature);
 		LV2_Feature external_kx_feature = { LV2_EXTERNAL_UI__Host, &m_ExternalUiHost };

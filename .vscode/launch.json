@@ -11,7 +11,8 @@
             "initCommands": [
             ],
             "env": {
-                "GDK_BACKEND": "x11"
+                "// LD_LIBRARY_PATH": "/home/joostn/suil/build",
+                "GDK_BACKEND": "x11",
                 // "GTK_DEBUG": "interactive",
             },
         }
