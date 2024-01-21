@@ -38,7 +38,7 @@ namespace engine
         lilvutils::Instance& Instance() const { return *m_Instance; }
         const std::string& Lv2Uri() const { return Plugin().Lv2Uri(); }
         const std::unique_ptr<OptionalUI>& Ui() const { return m_Ui; }
-        void SetUi(const std::unique_ptr<OptionalUI>& ui) { m_Ui = ui; }
+        void SetUi(std::unique_ptr<OptionalUI>&& ui) { m_Ui = std::move(ui); }
 
     private:
         std::unique_ptr<lilvutils::Plugin> m_Plugin;
