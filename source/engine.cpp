@@ -234,17 +234,14 @@ namespace engine
         for(const auto &ownedplugin: ownedPlugins)
         {
             bool isfocused = false;
-            if(ownedplugin->OwningPart())
+            if(Project().FocusedPart())
             {
-                if(Project().FocusedPart())
+                if( (ownedplugin->OwningPart() && (*Project().FocusedPart() == *ownedplugin->OwningPart()))
+                    || (!ownedplugin->OwningPart()))
                 {
-                    if( (ownedplugin->OwningPart() && (*Project().FocusedPart() == *ownedplugin->OwningPart()))
-                        || (!ownedplugin->OwningPart()))
+                    if(Project().Parts().at(*Project().FocusedPart()).ActiveInstrumentIndex() == ownedplugin->OwningInstrumentIndex())
                     {
-                        if(Project().Parts().at(*Project().FocusedPart()).ActiveInstrumentIndex() == ownedplugin->OwningInstrumentIndex())
-                        {
-                            isfocused = true;
-                        }
+                        isfocused = true;
                     }
                 }
             }
@@ -276,7 +273,7 @@ namespace engine
             }
             else
             {
-                if(ownedplugin->pluginInstance() && ownedplugin->pluginInstance()->Ui()->ui())
+                if(ownedplugin->pluginInstance() && ownedplugin->pluginInstance()->Ui() && ownedplugin->pluginInstance()->Ui()->ui())
                 {
                     if(ownedplugin->pluginInstance()->Ui()->ui()->CanHide())
                     {
@@ -336,9 +333,9 @@ namespace engine
             }
             else
             {
-                if(m_ReverbInstance->Ui()->ui())
+                if(m_ReverbInstance->Ui())
                 {
-                    if(m_ReverbInstance->Ui()->ui()->CanHide())
+                    if(m_ReverbInstance->Ui()->ui() && m_ReverbInstance->Ui()->ui()->CanHide())
                     {
                         m_ReverbInstance->Ui()->ui()->SetShown(false);
                     }

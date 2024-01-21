@@ -709,42 +709,48 @@ namespace lilvutils
         //LV2_External_UI_Widget* extuiptr = nullptr;
         if(uis)
         {
-            // Try to find a UI with ui:showInterface
-            LILV_FOREACH (uis, u, uis) {
-                auto ui = lilv_uis_get(uis, u);
-                auto ui_node = lilv_ui_get_uri(ui);
-                if(ui_node)
-                {
-                    lilv_world_load_resource(World::Static().get(), ui_node);
-                    utils::finally fin2([&]() {  lilv_world_unload_resource(World::Static().get(), ui_node); });
-                    const LilvNode *ui_type = nullptr; // must not be freed by caller
-                    bool supported = lilv_ui_is_supported(ui, suil_ui_supported, uri_native_ui_type.get(), &ui_type);
-                    if (supported) 
+            for(bool tryExternalUi: {false, true})
+            {
+                // Try to find a UI with ui:showInterface
+                LILV_FOREACH (uis, u, uis) {
+                    auto ui = lilv_uis_get(uis, u);
+                    auto ui_node = lilv_ui_get_uri(ui);
+                    if(ui_node)
                     {
-                        // ok, we have an embeddable UI which can be instantiated as a GTK3 widget:
-                        if(!ui_type)
+                        lilv_world_load_resource(World::Static().get(), ui_node);
+                        utils::finally fin2([&]() {  lilv_world_unload_resource(World::Static().get(), ui_node); });
+                        const LilvNode *ui_type = nullptr; // must not be freed by caller
+                        bool supported = lilv_ui_is_supported(ui, suil_ui_supported, uri_native_ui_type.get(), &ui_type);
+                        if (supported) 
                         {
-                            throw std::runtime_error("ui_type is null");
-                        }
-                        result.m_Ui = ui;
-                        result.m_IsExternalUi = false;
-                        result.m_UiTypeUri = lilv_node_as_uri(ui_type);
-                        return result;
-                    }
-                    else
-                    {
-                        auto types = lilv_ui_get_classes(ui); // result must not be freed
-                        LILV_FOREACH(nodes, t, types) {
-                            auto pt = lilv_node_as_uri(lilv_nodes_get(types, t));
-                            if(pt)
+                            if(!tryExternalUi)
                             {
-                                std::string typestr = pt;
-                                if( (typestr == "http://kxstudio.sf.net/ns/lv2ext/external-ui#Widget") || (typestr == "http://lv2plug.in/ns/extensions/ui#external") )
+                                // ok, we have an embeddable UI which can be instantiated as a GTK3 widget:
+                                if(!ui_type)
                                 {
-                                    result.m_Ui = ui;
-                                    result.m_IsExternalUi = true;
-                                    result.m_UiTypeUri = typestr;
-                                    return result;
+                                    throw std::runtime_error("ui_type is null");
+                                }
+                                result.m_Ui = ui;
+                                result.m_IsExternalUi = false;
+                                result.m_UiTypeUri = lilv_node_as_uri(ui_type);
+                                return result;
+                            }
+                        }
+                        else if(tryExternalUi)
+                        {
+                            auto types = lilv_ui_get_classes(ui); // result must not be freed
+                            LILV_FOREACH(nodes, t, types) {
+                                auto pt = lilv_node_as_uri(lilv_nodes_get(types, t));
+                                if(pt)
+                                {
+                                    std::string typestr = pt;
+                                    if( (typestr == "http://kxstudio.sf.net/ns/lv2ext/external-ui#Widget") || (typestr == "http://lv2plug.in/ns/extensions/ui#external") )
+                                    {
+                                        result.m_Ui = ui;
+                                        result.m_IsExternalUi = true;
+                                        result.m_UiTypeUri = typestr;
+                                        return result;
+                                    }
                                 }
                             }
                         }
@@ -902,11 +908,27 @@ namespace lilvutils
         }
     }
 
+    void lilvutils::UI::ContainerWindow::Show(bool show)
+    {
+        m_NoHideSignalRecurse = true;
+        utils::finally fin([&](){
+            m_NoHideSignalRecurse = false;
+        });
+        set_visible(show);
+    }
+
     lilvutils::UI::ContainerWindow::ContainerWindow(UI &ui) : m_UI(ui), Gtk::Window(Gtk::WINDOW_TOPLEVEL)
     {
         set_resizable(true);
         signal_hide().connect([&](){
-            m_UI.OnClose().Notify();
+            if(!m_NoHideSignalRecurse)
+            {
+                m_NoHideSignalRecurse = true;
+                utils::finally fin([&](){
+                    m_NoHideSignalRecurse = false;
+                });
+                m_UI.OnClose().Notify();
+            }
         });
 
         auto vbox = Gtk::make_managed<Gtk::Box>(Gtk::ORIENTATION_VERTICAL, 0);
@@ -990,6 +1012,27 @@ namespace lilvutils
     {
         return LV2UI_REQUEST_VALUE_ERR_UNSUPPORTED;
     }
-
+    bool UI::IsShown() const
+    {
+        if(m_ExternalUiWidget)
+        {
+            return true;
+        }
+        else
+        {
+            return m_ContainerWindow->get_visible();
+        }
+    }
+    void UI::SetShown(bool shown)
+    {
+        if(m_ContainerWindow)
+        {
+            m_ContainerWindow->Show(shown);
+        }
+    }
+    bool UI::CanHide() const
+    {
+        return m_ContainerWindow;
+    }
 }
 

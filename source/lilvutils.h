@@ -486,9 +486,12 @@ namespace lilvutils
             {
                 m_Container->remove();
             }
+            void Show(bool show);
+
         private:
             UI &m_UI;
             Gtk::EventBox *m_Container = nullptr;
+            bool m_NoHideSignalRecurse = false;
         };
         UI(const UI&) = delete;
         UI& operator=(const UI&) = delete;
