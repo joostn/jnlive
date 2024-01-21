@@ -231,46 +231,64 @@ namespace engine
                 plugin = {};
             }
         }
-        std::unique_ptr<OptionalUI> optionalui;
-        if(Project().ShowUi())
+        for(const auto &ownedplugin: ownedPlugins)
         {
-            if(Project().FocusedPart() && (*Project().FocusedPart() < Project().Parts().size()) && Project().Parts()[*Project().FocusedPart()].ActiveInstrumentIndex())
+            bool isfocused = false;
+            if(ownedplugin->OwningPart())
             {
-                auto partindex = *Project().FocusedPart();
-                const auto &instrumentindex2ownedpluginindex = partindex2instrumentindex2ownedpluginindex[partindex];
-                auto instrindex = *Project().Parts()[partindex].ActiveInstrumentIndex();
-                if( (instrindex >= 0) && (instrindex < instrumentindex2ownedpluginindex.size()) )
+                if(Project().FocusedPart())
                 {
-                    auto ownedpluginindex = instrumentindex2ownedpluginindex[instrindex];
-                    const auto &ownedplugin = ownedPlugins[ownedpluginindex];
-                    if(ownedplugin)
+                    if( (ownedplugin->OwningPart() && (*Project().FocusedPart() == *ownedplugin->OwningPart()))
+                        || (!ownedplugin->OwningPart()))
                     {
-                        auto &instance = ownedplugin->pluginInstance()->Instance();
-                        if(m_Ui && &m_Ui->instance() == &instance)
+                        if(Project().Parts().at(*Project().FocusedPart()).ActiveInstrumentIndex() == ownedplugin->OwningInstrumentIndex())
                         {
-                            optionalui = std::move(m_Ui);
-                        }
-                        else
-                        {
-                            std::unique_ptr<lilvutils::UI> ui;
-                            try
-                            {
-                                ui = std::make_unique<lilvutils::UI>(instance);
-                                m_UiClosedSink = std::make_unique<utils::NotifySink>(ui->OnClose(), [this](){
-                                    m_NeedCloseUi = true;
-                                });
-                            }
-                            catch(std::exception &e)
-                            {
-                                std::cerr << "Failed to create UI for plugin " << instance.plugin().Lv2Uri() << ": " << e.what() << std::endl;
-                            }
-                            optionalui = std::make_unique<OptionalUI>(instance, std::move(ui));
+                            isfocused = true;
                         }
                     }
                 }
             }
+            bool showgui = isfocused && Project().ShowUi();
+            if(showgui)
+            {
+                if(!ownedplugin->pluginInstance()->Ui())
+                {
+                    auto &instance = ownedplugin->pluginInstance()->Instance();
+                    std::unique_ptr<lilvutils::UI> ui;
+                    try
+                    {
+                        ui = std::make_unique<lilvutils::UI>(instance);
+                        m_UiClosedSink = std::make_unique<utils::NotifySink>(ui->OnClose(), [this](){
+                            m_NeedCloseUi = true;
+                        });
+                    }
+                    catch(std::exception &e)
+                    {
+                        std::cerr << "Failed to create UI for plugin " << instance.plugin().Lv2Uri() << ": " << e.what() << std::endl;
+                    }
+                    auto optionalui = std::make_unique<OptionalUI>(instance, std::move(ui));
+                    ownedplugin->pluginInstance()->SetUi(std::move(optionalui));
+                }
+                if(ownedplugin->pluginInstance()->Ui()->ui())
+                {
+                    ownedplugin->pluginInstance()->Ui()->ui()->SetShown(true);
+                }
+            }
+            else
+            {
+                if(ownedplugin->pluginInstance() && ownedplugin->pluginInstance()->Ui()->ui())
+                {
+                    if(ownedplugin->pluginInstance()->Ui()->ui()->CanHide())
+                    {
+                        ownedplugin->pluginInstance()->Ui()->ui()->SetShown(false);
+                    }
+                    else
+                    {
+                        ownedplugin->pluginInstance()->SetUi({});
+                    }
+                }
+            }
         }
-
         if(!Project().Reverb().ReverbLv2Uri().empty())
         {
             auto uri = Project().Reverb().ReverbLv2Uri();
@@ -290,17 +308,11 @@ namespace engine
                 pluginsToDiscard.push_back(std::move(m_ReverbInstance));
             }
         }
-
-        std::unique_ptr<OptionalUI> optionaluiforreverb;
-        if(Project().Reverb().ShowGui())
+        if(m_ReverbInstance)
         {
-            if(m_ReverbInstance)
+            if(Project().Reverb().ShowGui())
             {
-                if(m_UiForReverb && &m_UiForReverb->instance() == &m_ReverbInstance->Instance())
-                {
-                    optionaluiforreverb = std::move(m_UiForReverb);
-                }
-                else
+                if(!m_ReverbInstance->Ui())
                 {
                     std::unique_ptr<lilvutils::UI> ui;
                     try
@@ -314,14 +326,31 @@ namespace engine
                     {
                         std::cerr << "Failed to create UI for reverb plugin " << m_ReverbInstance->Instance().plugin().Lv2Uri() << ": " << e.what() << std::endl;
                     }
-                    optionaluiforreverb = std::make_unique<OptionalUI>(m_ReverbInstance->Instance(), std::move(ui));
+                    auto optionaluiforreverb = std::make_unique<OptionalUI>(m_ReverbInstance->Instance(), std::move(ui));
+                    m_ReverbInstance->SetUi(std::move(optionaluiforreverb));
+                }
+                if(m_ReverbInstance->Ui()->ui())
+                {
+                    m_ReverbInstance->Ui()->ui()->SetShown(true);
+                }
+            }
+            else
+            {
+                if(m_ReverbInstance->Ui()->ui())
+                {
+                    if(m_ReverbInstance->Ui()->ui()->CanHide())
+                    {
+                        m_ReverbInstance->Ui()->ui()->SetShown(false);
+                    }
+                    else
+                    {
+                        m_ReverbInstance->SetUi({});
+                    }
                 }
             }
         }
         m_OwnedPlugins = std::move(ownedPlugins);
         m_Parts = std::move(newparts);
-        m_Ui = std::move(optionalui);
-        m_UiForReverb = std::move(optionaluiforreverb);
     }
     void Engine::LoadCurrentPreset()
     {
@@ -630,13 +659,16 @@ namespace engine
     {
         m_RtProcessor.ProcessMessagesInMainThread();
         ApplyJackConnections(false);
-        if(m_Ui && m_Ui->ui())
+        for(const auto &plugin: OwnedPlugins())
         {
-            m_Ui->ui()->CallIdle();
+            if(plugin->pluginInstance() && plugin->pluginInstance()->Ui() && plugin->pluginInstance()->Ui()->ui())
+            {
+                plugin->pluginInstance()->Ui()->ui()->CallIdle();
+            }
         }
-        if(m_UiForReverb && m_UiForReverb->ui())
+        if(m_ReverbInstance && m_ReverbInstance->Ui())
         {
-            m_UiForReverb->ui()->CallIdle();
+            m_ReverbInstance->Ui()->ui()->CallIdle();
         }
         if(m_NeedCloseUi)
         {

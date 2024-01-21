@@ -505,6 +505,10 @@ namespace lilvutils
         void OnAtomPortMessage(uint32_t portindex, LV2_URID type, uint32_t datasize, const void *data);
         uint32_t PortIndex(const char *port_symbol) const;
         void PortWrite(uint32_t port_index, uint32_t buffer_size, uint32_t protocol, void const *buffer);
+        bool IsShown() const;
+        void SetShown(bool shown);
+        bool CanHide() const;  // we can only hide native UIs. External UIs must be destroyed in order to hide them.
+        
 
     private:
         struct TUiToShow

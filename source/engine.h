@@ -12,6 +12,18 @@
 
 namespace engine
 {
+    class OptionalUI
+    {
+    public:
+        OptionalUI(lilvutils::Instance &instance, std::unique_ptr<lilvutils::UI> &&ui) : m_Instance(instance), m_Ui(std::move(ui))
+        {
+        }
+        lilvutils::Instance &instance() const { return m_Instance; }
+        std::unique_ptr<lilvutils::UI>& ui() { return m_Ui; }
+    private:
+        lilvutils::Instance &m_Instance;
+        std::unique_ptr<lilvutils::UI> m_Ui;
+    };
     class PluginInstance
     {
     public:
@@ -25,10 +37,13 @@ namespace engine
         lilvutils::Plugin& Plugin() const { return *m_Plugin; }
         lilvutils::Instance& Instance() const { return *m_Instance; }
         const std::string& Lv2Uri() const { return Plugin().Lv2Uri(); }
+        const std::unique_ptr<OptionalUI>& Ui() const { return m_Ui; }
+        void SetUi(const std::unique_ptr<OptionalUI>& ui) { m_Ui = ui; }
 
     private:
         std::unique_ptr<lilvutils::Plugin> m_Plugin;
         std::unique_ptr<lilvutils::Instance> m_Instance;
+        std::unique_ptr<OptionalUI> m_Ui;
     };
     class PluginInstanceForPart
     {
@@ -49,18 +64,6 @@ namespace engine
     class Engine
     {
     public:
-        class OptionalUI
-        {
-        public:
-            OptionalUI(lilvutils::Instance &instance, std::unique_ptr<lilvutils::UI> &&ui) : m_Instance(instance), m_Ui(std::move(ui))
-            {
-            }
-            lilvutils::Instance &instance() const { return m_Instance; }
-            std::unique_ptr<lilvutils::UI>& ui() { return m_Ui; }
-        private:
-            lilvutils::Instance &m_Instance;
-            std::unique_ptr<lilvutils::UI> m_Ui;
-        };
         class Part
         {
         public:
@@ -117,8 +120,8 @@ namespace engine
         std::vector<std::unique_ptr<PluginInstanceForPart>> m_OwnedPlugins;
         std::unique_ptr<PluginInstance> m_ReverbInstance;
         std::vector<Part> m_Parts;
-        std::unique_ptr<OptionalUI> m_Ui;
-        std::unique_ptr<OptionalUI> m_UiForReverb;
+//        std::unique_ptr<OptionalUI> m_Ui;
+//        std::unique_ptr<OptionalUI> m_UiForReverb;
         realtimethread::Data m_CurrentRtData;
         std::vector<std::unique_ptr<jackutils::Port>> m_AudioOutPorts;
         project::TJackConnections m_JackConnections;
