@@ -73,6 +73,8 @@ namespace realtimethread
             using TCallback = std::function<void(const midi::TMidiOrSysexEvent &event)>;
             TMidiAuxInPort(jack_port_t *port, const TCallback  *callback) : m_Port(port), m_Callback(std::move(callback)) {}
             auto operator<=>(const TMidiAuxInPort&) const = default;
+            jack_port_t* Port() const { return m_Port; }
+            const TCallback* Callback() const { return m_Callback; }
 
         private:
             jack_port_t *m_Port = nullptr;
@@ -179,6 +181,26 @@ namespace realtimethread
         }
     private:
         std::function<void()> *m_Function;
+    };
+    class AuxMidiInMessage : public ringbuf::PacketBase
+    {
+    public:
+        AuxMidiInMessage(const void *data, size_t size, const Data::TMidiAuxInPort::TCallback *callback) : ringbuf::PacketBase(size, data), m_Callback(callback) {}
+        void Call() const
+        {
+            //  called in main thread
+            if(m_Callback)
+            {
+                if(midi::TMidiOrSysexEvent::IsSupported(this->AdditionalDataBuf(), AdditionalDataSize()))
+                {
+                    midi::TMidiOrSysexEvent event(this->AdditionalDataBuf(), AdditionalDataSize());
+                    (*m_Callback)(event);
+                }
+            }
+        }
+
+    private:
+        const Data::TMidiAuxInPort::TCallback *m_Callback;
     };
     class Processor
     {

@@ -82,7 +82,14 @@ namespace ringbuf
 
             if(sizeof(T) + packet.AdditionalDataSize() > MaxPacketSize())
             {
-                throw std::runtime_error("packet larger than  MaxPacketSize");
+                if(throwiffail)
+                {
+                    throw std::runtime_error("packet larger than  MaxPacketSize");
+                }
+                else
+                {
+                    return false;
+                }
             }
             auto writesize = sizeof(header) + packet.AdditionalDataSize() + sizeof(T);
             if(writesize >  zix_ring_write_space(m_Ring))
