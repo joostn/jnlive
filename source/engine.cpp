@@ -256,7 +256,11 @@ namespace engine
                     {
                         ui = std::make_unique<lilvutils::UI>(instance);
                         m_UiClosedSink = std::make_unique<utils::NotifySink>(ui->OnClose(), [this](){
-                            m_NeedCloseUi = true;
+                            if(Project().ShowUi())
+                            {
+                                auto newproject = Project().Change(Project().FocusedPart(), false);
+                                SetProject(std::move(newproject));
+                            }
                         });
                     }
                     catch(std::exception &e)
@@ -316,7 +320,12 @@ namespace engine
                     {
                         ui = std::make_unique<lilvutils::UI>(m_ReverbInstance->Instance());
                         m_ReverbUiClosedSink = std::make_unique<utils::NotifySink>(ui->OnClose(), [this](){
-                            m_NeedCloseReverbUi = true;
+                            if(Project().Reverb().ShowGui())
+                            {
+                                auto newreverb = Project().Reverb().ChangeShowGui(false);
+                                auto newproject = Project().ChangeReverb(std::move(newreverb));
+                                SetProject(std::move(newproject));
+                            }
                         });
                     }
                     catch(std::exception &e)
@@ -667,23 +676,23 @@ namespace engine
         {
             m_ReverbInstance->Ui()->ui()->CallIdle();
         }
-        if(m_NeedCloseUi)
-        {
-            m_NeedCloseUi = false;
-            if(Project().ShowUi())
-            {
-                SetProject(Project().Change(Project().FocusedPart(), false));
-            }
-        }
-        if(m_NeedCloseReverbUi)
-        {
-            m_NeedCloseReverbUi = false;
-            if(Project().Reverb().ShowGui())
-            {
-                auto reverb = Project().Reverb().ChangeShowGui(false);
-                SetProject(Project().ChangeReverb(std::move(reverb)));
-            }
-        }
+        // if(m_NeedCloseUi)
+        // {
+        //     m_NeedCloseUi = false;
+        //     if(Project().ShowUi())
+        //     {
+        //         SetProject(Project().Change(Project().FocusedPart(), false));
+        //     }
+        // }
+        // if(m_NeedCloseReverbUi)
+        // {
+        //     m_NeedCloseReverbUi = false;
+        //     if(Project().Reverb().ShowGui())
+        //     {
+        //         auto reverb = Project().Reverb().ChangeShowGui(false);
+        //         SetProject(Project().ChangeReverb(std::move(reverb)));
+        //     }
+        // }
     }
     void Engine::SetJackConnections(project::TJackConnections &&con)
     {

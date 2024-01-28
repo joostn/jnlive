@@ -807,8 +807,15 @@ namespace lilvutils
             auto self = (UI*)controller;
             if(self)
             {
-                self->m_ExternalUiWidget = nullptr;
-                self->OnClose().Notify();
+                if(!self->m_OnCloseNoRecurse)
+                {
+                    self->m_OnCloseNoRecurse = true;
+                    utils::finally fin1([&](){
+                        self->m_OnCloseNoRecurse = false;
+                    });
+                    self->m_ExternalUiWidget = nullptr;
+                    self->OnClose().Notify();
+                }
             }
         };
         auto human_id = m_Instance.plugin().Name();
@@ -881,7 +888,14 @@ namespace lilvutils
         m_Instance.UiClosed(this);
         if(m_ExternalUiWidget)
         {
-            m_ExternalUiWidget->hide(m_ExternalUiWidget);
+            if(!m_OnCloseNoRecurse)
+            {
+                m_OnCloseNoRecurse = true;
+                utils::finally fin1([&](){
+                    m_OnCloseNoRecurse = false;
+                });
+                m_ExternalUiWidget->hide(m_ExternalUiWidget);
+            }
             m_ExternalUiWidget = nullptr;
         }
         if(m_ContainerWindow)

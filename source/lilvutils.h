@@ -535,6 +535,7 @@ namespace lilvutils
         LV2_External_UI_Host m_ExternalUiHost;
         LV2_External_UI_Widget* m_ExternalUiWidget = nullptr;
         std::chrono::steady_clock::time_point m_LastExternalUiRunCall;
+        bool m_OnCloseNoRecurse = false;
 
     };
 

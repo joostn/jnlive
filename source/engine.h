@@ -131,7 +131,7 @@ namespace engine
         std::string m_ProjectDir;
         std::unique_ptr<utils::NotifySink> m_UiClosedSink;
         std::unique_ptr<utils::NotifySink> m_ReverbUiClosedSink;
-        bool m_NeedCloseUi = false;
-        bool m_NeedCloseReverbUi = false;
+        //bool m_NeedCloseUi = false;
+        //bool m_NeedCloseReverbUi = false;
     };
 }
