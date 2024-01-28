@@ -123,7 +123,7 @@ namespace engine
                 ownedPluginIndex2RtPluginIndex.push_back(std::nullopt);
             }
         }
-        std::vector<realtimethread::Data::TMidiPort> midiPorts;
+        std::vector<realtimethread::Data::TMidiKeyboardPort> midiPorts;
         for(size_t partindex = 0; partindex < m_Parts.size(); ++partindex)
         {
             std::optional<int> pluginindex;
@@ -143,9 +143,14 @@ namespace engine
             m_AudioOutPorts.size() > 0? m_AudioOutPorts[0]->get() : nullptr,
             m_AudioOutPorts.size() > 1?m_AudioOutPorts[1]->get() : nullptr
         };
+        std::vector<realtimethread::Data::TMidiAuxInPort> auxInPorts;
+        for(const auto &auxport: m_AuxInPorts)
+        {
+            auxInPorts.emplace_back(auxport->Port().get(), auxport->OnMidiCallback());
+        }
         auto reverbinstance = m_ReverbInstance? &m_ReverbInstance->Instance() : nullptr;
         auto reverblevel = Project().Reverb().MixLevel();
-        return realtimethread::Data(std::move(plugins), std::move(midiPorts), std::move(outputAudioPorts), reverbinstance, reverblevel);
+        return realtimethread::Data(std::move(plugins), std::move(midiPorts), std::move(auxInPorts), std::move(outputAudioPorts), reverbinstance, reverblevel);
     }
 
     void Engine::SyncPlugins(std::vector<std::unique_ptr<jackutils::Port>> &midiInPortsToDiscard, std::vector<std::unique_ptr<PluginInstance>> &pluginsToDiscard)
@@ -638,9 +643,27 @@ namespace engine
     void Engine::SetProject(project::Project &&project)
     {
         m_Project = std::move(project);
+        SyncPlugins();
+        OnProjectChanged().Notify();
+    }
+    void Engine::SyncPlugins()
+    {
         std::vector<std::unique_ptr<jackutils::Port>> midiInPortsToDiscard;
         std::vector<std::unique_ptr<PluginInstance>> pluginsToDiscard;
         SyncPlugins(midiInPortsToDiscard, pluginsToDiscard);
+        std::vector<std::unique_ptr<TAuxInPortLink>> newAuxInPorts, auxInPortsToDiscard;
+        for(auto &auxport: m_AuxInPorts)
+        {
+            if(auxport->IsAttached())
+            {
+                newAuxInPorts.push_back(std::move(auxport));
+            }
+            else
+            {
+                auxInPortsToDiscard.push_back(std::move(auxport));
+            }
+        }
+        m_AuxInPorts = std::move(newAuxInPorts);
         SyncRtData();
         /*
         After syncing, we may have plugins and midi in ports that are no longer needed. We cannot delete these right now, because the real-time thread may still be accessing them. Therefore, we post a message to the realtime thread indicating the objects that can be discarded. The realtime thread will simply post the messages back to the main thread. When we receive those messages in ProcessMessages(), we know it's safe to delete the objects.
@@ -659,7 +682,13 @@ namespace engine
                 delete ptr;
             });  
         }
-        OnProjectChanged().Notify();
+        for(auto &port: auxInPortsToDiscard)
+        {
+            auto ptr = port.release();
+            m_RtProcessor.DeferredExecuteAfterRoundTrip([ptr](){
+                delete ptr;
+            });  
+        }
     }
     void Engine::ProcessMessages()
     {
@@ -708,4 +737,34 @@ namespace engine
             m_RtProcessor.SetDataFromMainThread(std::move(rtdata));
         }
     }
+    void Engine::AuxInPortAdded(TAuxInPortBase *port)
+    {
+        m_AuxInPorts.push_back(std::make_unique<TAuxInPortLink>(port));
+        SyncPlugins();
+    }
+    void Engine::AuxInPortRemoved(TAuxInPortBase *port)
+    {
+        for(auto &auxinport: m_AuxInPorts)
+        {
+            if(auxinport->AuxInPort() == port)
+            {
+                auxinport->Detach();
+                // the port will be deleted asynchronuously
+            }
+        }
+        SyncPlugins();
+    }
+
+    TAuxInPortBase::TAuxInPortBase(Engine& engine, std::string &&name) : m_Engine(&engine), m_Name(std::move(name))
+    {
+        m_Engine->AuxInPortAdded(this);
+    }
+    TAuxInPortBase::~TAuxInPortBase()
+    {   
+        if(m_Engine)
+        {
+            m_Engine->AuxInPortRemoved(this);
+        }
+    }
+
 }

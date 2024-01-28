@@ -259,6 +259,7 @@ namespace project
     private:
         std::array<std::string, 2> m_AudioOutputs;
         std::vector<std::string> m_MidiInputs;
+        std::vector<std::pair<std::string /* id */, std::string /* jackname */>> m_ControllerMidiPorts; 
     };
 
     Json::Value ToJson(const TReverb &reverb);

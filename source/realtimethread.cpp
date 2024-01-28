@@ -274,10 +274,10 @@ namespace realtimethread
                 {
                     jack_midi_event_t ev;
                     jack_midi_event_get(&ev, buf, i);
-                    if(midi::Event::IsSupported(ev.buffer, ev.size))
+                    if(midi::SimpleEvent::IsSupported(ev.buffer, ev.size))
                     {
-                        auto event = midi::Event(ev.buffer, ev.size);
-                        bool sendToAllPlugins = (event.type() != midi::Event::Type::NoteOn) && (event.type() != midi::Event::Type::ProgramChange);
+                        auto event = midi::SimpleEvent(ev.buffer, ev.size);
+                        bool sendToAllPlugins = (event.type() != midi::SimpleEvent::Type::NoteOn) && (event.type() != midi::SimpleEvent::Type::ProgramChange);
                         size_t firstPluginIndex = 0;
                         size_t lastPluginIndex = 0;
                         if(sendToAllPlugins)
@@ -311,3 +311,5 @@ namespace realtimethread
 
 
 } // namespace realtimethread
+
+TODO: iterate over TData.m_MidiAuxInPorts

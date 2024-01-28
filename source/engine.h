@@ -7,11 +7,13 @@
 #include "jackutils.h"
 #include "realtimethread.h"
 #include "engine.h"
+#include "midi.h"
 #include <chrono>
 #include <iostream>
 
 namespace engine
 {
+    class Engine;
     class OptionalUI
     {
     public:
@@ -61,8 +63,59 @@ namespace engine
         std::optional<size_t> m_OwningPart;
         size_t m_OwningInstrumentIndex;
     };
+    class TAuxInPortBase
+    {
+        friend class TAuxInPortLink;
+    public:
+        TAuxInPortBase(TAuxInPortBase&&) = delete;
+        TAuxInPortBase& operator=(TAuxInPortBase&&) = delete;
+        TAuxInPortBase(const TAuxInPortBase&) = delete;
+        TAuxInPortBase& operator=(const TAuxInPortBase&) = delete;
+        TAuxInPortBase(Engine& engine, std::string &&name);
+        virtual ~TAuxInPortBase();
+        const std::string &Name() const { return m_Name; }
+    protected:
+        virtual void OnMidi(const midi::TMidiOrSysexEvent &event) = 0;  // called in main thread
+
+    private:
+        Engine* m_Engine;
+        std::string m_Name;
+    };
+    class TAuxInPortLink
+    {
+    public:
+        TAuxInPortLink(TAuxInPortLink&&) = delete;
+        TAuxInPortLink& operator=(TAuxInPortLink&&) = delete;
+        TAuxInPortLink(const TAuxInPortLink&) = delete;
+        TAuxInPortLink& operator=(const TAuxInPortLink&) = delete;
+        TAuxInPortLink(TAuxInPortBase *inport) : m_AuxInPort(inport), m_Port(std::string(inport->Name()), jackutils::Port::Kind::Midi, jackutils::Port::Direction::Input), m_OnMidiCallback([this](const midi::TMidiOrSysexEvent &event){ this->OnMidi(event); })
+        {
+        }
+        jackutils::Port& Port() { return m_Port; }
+        const jackutils::Port& Port() const { return m_Port; }
+        void OnMidi(const midi::TMidiOrSysexEvent &event)
+        {
+            if(m_AuxInPort)
+            {
+                m_AuxInPort->OnMidi(event);
+            }
+        }
+        void Detach()
+        {
+            m_AuxInPort = nullptr;
+        }
+        TAuxInPortBase* AuxInPort() const { return m_AuxInPort; }
+        bool IsAttached() const { return m_AuxInPort != nullptr; }
+        const std::function<void(const midi::TMidiOrSysexEvent &event)>* OnMidiCallback() const { return &m_OnMidiCallback; }
+
+    private:
+        jackutils::Port m_Port;
+        TAuxInPortBase *m_AuxInPort;
+        std::function<void(const midi::TMidiOrSysexEvent &event)> m_OnMidiCallback;
+    };
     class Engine
     {
+        friend TAuxInPortBase;
     public:
         class Part
         {
@@ -107,10 +160,13 @@ namespace engine
 
     private:
         void SyncRtData();
+        void SyncPlugins();
         void SyncPlugins(std::vector<std::unique_ptr<jackutils::Port>> &midiInPortsToDiscard, std::vector<std::unique_ptr<PluginInstance>> &pluginsToDiscard);
         realtimethread::Data CalcRtData() const;
         const std::vector<std::unique_ptr<PluginInstanceForPart>>& OwnedPlugins() const { return m_OwnedPlugins; }
         const std::vector<Part>& Parts() const { return m_Parts; }
+        void AuxInPortAdded(TAuxInPortBase *port);
+        void AuxInPortRemoved(TAuxInPortBase *port);
 
     private:
         jackutils::Client m_JackClient;
@@ -131,6 +187,7 @@ namespace engine
         std::string m_ProjectDir;
         std::unique_ptr<utils::NotifySink> m_UiClosedSink;
         std::unique_ptr<utils::NotifySink> m_ReverbUiClosedSink;
+        std::vector<std::unique_ptr<TAuxInPortLink>> m_AuxInPorts;
         //bool m_NeedCloseUi = false;
         //bool m_NeedCloseReverbUi = false;
     };

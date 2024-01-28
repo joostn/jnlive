@@ -41,11 +41,11 @@ namespace realtimethread
             bool m_DoOverrideChannel;
             LV2_Evbuf_Iterator *m_MidiInBuf;
         };
-        class TMidiPort
+        class TMidiKeyboardPort
         {
         public:
-            TMidiPort() = default;
-            TMidiPort(jack_port_t *port, std::optional<int> pluginIndex, int overrideChannel) : m_Port(port), m_PluginIndex(pluginIndex), m_OverrideChannel(overrideChannel)
+            TMidiKeyboardPort() = default;
+            TMidiKeyboardPort(jack_port_t *port, std::optional<int> pluginIndex, int overrideChannel) : m_Port(port), m_PluginIndex(pluginIndex), m_OverrideChannel(overrideChannel)
             {
             }
             jack_port_t& Port() const
@@ -60,26 +60,41 @@ namespace realtimethread
             {
                 return m_OverrideChannel;
             }
-            auto operator<=>(const TMidiPort&) const = default;
+            auto operator<=>(const TMidiKeyboardPort&) const = default;
         private:
             jack_port_t *m_Port = nullptr;
             std::optional<int> m_PluginIndex;
             int m_OverrideChannel;
         };
+        class TMidiAuxInPort
+        {
+            // callback will be called in main thread, not in audio thread!
+        public:
+            using TCallback = std::function<void(const midi::TMidiOrSysexEvent &event)>;
+            TMidiAuxInPort(jack_port_t *port, const TCallback  *callback) : m_Port(port), m_Callback(std::move(callback)) {}
+            auto operator<=>(const TMidiAuxInPort&) const = default;
+
+        private:
+            jack_port_t *m_Port = nullptr;
+            const TCallback *m_Callback;
+        };
+
     public:
         Data() = default;
-        Data(const std::vector<Plugin>& plugins, const std::vector<TMidiPort>& midiPorts, const std::array<jack_port_t*, 2>& outputAudioPorts, lilvutils::Instance *reverbInstance,
-        float reverbLevel) : m_Plugins(plugins), m_MidiPorts(midiPorts), m_OutputAudioPorts(outputAudioPorts), m_ReverbInstance(reverbInstance), m_ReverbLevel(reverbLevel) {}
+        Data(const std::vector<Plugin>& plugins, const std::vector<TMidiKeyboardPort>& midiPorts, const std::vector<TMidiAuxInPort> &midiAuxInPorts, const std::array<jack_port_t*, 2>& outputAudioPorts, lilvutils::Instance *reverbInstance,
+        float reverbLevel) : m_Plugins(plugins), m_MidiPorts(midiPorts), m_OutputAudioPorts(outputAudioPorts), m_MidiAuxInPorts(midiAuxInPorts), m_ReverbInstance(reverbInstance), m_ReverbLevel(reverbLevel) {}
         const std::vector<Plugin>& Plugins() const { return m_Plugins; }
-        const std::vector<TMidiPort>& MidiPorts() const { return m_MidiPorts; }
+        const std::vector<TMidiKeyboardPort>& MidiPorts() const { return m_MidiPorts; }
         const std::array<jack_port_t*, 2>& OutputAudioPorts() const { return m_OutputAudioPorts; }
+        const std::vector<TMidiAuxInPort>& MidiAuxInPorts() const { return m_MidiAuxInPorts; }
         auto operator<=>(const Data&) const = default;
         lilvutils::Instance *ReverbInstance() const { return m_ReverbInstance; }
         float ReverbLevel() const { return m_ReverbLevel; }
         
     private:
         std::vector<Plugin> m_Plugins;
-        std::vector<TMidiPort> m_MidiPorts;
+        std::vector<TMidiKeyboardPort> m_MidiPorts;
+        std::vector<TMidiAuxInPort> m_MidiAuxInPorts;
         std::array<jack_port_t*, 2> m_OutputAudioPorts = {nullptr, nullptr};
         lilvutils::Instance *m_ReverbInstance = nullptr;
         float m_ReverbLevel = 0.0f;
