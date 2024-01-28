@@ -66,6 +66,20 @@ namespace engine
                 m_AudioOutPorts[portindex]->LinkToPortByName(audioportname);
             }
         }
+        for(const auto &auxinport: m_AuxInPorts)
+        {
+            if(auxinport && auxinport->AuxInPort())
+            {
+                const auto &name = auxinport->AuxInPort()->Name();
+                for(const auto &portpair: m_JackConnections.ControllerMidiPorts())
+                {
+                    if(portpair.first == name)
+                    {
+                        auxinport->Port().LinkToPortByName(portpair.second);
+                    }
+                }
+            }
+        }
     }
 
     realtimethread::Data Engine::CalcRtData() const
@@ -766,5 +780,11 @@ namespace engine
             m_Engine->AuxInPortRemoved(this);
         }
     }
+
+    void TController::TInPort::OnMidi(const midi::TMidiOrSysexEvent &event)
+    {
+        m_Controller.OnMidiIn(event);
+    }
+
 
 }

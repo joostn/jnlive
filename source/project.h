@@ -252,9 +252,10 @@ namespace project
     {
     public:
         TJackConnections() {}
-        TJackConnections(std::array<std::string, 2> &&audioOutputs, std::vector<std::string> &&midiInputs) : m_AudioOutputs(std::move(audioOutputs)), m_MidiInputs(std::move(midiInputs)) {}
+        TJackConnections(std::array<std::string, 2> &&audioOutputs, std::vector<std::string> &&midiInputs, std::vector<std::pair<std::string, std::string>> &&controllermidiports) : m_AudioOutputs(std::move(audioOutputs)), m_MidiInputs(std::move(midiInputs)), m_ControllerMidiPorts(std::move(controllermidiports)) {}
         const std::array<std::string, 2>& AudioOutputs() const { return m_AudioOutputs; }
         const std::vector<std::string>& MidiInputs() const { return m_MidiInputs; }
+        const std::vector<std::pair<std::string /* id */, std::string /* jackname */>>& ControllerMidiPorts() const { return m_ControllerMidiPorts; }
 
     private:
         std::array<std::string, 2> m_AudioOutputs;

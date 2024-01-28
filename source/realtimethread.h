@@ -186,18 +186,7 @@ namespace realtimethread
     {
     public:
         AuxMidiInMessage(const void *data, size_t size, const Data::TMidiAuxInPort::TCallback *callback) : ringbuf::PacketBase(size, data), m_Callback(callback) {}
-        void Call() const
-        {
-            //  called in main thread
-            if(m_Callback)
-            {
-                if(midi::TMidiOrSysexEvent::IsSupported(this->AdditionalDataBuf(), AdditionalDataSize()))
-                {
-                    midi::TMidiOrSysexEvent event(this->AdditionalDataBuf(), AdditionalDataSize());
-                    (*m_Callback)(event);
-                }
-            }
-        }
+        void Call() const;
 
     private:
         const Data::TMidiAuxInPort::TCallback *m_Callback;

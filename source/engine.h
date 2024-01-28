@@ -74,6 +74,7 @@ namespace engine
         TAuxInPortBase(Engine& engine, std::string &&name);
         virtual ~TAuxInPortBase();
         const std::string &Name() const { return m_Name; }
+        Engine* engine() const { return m_Engine; }
     protected:
         virtual void OnMidi(const midi::TMidiOrSysexEvent &event) = 0;  // called in main thread
 
@@ -190,5 +191,39 @@ namespace engine
         std::vector<std::unique_ptr<TAuxInPortLink>> m_AuxInPorts;
         //bool m_NeedCloseUi = false;
         //bool m_NeedCloseReverbUi = false;
+    };
+
+    class TController
+    {
+    private:
+        class TInPort : public engine::TAuxInPortBase
+        {
+        public:
+            TInPort(TController &controller, engine::Engine &m_Engine, std::string &&name) : m_Controller(controller), TAuxInPortBase(m_Engine, std::move(name))
+            {
+            }
+            void OnMidi(const midi::TMidiOrSysexEvent &event) override;
+
+        private:
+            TController &m_Controller;
+        };
+    public:
+        TController(const TController&) = delete;
+        TController& operator=(const TController&) = delete;
+        TController(TController&&) = delete;
+        TController& operator=(TController&&) = delete;
+        TController(engine::Engine &engine, std::string &&name) : m_Engine(engine), m_InPort(*this, engine, std::move(name))
+        {
+        }
+        engine::Engine& Engine() const
+        {
+            return m_Engine;
+        }
+    protected:
+        virtual void OnMidiIn(const midi::TMidiOrSysexEvent &event) = 0;
+
+    private:
+        engine::Engine &m_Engine;
+        TInPort m_InPort;
     };
 }

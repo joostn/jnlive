@@ -84,6 +84,7 @@
         "charconv": "cpp",
         "unordered_set": "cpp",
         "forward_list": "cpp",
-        "filesystem": "cpp"
+        "filesystem": "cpp",
+        "iostream": "cpp"
     }
 }

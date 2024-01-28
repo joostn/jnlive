@@ -60,6 +60,10 @@ namespace realtimethread
             {
                 atomPortEventMessage->Connection()->instance().OnAtomPortMessage(*atomPortEventMessage->Connection(), atomPortEventMessage->Frames(), atomPortEventMessage->SubFrames(), atomPortEventMessage->Type(), atomPortEventMessage->AdditionalDataSize(), atomPortEventMessage->AdditionalDataBuf());
             }
+            else if(auto auxMidiInMessage = dynamic_cast<const AuxMidiInMessage*>(message))
+            {
+                auxMidiInMessage->Call();
+            }
         }
     }    
 
@@ -98,7 +102,7 @@ namespace realtimethread
         for(size_t i=0; i < m_NumStoredAsyncFunctionMessages; ++i)
         {
             // post back to main thread
-            m_RingBufFromRtThread.Write(m_BufferForAsyncFunctionMessages[i]);
+            RingBufFromRtThread().Write(m_BufferForAsyncFunctionMessages[i]);
         }
         m_NumStoredAsyncFunctionMessages = 0;
     }
@@ -135,7 +139,7 @@ namespace realtimethread
                         if(*controlportconnection->Buffer() != controlportconnection->OrigValue())
                         {
                             controlportconnection->OrigValue() = *controlportconnection->Buffer();
-                            m_RingBufFromRtThread.Write(ControlPortChangedMessage(controlportconnection, *controlportconnection->Buffer()));
+                            RingBufFromRtThread().Write(ControlPortChangedMessage(controlportconnection, *controlportconnection->Buffer()));
                         }
                     }
                 }
@@ -154,7 +158,7 @@ namespace realtimethread
                             void*    body      = NULL;
                             lv2_evbuf_get(atomportconnection->BufferIterator(), &frames, &subframes, &type, &size, &body);
 
-                            m_RingBufFromRtThread.Write(AtomPortEventMessage(atomportconnection, frames, subframes, type, size, body));
+                            RingBufFromRtThread().Write(AtomPortEventMessage(atomportconnection, frames, subframes, type, size, body));
                             atomportconnection->BufferIterator() = lv2_evbuf_next(atomportconnection->BufferIterator());
                         }
                     }
@@ -315,7 +319,20 @@ namespace realtimethread
             {
                 jack_midi_event_t ev;
                 jack_midi_event_get(&ev, buf, i);
-                RingBufToRtThread().Write(AuxMidiInMessage((const void *)ev.buffer, ev.size, auxinport.Callback()));
+                RingBufFromRtThread().Write(AuxMidiInMessage((const void *)ev.buffer, ev.size, auxinport.Callback()), false);
+            }
+        }
+    }
+
+    void AuxMidiInMessage::Call() const
+    {
+        //  called in main thread
+        if(m_Callback)
+        {
+            if(midi::TMidiOrSysexEvent::IsSupported(this->AdditionalDataBuf(), AdditionalDataSize()))
+            {
+                midi::TMidiOrSysexEvent event(this->AdditionalDataBuf(), AdditionalDataSize());
+                (*m_Callback)(event);
             }
         }
     }

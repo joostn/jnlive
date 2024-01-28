@@ -3,6 +3,7 @@
 #include "engine.h"
 #include "project.h"
 #include "komplete.h"
+#include "conspiracy.h"
 #include <filesystem>
 #include <gtkmm.h>
 
@@ -50,7 +51,8 @@ public:
                     "Family 17h/19h HD Audio Controller Analog Stereo:playback_FR",
                 };
                 std::vector<std::string> midiInputs {};
-                project::TJackConnections jackconn(std::move(m_AudioOutputs), std::move(midiInputs));
+                std::vector<std::pair<std::string, std::string>> controllermidiports;
+                project::TJackConnections jackconn(std::move(m_AudioOutputs), std::move(midiInputs), std::move(controllermidiports));
                 JackConnectionsToFile(jackconn, jackconnectionfile);
             }
             {
@@ -61,6 +63,7 @@ public:
     }
 private:
     engine::Engine m_Engine;
+    conspiracy::Controller m_ConspiracyController { m_Engine };
 };
 
 int main(int argc, char** argv)

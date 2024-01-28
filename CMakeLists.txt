@@ -18,6 +18,8 @@ add_executable (jnlive
     source/log.cpp
     source/schedule.cpp
     source/gui.cpp
+    source/conspiracy.cpp
+    source/midi.cpp
 
 #    source/suil/host.c
 #    source/suil/instance.c

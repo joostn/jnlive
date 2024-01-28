@@ -188,6 +188,12 @@ namespace project
         {
             result["midiinputs"].append(midiInput);
         }
+        for(const auto &[id, portname]: jackConnections.ControllerMidiPorts())
+        {
+            result["controllermidiports"].append(Json::Value(Json::objectValue));
+            result["controllermidiports"][result["controllermidiports"].size() - 1]["id"] = id; 
+            result["controllermidiports"][result["controllermidiports"].size() - 1]["device"] = portname;
+        }
         return result;
     }
     TJackConnections JackConnectionsFromJson(const Json::Value &v)
@@ -204,7 +210,14 @@ namespace project
             audioOutputs[index++] = midiinput.asString();
             if(index == 2) break;
         }
-        return TJackConnections(std::move(audioOutputs), std::move(midiInputs));
+        std::vector<std::pair<std::string /* id */, std::string /* jackname */>> controllermidiports;
+        for(const auto &controllermidiport: v["controllermidiports"])
+        {
+            auto portid = controllermidiport["id"].asString();
+            auto portname = controllermidiport["device"].asString();  
+            controllermidiports.emplace_back(portid, portname);
+        }
+        return TJackConnections(std::move(audioOutputs), std::move(midiInputs), std::move(controllermidiports));
     }
 
     TJackConnections JackConnectionsFromFile(const std::string &filename)
