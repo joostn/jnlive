@@ -27,7 +27,7 @@ public:
         Glib::signal_timeout().connect([this]() -> bool {
             ProcessEvents();
             return true;
-        }, 1);
+        }, 5);
     }
 
     void ProcessEvents() {
@@ -46,12 +46,12 @@ public:
             std::string jackconnectionfile = m_Engine.ProjectDir() + "/jackconnection.json";
             if(!std::filesystem::exists(jackconnectionfile))
             {
-                std::array<std::string, 2> m_AudioOutputs {
-                    "Family 17h/19h HD Audio Controller Analog Stereo:playback_FL",
-                    "Family 17h/19h HD Audio Controller Analog Stereo:playback_FR",
+                std::array<std::vector<std::string>, 2> m_AudioOutputs {
+                    std::vector<std::string>{"Family 17h/19h HD Audio Controller Analog Stereo:playback_FL"s},
+                    std::vector<std::string>{"Family 17h/19h HD Audio Controller Analog Stereo:playback_FR"s},
                 };
-                std::vector<std::string> midiInputs {};
-                std::vector<std::pair<std::string, std::string>> controllermidiports;
+                std::vector<std::vector<std::string>> midiInputs {};
+                std::vector<std::pair<std::string, std::vector<std::string>>> controllermidiports;
                 project::TJackConnections jackconn(std::move(m_AudioOutputs), std::move(midiInputs), std::move(controllermidiports));
                 JackConnectionsToFile(jackconn, jackconnectionfile);
             }
@@ -68,6 +68,12 @@ private:
 
 int main(int argc, char** argv)
 {
+    __builtin_cpu_init();
+    if(!__builtin_cpu_supports("avx2"))
+    {
+        throw std::runtime_error("CPU does not support AVX2");
+    }
+
     auto app = Glib::RefPtr<Application>(new Application(argc, argv));
     return app->run(argc, argv);
 }

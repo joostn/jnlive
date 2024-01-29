@@ -180,42 +180,69 @@ namespace project
     Json::Value ToJson(const TJackConnections &jackConnections)
     {
         Json::Value result;
-        for (const auto &audioOutput : jackConnections.AudioOutputs())
+        result["audiooutputs"] = Json::Value(Json::arrayValue);
+        for (const std::vector<std::string> &audioOutputs : jackConnections.AudioOutputs())
         {
-            result["audiooutputs"].append(audioOutput);
+            result["audiooutputs"].append(Json::Value(Json::arrayValue));
+            for (const std::string &audioOutput : audioOutputs)
+            {
+                result["audiooutputs"][result["audiooutputs"].size() - 1].append(audioOutput);
+            }
         }
-        for (const auto &midiInput : jackConnections.MidiInputs())
+        for (const auto &midiInputs : jackConnections.MidiInputs())
         {
-            result["midiinputs"].append(midiInput);
+            result["midiinputs"].append(Json::Value(Json::arrayValue));
+            for (const std::string &midiInput : midiInputs)
+            {
+                result["midiinputs"][result["midiinputs"].size() - 1].append(midiInput);
+            }
         }
-        for(const auto &[id, portname]: jackConnections.ControllerMidiPorts())
+        for(const auto &[id, portnames]: jackConnections.ControllerMidiPorts())
         {
             result["controllermidiports"].append(Json::Value(Json::objectValue));
             result["controllermidiports"][result["controllermidiports"].size() - 1]["id"] = id; 
-            result["controllermidiports"][result["controllermidiports"].size() - 1]["device"] = portname;
+            result["controllermidiports"][result["controllermidiports"].size() - 1]["device"] = Json::Value(Json::objectValue);
+            for(const auto &portname: portnames)
+            {
+                result["controllermidiports"][result["controllermidiports"].size() - 1]["device"].append(portname);
+            }
         }
         return result;
     }
     TJackConnections JackConnectionsFromJson(const Json::Value &v)
     {
-        std::array<std::string, 2> audioOutputs;
-        std::vector<std::string> midiInputs;
+        std::vector<std::vector<std::string>> midiInputs;
         for (const auto &midiinput : v["midiinputs"])
         {
-            midiInputs.push_back(midiinput.asString());
+            std::vector<std::string> portnames;
+            for (const auto &midiinputport : midiinput)
+            {
+                portnames.push_back(midiinputport.asString());
+            }
+            midiInputs.push_back(std::move(portnames));
         }
         size_t index = 0;
-        for (const auto &midiinput : v["audiooutputs"])
+        std::array<std::vector<std::string>, 2> audioOutputs;
+        for (const auto &audiooutput : v["audiooutputs"])
         {
-            audioOutputs[index++] = midiinput.asString();
+            std::vector<std::string> portnames;
+            for (const auto &p : audiooutput)
+            {
+                portnames.push_back(p.asString());
+            }
+            audioOutputs[index++] = std::move(portnames);
             if(index == 2) break;
         }
-        std::vector<std::pair<std::string /* id */, std::string /* jackname */>> controllermidiports;
+        std::vector<std::pair<std::string /* id */, std::vector<std::string> /* jackname */>> controllermidiports;
         for(const auto &controllermidiport: v["controllermidiports"])
         {
             auto portid = controllermidiport["id"].asString();
-            auto portname = controllermidiport["device"].asString();  
-            controllermidiports.emplace_back(portid, portname);
+            std::vector<std::string> portnames;
+            for (const auto &p : controllermidiport["device"])
+            {
+                portnames.push_back(p.asString());
+            }
+            controllermidiports.emplace_back(portid, std::move(portnames));
         }
         return TJackConnections(std::move(audioOutputs), std::move(midiInputs), std::move(controllermidiports));
     }

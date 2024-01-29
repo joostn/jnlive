@@ -40,4 +40,65 @@ namespace jackutils
         // https://jackaudio.org/api/group__PortFunctions.html#gae6090e81f2ee23b5c0e432a899085ec8
 
     }
+
+    // returns true on success
+    bool Port::LinkToPortByName(const std::string &portname)
+    {
+        auto jackclient = Client::Static().get();
+        int result;
+        if(direction() == Direction::Input)
+        {
+            result = jack_connect(jackclient, portname.c_str(), jack_port_name(m_Port));
+        }
+        else
+        {
+            result = jack_connect(jackclient, jack_port_name(m_Port), portname.c_str());
+        }
+        if( (result == 0) || (result == EEXIST) )
+        {
+            return true;
+        }
+        return false;
+    }
+    bool Port::LinkToAnyPortByName(const std::vector<std::string> &portnames)
+    {
+        for(const auto &portname: portnames)
+        {
+            if(jack_port_connected_to(m_Port, portname.c_str()))
+            {
+                return true;
+            }
+        }
+        auto jackclient = Client::Static().get();
+        for(const auto &portname: portnames)
+        {
+            int result;
+            if(direction() == Direction::Input)
+            {
+                result = jack_connect(jackclient, portname.c_str(), jack_port_name(m_Port));
+            }
+            else
+            {
+                result = jack_connect(jackclient, jack_port_name(m_Port), portname.c_str());
+            }
+            if( (result == 0) || (result == EEXIST) )
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+    void Port::LinkToAllPortsByName(const std::vector<std::string> &portnames)
+    {
+        if(direction() == Direction::Input)
+        {
+            throw std::runtime_error("LinkToAllPortsByName only works for output ports");
+        }
+        auto jackclient = Client::Static().get();
+        for(const auto &portname: portnames)
+        {
+            jack_connect(jackclient,  jack_port_name(m_Port), portname.c_str());
+        }
+    }
+
 }

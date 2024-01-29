@@ -85,6 +85,6 @@ target_link_options(jnlive PRIVATE
     ${GTK3_LDFLAGS_OTHER}
     ${GTKMM_LDFLAGS_OTHER}
 )
-#target_compile_options(jnlive PRIVATE -stdlib=libc++)
-#target_link_options(jnlive PRIVATE -stdlib=libc++)
-# -fbuiltin-module-map -fimplicit-module-maps -fprebuilt-implicit-modules)
+
+# enable AVX2 optimizations:
+target_compile_options(jnlive PRIVATE -mavx2)

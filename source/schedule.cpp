@@ -44,7 +44,7 @@ namespace schedule
         // called in audio thread:
         if(ScheduleMessage::cMaxDataSize >= size)
         {
-            bool success = m_RingBufFromRealtimeThread.Write(ScheduleMessage(size, data), false);
+            bool success = m_RingBufFromRealtimeThread.Write(ScheduleMessage(size, data), true);
             if(success)
             {
                 return LV2_WORKER_SUCCESS;

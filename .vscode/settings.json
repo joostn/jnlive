@@ -86,5 +86,8 @@
         "forward_list": "cpp",
         "filesystem": "cpp",
         "iostream": "cpp"
-    }
+    },
+    "lldb.displayFormat": "auto",
+    "lldb.dereferencePointers": true,
+    "lldb.consoleMode": "commands"
 }

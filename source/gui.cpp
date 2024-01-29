@@ -346,6 +346,8 @@ public:
                     auto reverb = m_Engine.Project().Reverb().ChangeShowGui(!m_Engine.Project().Reverb().ShowGui());
                     auto project = m_Engine.Project().ChangeReverb(std::move(reverb));
                     m_Engine.SetProject(std::move(project));
+
+                    m_Engine.LoadReverbPreset();
                 });
             });
             m_ChangePluginButton.signal_clicked().connect([this](){

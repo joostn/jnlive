@@ -60,24 +60,22 @@ namespace engine
         }
         m_LastApplyJackConnectionTime = now;
         size_t partindex = 0;
-        for(const auto &midiInPortName: m_JackConnections.MidiInputs())
+        for(const auto &midiInPortNames: m_JackConnections.MidiInputs())
         {
             if(partindex >= m_Parts.size())
             {
                 break;
             }
-            if(!midiInPortName.empty())
-            {
-                const auto &part = m_Parts[partindex];
-                part.MidiInPort()->LinkToPortByName(midiInPortName);
-            }
+            const auto &part = m_Parts[partindex];
+            part.MidiInPort()->LinkToAnyPortByName(midiInPortNames);
+            partindex++;
         }
         for(size_t portindex = 0; portindex < m_AudioOutPorts.size(); ++portindex)
         {
-            const auto &audioportname = m_JackConnections.AudioOutputs()[portindex];
-            if(!audioportname.empty())
+            if(portindex < m_JackConnections.AudioOutputs().size())
             {
-                m_AudioOutPorts[portindex]->LinkToPortByName(audioportname);
+                const auto &audioportnames = m_JackConnections.AudioOutputs()[portindex];
+                m_AudioOutPorts[portindex]->LinkToAllPortsByName(audioportnames);
             }
         }
         for(const auto &auxinport: m_AuxInPorts)
@@ -89,7 +87,7 @@ namespace engine
                 {
                     if(portpair.first == name)
                     {
-                        auxinport->Port().LinkToPortByName(portpair.second);
+                        auxinport->Port().LinkToAnyPortByName(portpair.second);
                     }
                 }
             }
@@ -103,7 +101,7 @@ namespace engine
                 {
                     if(portpair.first == name)
                     {
-                        auxOutport->Port().LinkToPortByName(portpair.second);
+                        auxOutport->Port().LinkToAllPortsByName(portpair.second);
                     }
                 }
             }

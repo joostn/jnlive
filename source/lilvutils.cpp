@@ -11,6 +11,7 @@
 #include <filesystem>
 #include "lv2_external_ui.h"
 #include <iostream>
+#include <cstring>
 
 namespace 
 {
@@ -306,6 +307,13 @@ namespace lilvutils
         m_OptionsFeature.data = m_Options.data();
         m_OptionsFeature.URI = LV2_OPTIONS__options;
         m_Features.push_back(&m_OptionsFeature);
+        m_BoundedBlockLengthFeature.data = nullptr;
+        m_BoundedBlockLengthFeature.URI = LV2_BUF_SIZE__boundedBlockLength;
+        m_Features.push_back(&m_BoundedBlockLengthFeature);
+        m_PowerOf2BlockLengthFeature.data = nullptr;
+        m_PowerOf2BlockLengthFeature.URI = LV2_BUF_SIZE__powerOf2BlockLength;
+        m_Features.push_back(&m_PowerOf2BlockLengthFeature);
+
         // LV2_State_Make_Path m_MakePath;
         // LV2_Feature m_MakePathFeature;
         // m_MakePath.handle = this;
@@ -448,7 +456,7 @@ namespace lilvutils
             {
                 m_AudioOutputIndex[1] = unnamedOutputAudioPorts[1];
             }        
-            else if(unnamedOutputAudioPorts.size() >= 2)
+            else if(unnamedOutputAudioPorts.size() >= 1)
             {
                 m_AudioOutputIndex[1] = unnamedOutputAudioPorts[0];
             }        

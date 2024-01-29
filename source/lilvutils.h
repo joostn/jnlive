@@ -103,7 +103,7 @@ namespace lilvutils
             }
             else
             {
-                auto index = m_UriMapReverse.size();
+                auto index = m_UriMapReverse.size() + 1;
                 m_UriMap[str] = index;
                 m_UriMapReverse.push_back(str);
                 if(index > std::numeric_limits<LV2_URID>::max())
@@ -116,7 +116,7 @@ namespace lilvutils
         const std::string & UriMapReverseLookup(size_t index)
         {
             std::unique_lock<std::mutex> lock(m_Mutex);
-            return m_UriMapReverse.at(index);
+            return m_UriMapReverse.at(index - 1);
         }
         const std::vector<const LV2_Feature*>& Features() const { return m_Features; }
         uint32_t MaxBlockLength() const { return m_OptionMaxBlockLength; }
@@ -146,6 +146,8 @@ namespace lilvutils
         LV2_Feature m_MapFeature;
         LV2_Feature m_UnmapFeature;
         LV2_Feature m_OptionsFeature;
+        LV2_Feature m_BoundedBlockLengthFeature;
+        LV2_Feature m_PowerOf2BlockLengthFeature;
         LV2_Feature m_ThreadSafeRestoreFeature;
         //LV2_State_Make_Path m_MakePath;
         //LV2_Feature m_MakePathFeature;

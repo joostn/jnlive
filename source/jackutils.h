@@ -149,24 +149,9 @@ namespace jackutils
             return m_Name;
         }
         // returns true on success
-        bool LinkToPortByName(const std::string &portname)
-        {
-            auto jackclient = Client::Static().get();
-            int result;
-            if(direction() == Direction::Input)
-            {
-                result = jack_connect(jackclient, portname.c_str(), jack_port_name(m_Port));
-            }
-            else
-            {
-                result = jack_connect(jackclient, jack_port_name(m_Port), portname.c_str());
-            }
-            if( (result == 0) || (result == EEXIST) )
-            {
-                return true;
-            }
-            return false;
-        }
+        bool LinkToPortByName(const std::string &portname);
+        bool LinkToAnyPortByName(const std::vector<std::string> &portnames);
+        void LinkToAllPortsByName(const std::vector<std::string> &portnames);
 
     private:
         jack_port_t *m_Port = nullptr;

@@ -10,6 +10,10 @@ namespace realtimethread
         {
             throw std::runtime_error("nframes > bufsize");
         }
+        if( (nframes & 7) != 0)
+        {
+            throw std::runtime_error("nframes not a multiple of 8");
+        }
         ClearOutputMidiBuffers(nframes);
         ProcessMessagesInRealtimeThread(nframes);
         ProcessIncomingMidi(nframes);

@@ -252,15 +252,15 @@ namespace project
     {
     public:
         TJackConnections() {}
-        TJackConnections(std::array<std::string, 2> &&audioOutputs, std::vector<std::string> &&midiInputs, std::vector<std::pair<std::string, std::string>> &&controllermidiports) : m_AudioOutputs(std::move(audioOutputs)), m_MidiInputs(std::move(midiInputs)), m_ControllerMidiPorts(std::move(controllermidiports)) {}
-        const std::array<std::string, 2>& AudioOutputs() const { return m_AudioOutputs; }
-        const std::vector<std::string>& MidiInputs() const { return m_MidiInputs; }
-        const std::vector<std::pair<std::string /* id */, std::string /* jackname */>>& ControllerMidiPorts() const { return m_ControllerMidiPorts; }
+        TJackConnections(std::array<std::vector<std::string>, 2> &&audioOutputs, std::vector<std::vector<std::string>> &&midiInputs, std::vector<std::pair<std::string, std::vector<std::string>>> &&controllermidiports) : m_AudioOutputs(std::move(audioOutputs)), m_MidiInputs(std::move(midiInputs)), m_ControllerMidiPorts(std::move(controllermidiports)) {}
+        const std::array<std::vector<std::string>, 2>& AudioOutputs() const { return m_AudioOutputs; }
+        const std::vector<std::vector<std::string>>& MidiInputs() const { return m_MidiInputs; }
+        const std::vector<std::pair<std::string /* id */, std::vector<std::string> /* jackname */>>& ControllerMidiPorts() const { return m_ControllerMidiPorts; }
 
     private:
-        std::array<std::string, 2> m_AudioOutputs;
-        std::vector<std::string> m_MidiInputs;
-        std::vector<std::pair<std::string /* id */, std::string /* jackname */>> m_ControllerMidiPorts; 
+        std::array<std::vector<std::string>, 2> m_AudioOutputs;
+        std::vector<std::vector<std::string>> m_MidiInputs;
+        std::vector<std::pair<std::string /* id */, std::vector<std::string> /* jacknames */>> m_ControllerMidiPorts; 
     };
 
     Json::Value ToJson(const TReverb &reverb);
