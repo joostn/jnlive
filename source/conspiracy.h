@@ -13,5 +13,6 @@ namespace conspiracy {
         void OnProjectChanged(const project::Project &prevProject) override;
         void SendCurrentPadColorPresetIndex(size_t presetindex) const;
         void SendCurrentPadColorFocusedPart(size_t partindex) const;
+        void SendCurrentPadColorForGuiKey();
     };
 } // namespace

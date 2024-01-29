@@ -62,16 +62,6 @@ namespace conspiracy {
                         if(Project().FocusedPart())
                         {
                             Engine().SwitchFocusedPartToPreset((size_t)*presetNumber);
-/*
-                            auto prevpresetindex = Project().Parts().at(*Project().FocusedPart()).ActivePresetIndex();
-                            auto newpart = Project().Parts().at(*Project().FocusedPart()).ChangeActivePresetIndex(*presetNumber);
-                            auto newproject = Project().ChangePart(*Project().FocusedPart(), std::move(newpart));
-                            SetProject(std::move(newproject));
-                            if( (prevpresetindex) && (*prevpresetindex < 25) )
-                            {
-                                SendCurrentPadColorPresetIndex(*prevpresetindex);
-                            }
-*/
                         }
                     }
                 }
@@ -104,7 +94,7 @@ namespace conspiracy {
                                 auto newproject = Project().Change(focusedpart, Project().ShowUi());
                                 SetProject(std::move(newproject));
                             }
-                            if(Fkey == 9)
+                            if(Fkey == 10)
                             {
                                 auto newproject = Project().Change(Project().FocusedPart(), !Project().ShowUi());
                                 SetProject(std::move(newproject));
@@ -118,6 +108,11 @@ namespace conspiracy {
                                 size_t focusedpart = (Fkey == 1) ? 0 : 1;
                                 SendCurrentPadColorFocusedPart(focusedpart);
                             }
+                            else if(Fkey == 10)
+                            {
+                                SendCurrentPadColorForGuiKey();
+                            }
+
                         }
                     }
                 }
@@ -141,14 +136,14 @@ namespace conspiracy {
                         }
                     }
                 }
-                if(simpleEvent.ControlNumber() == 10)
-                {
-                    if(simpleEvent.Channel() == 0)
-                    {
-                        auto event = midi::SimpleEvent::NoteOn(0, 24, simpleEvent.ControlValue());
-                        SendMidi(event);
-                    }
-                }
+                // if(simpleEvent.ControlNumber() == 10)
+                // {
+                //     if(simpleEvent.Channel() == 0)
+                //     {
+                //         auto event = midi::SimpleEvent::NoteOn(0, 24, simpleEvent.ControlValue());
+                //         SendMidi(event);
+                //     }
+                // }
             }
         }
     }
@@ -188,6 +183,10 @@ namespace conspiracy {
                 SendCurrentPadColorFocusedPart(*Project().FocusedPart());
             }
         }
+        if(prevProject.ShowUi() != Project().ShowUi())
+        {
+            SendCurrentPadColorForGuiKey();
+        }
     }
 
     void Controller::SendCurrentPadColorPresetIndex(size_t presetindex) const
@@ -217,6 +216,19 @@ namespace conspiracy {
             color = cKeyboardcolors.at(*Project().FocusedPart());
         }
         int notenumber = (partindex == 0) ? 25 : 29;
+        int velocity = cColormap.at(color);
+        auto event = midi::SimpleEvent::NoteOn(0, notenumber, velocity);
+        SendMidi(event);
+    }
+
+    void Controller::SendCurrentPadColorForGuiKey()
+    {
+        int color = 0;
+        if(Project().ShowUi())
+        {
+            color = 2;
+        }
+        int notenumber = 41;
         int velocity = cColormap.at(color);
         auto event = midi::SimpleEvent::NoteOn(0, notenumber, velocity);
         SendMidi(event);
