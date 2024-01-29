@@ -114,9 +114,53 @@ namespace engine
         TAuxInPortBase *m_AuxInPort;
         std::function<void(const midi::TMidiOrSysexEvent &event)> m_OnMidiCallback;
     };
+
+    class TAuxOutPortBase
+    {
+        friend class TAuxOutPortLink;
+    public:
+        TAuxOutPortBase(TAuxOutPortBase&&) = delete;
+        TAuxOutPortBase& operator=(TAuxOutPortBase&&) = delete;
+        TAuxOutPortBase(const TAuxOutPortBase&) = delete;
+        TAuxOutPortBase& operator=(const TAuxOutPortBase&) = delete;
+        TAuxOutPortBase(Engine& engine, std::string &&name);
+        virtual ~TAuxOutPortBase();
+        const std::string &Name() const { return m_Name; }
+        void Send(const midi::TMidiOrSysexEvent &event) const;
+
+    private:
+        Engine* m_Engine;
+        std::string m_Name;
+        std::function<void(const midi::TMidiOrSysexEvent &event)> m_MidiSendFunc;
+    };
+    class TAuxOutPortLink
+    {
+    public:
+        TAuxOutPortLink(TAuxOutPortLink&&) = delete;
+        TAuxOutPortLink& operator=(TAuxOutPortLink&&) = delete;
+        TAuxOutPortLink(const TAuxOutPortLink&) = delete;
+        TAuxOutPortLink& operator=(const TAuxOutPortLink&) = delete;
+        TAuxOutPortLink(TAuxOutPortBase *outport, Engine &engine);
+        jackutils::Port& Port() { return m_Port; }
+        const jackutils::Port& Port() const { return m_Port; }
+        void Detach()
+        {
+            m_AuxOutPort = nullptr;
+        }
+        TAuxOutPortBase* AuxOutPort() const { return m_AuxOutPort; }
+        bool IsAttached() const { return m_AuxOutPort != nullptr; }
+\
+    private:
+        jackutils::Port m_Port;
+        TAuxOutPortBase *m_AuxOutPort;
+        Engine &m_Engine;
+    };
+
     class Engine
     {
         friend TAuxInPortBase;
+        friend TAuxOutPortBase;
+        friend TAuxOutPortLink;
     public:
         class Part
         {
@@ -147,7 +191,6 @@ namespace engine
         std::string PresetsDir() const { return m_ProjectDir + "/presets"; }
         std::string ProjectFile() const { return m_ProjectDir + "/project.json"; }
         void SaveCurrentPreset(size_t presetindex, const std::string &name);
-        void LoadCurrentPreset();
         std::string SavePresetForInstance(lilvutils::Instance &instance);
         void StoreReverbPreset();
         void ChangeReverbLv2Uri(std::string &&uri);
@@ -158,8 +201,10 @@ namespace engine
         void DeletePreset(size_t presetindex);
         void AddInstrument(const std::string &uri, bool shared);
         void DeleteInstrument(size_t instrumentindex);
+        void SwitchFocusedPartToPreset(size_t presetIndex);
 
     private:
+        void LoadCurrentPreset();
         void SyncRtData();
         void SyncPlugins();
         void SyncPlugins(std::vector<std::unique_ptr<jackutils::Port>> &midiInPortsToDiscard, std::vector<std::unique_ptr<PluginInstance>> &pluginsToDiscard);
@@ -168,6 +213,9 @@ namespace engine
         const std::vector<Part>& Parts() const { return m_Parts; }
         void AuxInPortAdded(TAuxInPortBase *port);
         void AuxInPortRemoved(TAuxInPortBase *port);
+        void AuxOutPortAdded(TAuxOutPortBase *port);
+        void AuxOutPortRemoved(TAuxOutPortBase *port);
+        void SendMidiAsync(const midi::TMidiOrSysexEvent &event, jackutils::Port &port);
 
     private:
         jackutils::Client m_JackClient;
@@ -189,6 +237,7 @@ namespace engine
         std::unique_ptr<utils::NotifySink> m_UiClosedSink;
         std::unique_ptr<utils::NotifySink> m_ReverbUiClosedSink;
         std::vector<std::unique_ptr<TAuxInPortLink>> m_AuxInPorts;
+        std::vector<std::unique_ptr<TAuxOutPortLink>> m_AuxOutPorts;
         //bool m_NeedCloseUi = false;
         //bool m_NeedCloseReverbUi = false;
     };
@@ -207,23 +256,49 @@ namespace engine
         private:
             TController &m_Controller;
         };
+        class TOutPort : public engine::TAuxOutPortBase
+        {
+        public:
+            TOutPort(TController &controller, engine::Engine &m_Engine, std::string &&name) : m_Controller(controller), TAuxOutPortBase(m_Engine, std::move(name))
+            {
+            }
+
+        private:
+            TController &m_Controller;
+        };
     public:
         TController(const TController&) = delete;
         TController& operator=(const TController&) = delete;
         TController(TController&&) = delete;
         TController& operator=(TController&&) = delete;
-        TController(engine::Engine &engine, std::string &&name) : m_Engine(engine), m_InPort(*this, engine, std::move(name))
+        TController(engine::Engine &engine, std::string &&name) : m_Engine(engine), m_InPort(*this, engine, std::string(name + "_in")), m_OutPort(*this, engine, std::string(name + "_out")), m_OnProjectChanged(m_Engine.OnProjectChanged(), [this](){ this->ProjectChanged(); })
         {
         }
         engine::Engine& Engine() const
         {
             return m_Engine;
         }
+        const project::Project& Project() const
+        {
+            return Engine().Project();
+        }
+        void SetProject(project::Project &&project)
+        {
+            Engine().SetProject(std::move(project));
+        }
+        void SendMidi(const midi::TMidiOrSysexEvent &event) const;
     protected:
         virtual void OnMidiIn(const midi::TMidiOrSysexEvent &event) = 0;
+        virtual void OnProjectChanged(const project::Project &prevProject) {}
+    
+    private:
+        void ProjectChanged();
 
     private:
         engine::Engine &m_Engine;
         TInPort m_InPort;
+        TOutPort m_OutPort;
+        utils::NotifySink m_OnProjectChanged;
+        project::Project m_LastProject;
     };
 }

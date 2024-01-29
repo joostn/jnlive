@@ -80,15 +80,27 @@ namespace realtimethread
             jack_port_t *m_Port = nullptr;
             const TCallback *m_Callback;
         };
+        class TMidiAuxOutPort
+        {
+            // callback will be called in main thread, not in audio thread!
+        public:
+            TMidiAuxOutPort(jack_port_t *port) : m_Port(port) {}
+            auto operator<=>(const TMidiAuxOutPort&) const = default;
+            jack_port_t* Port() const { return m_Port; }
+
+        private:
+            jack_port_t *m_Port = nullptr;
+        };
 
     public:
         Data() = default;
-        Data(const std::vector<Plugin>& plugins, const std::vector<TMidiKeyboardPort>& midiPorts, const std::vector<TMidiAuxInPort> &midiAuxInPorts, const std::array<jack_port_t*, 2>& outputAudioPorts, lilvutils::Instance *reverbInstance,
-        float reverbLevel) : m_Plugins(plugins), m_MidiPorts(midiPorts), m_OutputAudioPorts(outputAudioPorts), m_MidiAuxInPorts(midiAuxInPorts), m_ReverbInstance(reverbInstance), m_ReverbLevel(reverbLevel) {}
+        Data(const std::vector<Plugin>& plugins, const std::vector<TMidiKeyboardPort>& midiPorts, const std::vector<TMidiAuxInPort> &midiAuxInPorts, const std::vector<TMidiAuxOutPort> &midiAuxOutPorts, const std::array<jack_port_t*, 2>& outputAudioPorts, lilvutils::Instance *reverbInstance,
+        float reverbLevel) : m_Plugins(plugins), m_MidiPorts(midiPorts), m_OutputAudioPorts(outputAudioPorts), m_MidiAuxInPorts(midiAuxInPorts), m_MidiAuxOutPorts(midiAuxOutPorts), m_ReverbInstance(reverbInstance), m_ReverbLevel(reverbLevel) {}
         const std::vector<Plugin>& Plugins() const { return m_Plugins; }
         const std::vector<TMidiKeyboardPort>& MidiPorts() const { return m_MidiPorts; }
         const std::array<jack_port_t*, 2>& OutputAudioPorts() const { return m_OutputAudioPorts; }
         const std::vector<TMidiAuxInPort>& MidiAuxInPorts() const { return m_MidiAuxInPorts; }
+        const std::vector<TMidiAuxOutPort>& MidiAuxOutPorts() const { return m_MidiAuxOutPorts; }
         auto operator<=>(const Data&) const = default;
         lilvutils::Instance *ReverbInstance() const { return m_ReverbInstance; }
         float ReverbLevel() const { return m_ReverbLevel; }
@@ -97,6 +109,7 @@ namespace realtimethread
         std::vector<Plugin> m_Plugins;
         std::vector<TMidiKeyboardPort> m_MidiPorts;
         std::vector<TMidiAuxInPort> m_MidiAuxInPorts;
+        std::vector<TMidiAuxOutPort> m_MidiAuxOutPorts;
         std::array<jack_port_t*, 2> m_OutputAudioPorts = {nullptr, nullptr};
         lilvutils::Instance *m_ReverbInstance = nullptr;
         float m_ReverbLevel = 0.0f;
@@ -191,6 +204,15 @@ namespace realtimethread
     private:
         const Data::TMidiAuxInPort::TCallback *m_Callback;
     };
+    class AuxMidiOutMessage : public ringbuf::PacketBase
+    {
+    public:
+        AuxMidiOutMessage(const void *data, size_t size, jack_port_t *port) : ringbuf::PacketBase(size, data), m_Port(port) {}
+        jack_port_t* Port() const { return m_Port; }
+
+    private:
+        jack_port_t *m_Port;
+    };
     class Processor
     {
     public:
@@ -215,8 +237,10 @@ namespace realtimethread
         ringbuf::RingBuf& RingBufFromRtThread() { return m_RingBufFromRtThread; }
         void ProcessMessagesInMainThread(); // should be called regularly
         const lilvutils::RealtimeThreadInterface& realtimeThreadInterface() const { return m_RealtimeThreadInterface; }
+        void SendMidiFromMainThread(const void *data, size_t size, jack_port_t *port);
+        
     private:
-        void ProcessMessagesInRealtimeThread();
+        void ProcessMessagesInRealtimeThread(jack_nframes_t nframes);
         void SendPendingAsyncFunctionMessages();
         void ResetEvBufs();
         void ProcessOutputPorts();
@@ -225,6 +249,7 @@ namespace realtimethread
         void ProcessIncomingMidi(jack_nframes_t nframes);
         void RunReverbInstance(jack_nframes_t nframes);
         void AddReverb(jack_nframes_t nframes);
+        void ClearOutputMidiBuffers(jack_nframes_t nframes);
 
     private:
         std::unique_ptr<Data> m_CurrentData;

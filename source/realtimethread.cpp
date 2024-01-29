@@ -10,7 +10,8 @@ namespace realtimethread
         {
             throw std::runtime_error("nframes > bufsize");
         }
-        ProcessMessagesInRealtimeThread();
+        ClearOutputMidiBuffers(nframes);
+        ProcessMessagesInRealtimeThread(nframes);
         ProcessIncomingMidi(nframes);
         RunInstances(nframes);
         ProcessOutgoingAudio(nframes);
@@ -20,6 +21,7 @@ namespace realtimethread
         ResetEvBufs();
         SendPendingAsyncFunctionMessages();
     }
+
     void Processor::SetDataFromMainThread(Data &&data)
     {
         auto olddata = std::move(m_CurrentData);
@@ -68,7 +70,7 @@ namespace realtimethread
     }    
 
 
-    void Processor::ProcessMessagesInRealtimeThread()
+    void Processor::ProcessMessagesInRealtimeThread(jack_nframes_t nframes)
     {
         while(true)
         {
@@ -95,6 +97,12 @@ namespace realtimethread
                 auto &bufferIterator = atomPortEventMessage->Connection()->BufferIterator();
                 lv2_evbuf_write(&bufferIterator, atomPortEventMessage->Frames(), atomPortEventMessage->SubFrames(), atomPortEventMessage->Type(), atomPortEventMessage->AdditionalDataSize(), atomPortEventMessage->AdditionalDataBuf());
             }                
+            else if(auto midioutmessage = dynamic_cast<const realtimethread::AuxMidiOutMessage*>(message); midioutmessage)
+            {
+                auto buf = jack_port_get_buffer(midioutmessage->Port(), nframes);
+                jack_midi_event_write(buf, 0, (const jack_midi_data_t*) midioutmessage->AdditionalDataBuf(), midioutmessage->AdditionalDataSize());
+
+            }
         }
     }
     void Processor::SendPendingAsyncFunctionMessages()
@@ -121,6 +129,17 @@ namespace realtimethread
                 }
             }
         }
+    }
+    void Processor::ClearOutputMidiBuffers(jack_nframes_t nframes)
+    {
+        if(!m_DataInRtThread) return;
+        const auto &data = *m_DataInRtThread;
+        for(const auto &outport: data.MidiAuxOutPorts())
+        {
+            auto buf = jack_port_get_buffer(outport.Port(), nframes);
+            jack_midi_clear_buffer(buf);            
+        }
+
     }
     void Processor::ProcessOutputPorts()
     {
@@ -323,7 +342,10 @@ namespace realtimethread
             }
         }
     }
-
+    void Processor::SendMidiFromMainThread(const void *data, size_t size, jack_port_t *port)
+    {
+        RingBufToRtThread().Write(AuxMidiOutMessage(data, size, port));
+    }
     void AuxMidiInMessage::Call() const
     {
         //  called in main thread

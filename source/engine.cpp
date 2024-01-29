@@ -34,6 +34,20 @@ namespace engine
         return presetDir;
     }
 
+    void Engine::SwitchFocusedPartToPreset(size_t presetIndex)
+    {
+        if(Project().FocusedPart())
+        {
+            if(Project().Parts().at(*Project().FocusedPart()).ActivePresetIndex() != presetIndex)
+            {
+                auto newproject = Project().SwitchFocusedPartToPreset(presetIndex);
+                SetProject(std::move(newproject));
+                OnProjectChanged();
+                LoadCurrentPreset();
+            }
+        }
+    }
+
     void Engine::ApplyJackConnections(bool forceNow)
     {
         auto now = std::chrono::steady_clock::now();
@@ -76,6 +90,20 @@ namespace engine
                     if(portpair.first == name)
                     {
                         auxinport->Port().LinkToPortByName(portpair.second);
+                    }
+                }
+            }
+        }
+        for(const auto &auxOutport: m_AuxOutPorts)
+        {
+            if(auxOutport && auxOutport->AuxOutPort())
+            {
+                const auto &name = auxOutport->AuxOutPort()->Name();
+                for(const auto &portpair: m_JackConnections.ControllerMidiPorts())
+                {
+                    if(portpair.first == name)
+                    {
+                        auxOutport->Port().LinkToPortByName(portpair.second);
                     }
                 }
             }
@@ -162,9 +190,16 @@ namespace engine
         {
             auxInPorts.emplace_back(auxport->Port().get(), auxport->OnMidiCallback());
         }
+
+        std::vector<realtimethread::Data::TMidiAuxOutPort> auxOutPorts;
+        for(const auto &auxport: m_AuxOutPorts)
+        {
+            auxOutPorts.emplace_back(auxport->Port().get());
+        }
+
         auto reverbinstance = m_ReverbInstance? &m_ReverbInstance->Instance() : nullptr;
         auto reverblevel = Project().Reverb().MixLevel();
-        return realtimethread::Data(std::move(plugins), std::move(midiPorts), std::move(auxInPorts), std::move(outputAudioPorts), reverbinstance, reverblevel);
+        return realtimethread::Data(std::move(plugins), std::move(midiPorts), std::move(auxInPorts), std::move(auxOutPorts), std::move(outputAudioPorts), reverbinstance, reverblevel);
     }
 
     void Engine::SyncPlugins(std::vector<std::unique_ptr<jackutils::Port>> &midiInPortsToDiscard, std::vector<std::unique_ptr<PluginInstance>> &pluginsToDiscard)
@@ -678,6 +713,19 @@ namespace engine
             }
         }
         m_AuxInPorts = std::move(newAuxInPorts);
+        std::vector<std::unique_ptr<TAuxOutPortLink>> newAuxOutPorts, auxOutPortsToDiscard;
+        for(auto &auxport: m_AuxOutPorts)
+        {
+            if(auxport->IsAttached())
+            {
+                newAuxOutPorts.push_back(std::move(auxport));
+            }
+            else
+            {
+                auxOutPortsToDiscard.push_back(std::move(auxport));
+            }
+        }
+        m_AuxOutPorts = std::move(newAuxOutPorts);
         SyncRtData();
         /*
         After syncing, we may have plugins and midi in ports that are no longer needed. We cannot delete these right now, because the real-time thread may still be accessing them. Therefore, we post a message to the realtime thread indicating the objects that can be discarded. The realtime thread will simply post the messages back to the main thread. When we receive those messages in ProcessMessages(), we know it's safe to delete the objects.
@@ -697,6 +745,13 @@ namespace engine
             });  
         }
         for(auto &port: auxInPortsToDiscard)
+        {
+            auto ptr = port.release();
+            m_RtProcessor.DeferredExecuteAfterRoundTrip([ptr](){
+                delete ptr;
+            });  
+        }
+        for(auto &port: auxOutPortsToDiscard)
         {
             auto ptr = port.release();
             m_RtProcessor.DeferredExecuteAfterRoundTrip([ptr](){
@@ -768,6 +823,55 @@ namespace engine
         }
         SyncPlugins();
     }
+    void Engine::AuxOutPortAdded(TAuxOutPortBase *port)
+    {
+        m_AuxOutPorts.push_back(std::make_unique<TAuxOutPortLink>(port, *this));
+        SyncPlugins();
+    }
+    void Engine::AuxOutPortRemoved(TAuxOutPortBase *port)
+    {
+        for(auto &auxOutport: m_AuxOutPorts)
+        {
+            if(auxOutport->AuxOutPort() == port)
+            {
+                auxOutport->Detach();
+                // the port will be deleted asynchronuously
+            }
+        }
+        SyncPlugins();
+    }
+    void Engine::SendMidiAsync(const midi::TMidiOrSysexEvent &event, jackutils::Port &port)
+    {
+        auto span = event.Span();
+        m_RtProcessor.SendMidiFromMainThread(span.data(), span.size(), port.get());
+    }
+
+    TAuxOutPortBase::TAuxOutPortBase(Engine& engine, std::string &&name) : m_Engine(&engine), m_Name(std::move(name))
+    {
+        m_Engine->AuxOutPortAdded(this);
+    }
+    TAuxOutPortBase::~TAuxOutPortBase()
+    {   
+        if(m_Engine)
+        {
+            m_Engine->AuxOutPortRemoved(this);
+        }
+    }
+
+    TAuxOutPortLink::TAuxOutPortLink(TAuxOutPortBase *outport, Engine &engine) : m_AuxOutPort(outport), m_Port(std::string(outport->Name()), jackutils::Port::Kind::Midi, jackutils::Port::Direction::Output), m_Engine(engine)
+    {
+        outport->m_MidiSendFunc = [this](const midi::TMidiOrSysexEvent &event){
+            m_Engine.SendMidiAsync(event, m_Port);
+        };
+    }
+
+    void TAuxOutPortBase::Send(const midi::TMidiOrSysexEvent &event) const
+    {
+        if(m_MidiSendFunc)
+        {
+            m_MidiSendFunc(event);        
+        }
+    }
 
     TAuxInPortBase::TAuxInPortBase(Engine& engine, std::string &&name) : m_Engine(&engine), m_Name(std::move(name))
     {
@@ -781,10 +885,21 @@ namespace engine
         }
     }
 
+
     void TController::TInPort::OnMidi(const midi::TMidiOrSysexEvent &event)
     {
         m_Controller.OnMidiIn(event);
     }
 
+    void TController::SendMidi(const midi::TMidiOrSysexEvent &event) const
+    {
+        m_OutPort.Send(event);
+    }
+
+    void TController::ProjectChanged()
+    {
+        OnProjectChanged(m_LastProject);
+        m_LastProject = Project();
+    }
 
 }

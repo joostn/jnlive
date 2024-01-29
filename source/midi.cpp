@@ -33,6 +33,11 @@ namespace midi {
             throw std::runtime_error("midi event not supported");
         }
         std::copy((const char*)buf, (const char*)buf + size, m_Data.begin());
+        // if( (Type() == Type::NoteOn) && (Velocity() == 0) )
+        // {
+        //     // NoteOn with velocity 0 is actually a NoteOff
+        //     m_Data[0] = (char)(int(Type::NoteOff) | (Channel() & 0x0f));
+        // }
     }
     size_t SimpleEvent::ExpectedSize(char byte0)
     { 

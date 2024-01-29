@@ -523,10 +523,8 @@ public:
                     button->set_state_flags(activePreset && *activePreset == presetIndex ? Gtk::STATE_FLAG_CHECKED : Gtk::STATE_FLAG_NORMAL, true);
                     button->signal_clicked().connect([this, presetIndex](){
                         DoAndShowException([this, presetIndex](){
-                            auto newproject = m_Engine.Project().SwitchFocusedPartToPreset(presetIndex);
-                            m_Engine.SetProject(std::move(newproject));
+                            m_Engine.SwitchFocusedPartToPreset(presetIndex);
                             OnProjectChanged();
-                            m_Engine.LoadCurrentPreset();
                         });
                     });
                     presetButtons.push_back(std::move(button));

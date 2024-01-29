@@ -30,6 +30,10 @@ namespace midi
         {
             return ExpectedSize(m_Data[0]);
         }
+        std::span<const char> Span() const
+        {
+            return {m_Data.data(), Size()};
+        }
         static size_t ExpectedSize(char byte0);
         static SimpleEvent NoteOn(int channel, int note, int velocity);
         static SimpleEvent NoteOff(int channel, int note, int velocity);
@@ -45,6 +49,14 @@ namespace midi
             return m_Data[1];
         }
         int Velocity() const
+        {
+            return m_Data[2];
+        }
+        int ControlNumber() const
+        {
+            return m_Data[1];
+        }
+        int ControlValue() const
         {
             return m_Data[2];
         }
@@ -75,6 +87,9 @@ namespace midi
                 return true;
             }
             return false; // illegal message
+        }
+        TMidiOrSysexEvent(const SimpleEvent &event) : m_Event(event)
+        {
         }
         TMidiOrSysexEvent(const void *buf, size_t size)
         {
@@ -107,6 +122,17 @@ namespace midi
         std::span<const char> GetSysexEvent() const
         {
             return m_SysexEvent;
+        }
+        std::span<const char> Span() const
+        {
+            if(IsSysex())
+            {
+                return GetSysexEvent();
+            }
+            else
+            {
+                return GetSimpleEvent().Span();
+            }
         }
         void ToDebugStream(std::ostream &str) const;
         std::string ToDebugString() const;
