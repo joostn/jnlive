@@ -94,7 +94,9 @@ namespace realtimethread
             }
             else if(auto cpchangedmessage = dynamic_cast<const realtimethread::ControlPortChangedMessage*>(message); cpchangedmessage)
             {
-                *cpchangedmessage->Connection()->Buffer() = cpchangedmessage->NewValue();
+                auto connection = cpchangedmessage->Connection();
+                *connection->Buffer() = cpchangedmessage->NewValue();
+                connection->OrigValue() = cpchangedmessage->NewValue();
             }
             else if(auto atomPortEventMessage = dynamic_cast<const AtomPortEventMessage*>(message))
             {
@@ -145,6 +147,7 @@ namespace realtimethread
         }
 
     }
+
     void Processor::ProcessOutputPorts()
     {
         if(!m_DataInRtThread) return;
@@ -152,38 +155,47 @@ namespace realtimethread
         for(const auto &plugin: data.Plugins())
         {
             auto &instance = plugin.PluginInstance();
-            for(auto &connection: instance.Connections())
+            ProcessOutputPortsForInstance(instance);
+        }
+        if(data.ReverbInstance())
+        {
+            ProcessOutputPortsForInstance(*data.ReverbInstance());
+        }
+    }
+
+    void Processor::ProcessOutputPortsForInstance(lilvutils::Instance &instance)
+    {
+        for(auto &connection: instance.Connections())
+        {
+            if(auto controlportconnection = dynamic_cast<lilvutils::TConnection<lilvutils::TControlPort>*>(connection.get()); controlportconnection)
             {
-                if(auto controlportconnection = dynamic_cast<lilvutils::TConnection<lilvutils::TControlPort>*>(connection.get()); controlportconnection)
+                const auto &port = controlportconnection->Port();
+                //if(port.Direction() == lilvutils::TPortBase::TDirection::Output)
                 {
-                    const auto &port = controlportconnection->Port();
-                    if(port.Direction() == lilvutils::TPortBase::TDirection::Output)
+                    if(*controlportconnection->Buffer() != controlportconnection->OrigValue())
                     {
-                        if(*controlportconnection->Buffer() != controlportconnection->OrigValue())
-                        {
-                            controlportconnection->OrigValue() = *controlportconnection->Buffer();
-                            RingBufFromRtThread().Write(ControlPortChangedMessage(controlportconnection, *controlportconnection->Buffer()));
-                        }
+                        controlportconnection->OrigValue() = *controlportconnection->Buffer();
+                        RingBufFromRtThread().Write(ControlPortChangedMessage(controlportconnection, *controlportconnection->Buffer()));
                     }
                 }
-                else if(auto atomportconnection = dynamic_cast<lilvutils::TConnection<lilvutils::TAtomPort>*>(connection.get()); atomportconnection)
+            }
+            else if(auto atomportconnection = dynamic_cast<lilvutils::TConnection<lilvutils::TAtomPort>*>(connection.get()); atomportconnection)
+            {
+                const auto &port = atomportconnection->Port();
+                if(port.Direction() == lilvutils::TPortBase::TDirection::Output)
                 {
-                    const auto &port = atomportconnection->Port();
-                    if(port.Direction() == lilvutils::TPortBase::TDirection::Output)
+                    while(lv2_evbuf_is_valid(atomportconnection->BufferIterator()))
                     {
-                        while(lv2_evbuf_is_valid(atomportconnection->BufferIterator()))
-                        {
-                            // Get event from LV2 buffer
-                            uint32_t frames    = 0;
-                            uint32_t subframes = 0;
-                            LV2_URID type      = 0;
-                            uint32_t size      = 0;
-                            void*    body      = NULL;
-                            lv2_evbuf_get(atomportconnection->BufferIterator(), &frames, &subframes, &type, &size, &body);
+                        // Get event from LV2 buffer
+                        uint32_t frames    = 0;
+                        uint32_t subframes = 0;
+                        LV2_URID type      = 0;
+                        uint32_t size      = 0;
+                        void*    body      = NULL;
+                        lv2_evbuf_get(atomportconnection->BufferIterator(), &frames, &subframes, &type, &size, &body);
 
-                            RingBufFromRtThread().Write(AtomPortEventMessage(atomportconnection, frames, subframes, type, size, body));
-                            atomportconnection->BufferIterator() = lv2_evbuf_next(atomportconnection->BufferIterator());
-                        }
+                        RingBufFromRtThread().Write(AtomPortEventMessage(atomportconnection, frames, subframes, type, size, body));
+                        atomportconnection->BufferIterator() = lv2_evbuf_next(atomportconnection->BufferIterator());
                     }
                 }
             }

@@ -244,6 +244,7 @@ namespace realtimethread
         void SendPendingAsyncFunctionMessages();
         void ResetEvBufs();
         void ProcessOutputPorts();
+        void ProcessOutputPortsForInstance(lilvutils::Instance &instance);
         void RunInstances(jack_nframes_t nframes);
         void ProcessOutgoingAudio(jack_nframes_t nframes);
         void ProcessIncomingMidi(jack_nframes_t nframes);

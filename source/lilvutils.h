@@ -384,6 +384,10 @@ namespace lilvutils
         float& OrigValue() { return m_OrigValue;}
         Instance &instance() const {return m_Instance;}
         const float& ValueInMainThread() const { return m_ValueInMainThread; }
+        void SetValueInMainThread(float v)
+        {
+            m_ValueInMainThread = v;
+        }
         void SetValueInMainThread(const float& valueInMainThread, bool notify);
         const TControlPort& Port() const { return m_Port; }
     private:

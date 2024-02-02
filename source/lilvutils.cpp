@@ -266,7 +266,7 @@ namespace lilvutils
         for(auto p: {
             std::make_tuple(LV2_PARAMETERS__sampleRate, &m_OptionSampleRate),
             std::make_tuple(LV2_UI__updateRate, &m_OptionUiUpdateRate),
-            std::make_tuple(LV2_UI__scaleFactor, &m_OptionUiScaleFactor),
+            //std::make_tuple(LV2_UI__scaleFactor, &m_OptionUiScaleFactor),
         })
         {
             m_Options.push_back(LV2_Options_Option {
@@ -596,6 +596,10 @@ namespace lilvutils
             {
                 *size = sizeof(float);
                 *type = World::Static().AtomForge().Float;
+
+        std::cout << "GetPortValueBySymbol: " << port_symbol << " = " << controlconnection->ValueInMainThread() << std::endl;
+
+
                 return const_cast<void*>((const void*)&controlconnection->ValueInMainThread());
             }
         }
@@ -1006,7 +1010,9 @@ namespace lilvutils
             {
                 if(auto controlconnection = dynamic_cast<TConnection<TControlPort>*>(connection))
                 {
-                    instance().realtimeThreadInterface().SendControlValueFunc(controlconnection, *(float*)buffer);
+                    float newvalue = *(float*)buffer;
+                    controlconnection->SetValueInMainThread(newvalue);
+                    instance().realtimeThreadInterface().SendControlValueFunc(controlconnection, newvalue);
                     return;
                 }
             }
