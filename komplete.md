@@ -517,6 +517,275 @@ hexdump -ve '1/1 "%.2x "' /sys/bus/hid/devices/0003\:17CC\:1620.000E/report_desc
 // 1054 bytes
 ```
 
+```
+[joostn@ideapad ~]$ lsusb -d 17cc:1620 -v
+
+Bus 003 Device 007: ID 17cc:1620 Native Instruments KOMPLETE KONTROL S61 MK2
+Device Descriptor:
+  bLength                18
+  bDescriptorType         1
+  bcdUSB               2.00
+  bDeviceClass          239 Miscellaneous Device
+  bDeviceSubClass         2 [unknown]
+  bDeviceProtocol         1 Interface Association
+  bMaxPacketSize0        64
+  idVendor           0x17cc Native Instruments
+  idProduct          0x1620 KOMPLETE KONTROL S61 MK2
+  bcdDevice            0.59
+  iManufacturer           2 Native Instruments
+  iProduct                3 KOMPLETE KONTROL S61 MK2
+  iSerial                 1 7BD76471
+  bNumConfigurations      1
+  Configuration Descriptor:
+    bLength                 9
+    bDescriptorType         2
+    wTotalLength       0x00cb
+    bNumInterfaces          5
+    bConfigurationValue     1
+    iConfiguration          0 
+    bmAttributes         0x80
+      (Bus Powered)
+    MaxPower              480mA
+    Interface Association:
+      bLength                 8
+      bDescriptorType        11
+      bFirstInterface         0
+      bInterfaceCount         2
+      bFunctionClass          1 Audio
+      bFunctionSubClass       0 [unknown]
+      bFunctionProtocol      32 
+      iFunction               0 
+    Interface Descriptor:
+      bLength                 9
+      bDescriptorType         4
+      bInterfaceNumber        0
+      bAlternateSetting       0
+      bNumEndpoints           0
+      bInterfaceClass         1 Audio
+      bInterfaceSubClass      1 Control Device
+      bInterfaceProtocol     32 
+      iInterface              3 KOMPLETE KONTROL S61 MK2
+      AudioControl Interface Descriptor:
+        bLength                 9
+        bDescriptorType        36
+        bDescriptorSubtype      1 (HEADER)
+        bcdADC               2.00
+        bCategory               8
+        wTotalLength       0x0009
+        bmControls           0x00
+    Interface Descriptor:
+      bLength                 9
+      bDescriptorType         4
+      bInterfaceNumber        1
+      bAlternateSetting       0
+      bNumEndpoints           2
+      bInterfaceClass         1 Audio
+      bInterfaceSubClass      3 MIDI Streaming
+      bInterfaceProtocol      0 
+      iInterface              7 KOMPLETE KONTROL S61 MK2 MIDI
+      MIDIStreaming Interface Descriptor:
+        bLength                 7
+        bDescriptorType        36
+        bDescriptorSubtype      1 (HEADER)
+        bcdADC               1.00
+        wTotalLength       0x005d
+      MIDIStreaming Interface Descriptor:
+        bLength                 6
+        bDescriptorType        36
+        bDescriptorSubtype      2 (MIDI_IN_JACK)
+        bJackType               1 Embedded
+        bJackID                40
+        iJack                   0 
+      MIDIStreaming Interface Descriptor:
+        bLength                 6
+        bDescriptorType        36
+        bDescriptorSubtype      2 (MIDI_IN_JACK)
+        bJackType               1 Embedded
+        bJackID                42
+        iJack                   0 
+      MIDIStreaming Interface Descriptor:
+        bLength                 6
+        bDescriptorType        36
+        bDescriptorSubtype      2 (MIDI_IN_JACK)
+        bJackType               2 External
+        bJackID                41
+        iJack                  19 KOMPLETE KONTROL S61 MK2 IN
+      MIDIStreaming Interface Descriptor:
+        bLength                 6
+        bDescriptorType        36
+        bDescriptorSubtype      2 (MIDI_IN_JACK)
+        bJackType               2 External
+        bJackID                43
+        iJack                  20 KOMPLETE KONTROL S61 MK2 IN EXT
+      MIDIStreaming Interface Descriptor:
+        bLength                 9
+        bDescriptorType        36
+        bDescriptorSubtype      3 (MIDI_OUT_JACK)
+        bJackType               1 Embedded
+        bJackID                50
+        bNrInputPins            1
+        baSourceID( 0)         41
+        BaSourcePin( 0)         1
+        iJack                   0 
+      MIDIStreaming Interface Descriptor:
+        bLength                 9
+        bDescriptorType        36
+        bDescriptorSubtype      3 (MIDI_OUT_JACK)
+        bJackType               1 Embedded
+        bJackID                52
+        bNrInputPins            1
+        baSourceID( 0)         43
+        BaSourcePin( 0)         1
+        iJack                   0 
+      MIDIStreaming Interface Descriptor:
+        bLength                 9
+        bDescriptorType        36
+        bDescriptorSubtype      3 (MIDI_OUT_JACK)
+        bJackType               2 External
+        bJackID                51
+        bNrInputPins            1
+        baSourceID( 0)         40
+        BaSourcePin( 0)         1
+        iJack                  21 KOMPLETE KONTROL S61 MK2 OUT
+      MIDIStreaming Interface Descriptor:
+        bLength                 9
+        bDescriptorType        36
+        bDescriptorSubtype      3 (MIDI_OUT_JACK)
+        bJackType               2 External
+        bJackID                53
+        bNrInputPins            1
+        baSourceID( 0)         42
+        BaSourcePin( 0)         1
+        iJack                  22 KOMPLETE KONTROL S61 MK2 OUT EXT
+      Endpoint Descriptor:
+        bLength                 7
+        bDescriptorType         5
+        bEndpointAddress     0x81  EP 1 IN
+        bmAttributes            2
+          Transfer Type            Bulk
+          Synch Type               None
+          Usage Type               Data
+        wMaxPacketSize     0x0200  1x 512 bytes
+        bInterval               0
+        MIDIStreaming Endpoint Descriptor:
+          bLength                 6
+          bDescriptorType        37
+          bDescriptorSubtype      1 (Invalid)
+          bNumEmbMIDIJack         2
+          baAssocJackID( 0)      50
+          baAssocJackID( 1)      52
+      Endpoint Descriptor:
+        bLength                 7
+        bDescriptorType         5
+        bEndpointAddress     0x01  EP 1 OUT
+        bmAttributes            2
+          Transfer Type            Bulk
+          Synch Type               None
+          Usage Type               Data
+        wMaxPacketSize     0x0200  1x 512 bytes
+        bInterval               0
+        MIDIStreaming Endpoint Descriptor:
+          bLength                 6
+          bDescriptorType        37
+          bDescriptorSubtype      1 (Invalid)
+          bNumEmbMIDIJack         2
+          baAssocJackID( 0)      40
+          baAssocJackID( 1)      42
+    Interface Descriptor:
+      bLength                 9
+      bDescriptorType         4
+      bInterfaceNumber        2
+      bAlternateSetting       0
+      bNumEndpoints           2
+      bInterfaceClass         3 Human Interface Device
+      bInterfaceSubClass      0 [unknown]
+      bInterfaceProtocol      0 
+      iInterface              8 KOMPLETE KONTROL S61 MK2 HID
+        HID Device Descriptor:
+          bLength                 9
+          bDescriptorType        33
+          bcdHID               1.11
+          bCountryCode            0 Not supported
+          bNumDescriptors         1
+          bDescriptorType        34 Report
+          wDescriptorLength    1054
+          Report Descriptors: 
+            ** UNAVAILABLE **
+      Endpoint Descriptor:
+        bLength                 7
+        bDescriptorType         5
+        bEndpointAddress     0x82  EP 2 IN
+        bmAttributes            3
+          Transfer Type            Interrupt
+          Synch Type               None
+          Usage Type               Data
+        wMaxPacketSize     0x0040  1x 64 bytes
+        bInterval               2
+      Endpoint Descriptor:
+        bLength                 7
+        bDescriptorType         5
+        bEndpointAddress     0x02  EP 2 OUT
+        bmAttributes            3
+          Transfer Type            Interrupt
+          Synch Type               None
+          Usage Type               Data
+        wMaxPacketSize     0x0040  1x 64 bytes
+        bInterval               2
+    Interface Descriptor:
+      bLength                 9
+      bDescriptorType         4
+      bInterfaceNumber        3
+      bAlternateSetting       0
+      bNumEndpoints           1
+      bInterfaceClass       255 Vendor Specific Class
+      bInterfaceSubClass    189 [unknown]
+      bInterfaceProtocol      0 
+      iInterface              9 KOMPLETE KONTROL S61 MK2 BD
+      Endpoint Descriptor:
+        bLength                 7
+        bDescriptorType         5
+        bEndpointAddress     0x03  EP 3 OUT
+        bmAttributes            2
+          Transfer Type            Bulk
+          Synch Type               None
+          Usage Type               Data
+        wMaxPacketSize     0x0200  1x 512 bytes
+        bInterval               1
+    Interface Descriptor:
+      bLength                 9
+      bDescriptorType         4
+      bInterfaceNumber        4
+      bAlternateSetting       0
+      bNumEndpoints           0
+      bInterfaceClass       254 Application Specific Interface
+      bInterfaceSubClass      1 Device Firmware Update
+      bInterfaceProtocol      1 
+      iInterface             10 KOMPLETE KONTROL S61 MK2 DFU
+      Device Firmware Upgrade Interface Descriptor:
+        bLength                             9
+        bDescriptorType                    33
+        bmAttributes                       11
+          Will Detach
+          Manifestation Intolerant
+          Upload Supported
+          Download Supported
+        wDetachTimeout                    250 milliseconds
+        wTransferSize                      64 bytes
+        bcdDFUVersion                   1.10
+Device Qualifier (for other device speed):
+  bLength                10
+  bDescriptorType         6
+  bcdUSB               2.00
+  bDeviceClass          239 Miscellaneous Device
+  bDeviceSubClass         2 [unknown]
+  bDeviceProtocol         1 Interface Association
+  bMaxPacketSize0        64
+  bNumConfigurations      1
+Device Status:     0x0000
+  (Bus Powered)
+[joostn@ideapad ~]$ 
+
+```
 report 0xa4: key zones
     qKontrol/source/qkontrol.cpp setKeyzones()
 
@@ -525,3 +794,46 @@ report 0xa4: key zones
 1 0 0 0 0 8 0 0 0 0 d5 2 37 0 af 3 e7 1 53 1 40 0 d0 3 c2 3 0 0 0 0 8 24 
 1 0 0 0 0 0 0 0 0 0 d5 2 37 0 af 3 e7 1 53 1 40 0 d0 3 c2 3 0 0 0 0 8 24 
 ```
+
+https://github.com/ojacques/SynthesiaKontrol/blob/master/color_scan.py
+
+https://github.com/ojacques/SynthesiaKontrol/blob/master/SynthesiaKontrol.py
+
+
+# bitmap:
+https://github.com/GoaSkin/qKontrol/blob/b478fd9818c1b01c695722762e6d55a9b2e0228e/source/qkontrol.cpp#L150
+void qkontrolWindow::drawImage(uint8_t screen, QPixmap *pixmap, ushort x, ushort y)
+
+# init:
+    # Write 3 bytes to the device: 0xa0, 0x00, 0x00
+    # Thanks to @xample for investigating this
+    device.write([0xa0, 0x00, 0x00])
+
+# init:
+0xa0 + 2 bytes
+Set to [0,0] to enable interactive mode
+
+# lights:
+keyboard: 0x81 + 61 bytes (0-127)
+buttons: 0x80 + 69 bytes  (0-127)
+
+# overige HID output:
+0xa1: 96 bytes + 96 bytes + 8 bytes (0-31) + 1 ushort (0-65534) + 1 byte (0-255)
+0xa2: 12 bytes + 12 bytes + 20 bytes (0-255)
+0xa3: 6 x 12 bytes
+0xa4: 128 bytes (key zones!)
+0xaf: 2 bytes
+0xd0: feature report: 2 ushort (0-65534) + 1 byte (0-255) + 1 byte (0-100) + ...meer
+0xd8: feature report: 
+0xd9: feature report: 32 bytes
+0xf0: feature report: 8 bytes + 2 bytes + 2 bytes
+0xf1: feature report: 0xd0 bytes (0-127)
+0xf3: feature report: 1 byte (0-127)
+0xf4: feature report: 1 byte (0-255) + 31 bytes (0-255)
+0xf8: feature report: 1 ushort (0-65534) + 1 ushort (0-65534) + 1 byte (0-255) + 1 byte (0-255) + 1 byte (0-255) + 1 byte (0-100) + 1 byte (0-100) + 1 byte (0-1)
+0xf9: feature report: 1 ushort (0-65534) + 1 ushort (0-65534) + 1 byte (0-255) + 1 byte (0-255) + 1 byte (0-255) + 1 byte (0-100) + 1 byte (0-100) + 1 byte (0-1)
+
+# incoming reports:
+0x01: 19 bytes: state of all buttons
+0xaa: state of all controllers (in midi mode)
+

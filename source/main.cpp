@@ -33,11 +33,14 @@ public:
     void ProcessEvents() {
         // called every 1 ms:
         m_Engine.ProcessMessages();
+        m_KompleteHid.Run();
+        m_KompleteDisplay.Run();
+        m_KompleteDisplay.Test();
     }
     static std::string GetProjectDir()
     {
         std::string homedir = getenv("HOME");
-        std::string projectdir = homedir + "/.config/jn-live";
+        std::string projectdir = homedir + "/.config/jnlive-data";
         return projectdir;
     }
     void InitEngine()
@@ -64,6 +67,8 @@ public:
 private:
     engine::Engine m_Engine;
     conspiracy::Controller m_ConspiracyController { m_Engine };
+    komplete::Hid m_KompleteHid;
+    komplete::Display m_KompleteDisplay;
 };
 
 int main(int argc, char** argv)

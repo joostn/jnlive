@@ -378,7 +378,7 @@ namespace lilvutils
         m_Plugin = lilv_plugins_get_by_uri(plugins, urinode); // return value must not be freed
         if(!m_Plugin)
         {
-            throw std::runtime_error("could not load plugin");
+            throw std::runtime_error("could not load plugin: " + m_Uri);
         }
         {
             auto namenode = lilv_plugin_get_name(m_Plugin);

@@ -85,7 +85,9 @@
         "unordered_set": "cpp",
         "forward_list": "cpp",
         "filesystem": "cpp",
-        "iostream": "cpp"
+        "iostream": "cpp",
+        "text_encoding": "cpp",
+        "execution": "cpp"
     },
     "lldb.displayFormat": "auto",
     "lldb.dereferencePointers": true,
