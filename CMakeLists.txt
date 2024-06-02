@@ -21,6 +21,7 @@ add_executable (jnlive
     source/conspiracy.cpp
     source/midi.cpp
     source/kompletegui.cpp
+    source/simplegui.cpp
 
 #    source/suil/host.c
 #    source/suil/instance.c
