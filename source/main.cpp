@@ -7,6 +7,7 @@
 #include "kompletegui.h"
 #include <filesystem>
 #include <gtkmm.h>
+#include "simplegui.h"
 
 using namespace std::string_literals;
 using namespace std::chrono_literals;
@@ -17,6 +18,10 @@ public:
     static constexpr uint32_t cMaxBlockSize = 4096;
     Application(int argc, char** argv) : m_Engine(cMaxBlockSize, argc, argv, GetProjectDir()), Gtk::Application("nl.newhouse.jnlive")
     {
+        auto mainwindow = std::make_unique<simplegui::PlainWindow>(nullptr, Gdk::Rectangle(20, 10, 200, 150), simplegui::Rgba(1, 0, 0));
+        mainwindow->AddChild<simplegui::PlainWindow>(Gdk::Rectangle(2, 2, 196, 146), simplegui::Rgba(0.2, 0.2, 0.2));
+        mainwindow->AddChild<simplegui::TextWindow>(Gdk::Rectangle(2, 2, 192, 146), "Hello, world!", simplegui::Rgba(1, 1, 1), 15);
+        m_KompleteGui.SetWindow(std::move(mainwindow));
     }
     void on_activate() override {
         InitEngine();
