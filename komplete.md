@@ -837,3 +837,7 @@ buttons: 0x80 + 69 bytes  (0-127)
 0x01: 19 bytes: state of all buttons
 0xaa: state of all controllers (in midi mode)
 
+LCD kleuren:
+
+byte 0: RrrrrGgg
+byte 1: gggBbbbb

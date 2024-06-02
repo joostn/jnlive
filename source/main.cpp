@@ -4,6 +4,7 @@
 #include "project.h"
 #include "komplete.h"
 #include "conspiracy.h"
+#include "kompletegui.h"
 #include <filesystem>
 #include <gtkmm.h>
 
@@ -33,9 +34,7 @@ public:
     void ProcessEvents() {
         // called every 1 ms:
         m_Engine.ProcessMessages();
-        m_KompleteHid.Run();
-        m_KompleteDisplay.Run();
-        m_KompleteDisplay.Test();
+        m_KompleteGui.Run();
     }
     static std::string GetProjectDir()
     {
@@ -67,8 +66,7 @@ public:
 private:
     engine::Engine m_Engine;
     conspiracy::Controller m_ConspiracyController { m_Engine };
-    komplete::Hid m_KompleteHid;
-    komplete::Display m_KompleteDisplay;
+    komplete::Gui m_KompleteGui {{0x17cc, 0x1620}};
 };
 
 int main(int argc, char** argv)
