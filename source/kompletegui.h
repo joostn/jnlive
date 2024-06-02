@@ -1,6 +1,8 @@
 #pragma once
 
 #include "komplete.h"
+#include "engine.h"
+#include "utils.h"
 #include <thread>
 #include <mutex>
 
@@ -11,10 +13,21 @@ namespace simplegui
 
 namespace komplete
 {
+
+    class TGuiState
+    {
+    public:
+        enum class TMode {Performance};
+        TMode m_Mode = TMode::Performance;
+        utils::THysteresis m_SelectedPresetHysteresis {10, 20};
+        int m_SelectedPreset = 0;
+        bool m_ShowPresetList = false;
+        bool m_Shift = false;        
+    };
     class Gui
     {
     public:
-        Gui(std::pair<int, int> vidPid);
+        Gui(std::pair<int, int> vidPid, engine::Engine &engine);
         ~Gui();
         void Run();
         void SetWindow(std::unique_ptr<simplegui::Window> window);
@@ -23,6 +36,9 @@ namespace komplete
         void PaintWindow(Display &display, const simplegui::Window &window);
         void RunGuiThread(std::pair<int, int> vidPid);
         void OnButton(Hid::TButtonIndex button, int delta);
+        void OnProjectChanged();
+        void Refresh();
+        void RefreshLeds();
 
     private:
         Hid m_Hid;
@@ -32,8 +48,8 @@ namespace komplete
         std::unique_ptr<simplegui::Window> m_NewWindow;
         std::unique_ptr<simplegui::Window> m_PrevWindow;
         bool m_AbortRequested = false;
-
-        int m_LedIndex = 0;
-        int m_LedValue = 0;
+        engine::Engine &m_Engine;
+        utils::NotifySink m_OnProjectChanged {m_Engine.OnProjectChanged(), [this](){OnProjectChanged();}};
+        TGuiState m_GuiState;
     };
 }

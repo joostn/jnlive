@@ -86,6 +86,34 @@ namespace utils
         NotifySource *m_Source = nullptr;
     };
 
+    class THysteresis
+    {
+    public:
+        THysteresis(int hyst, int reduction) : m_Hyst(hyst), m_Reduction(reduction) {}
+        int Update(int delta)
+        {
+            int reduced = 0;
+            m_Value += delta;
+            if(m_Value > m_Hyst)
+            {
+                auto v = m_Value - m_Hyst;
+                reduced = v / m_Reduction;
+                m_Value -= reduced * m_Reduction;
+            }
+            else if(m_Value < -m_Hyst)
+            {
+                auto v = m_Value + m_Hyst;
+                reduced = v / m_Reduction;
+                m_Value -= reduced * m_Reduction;
+            }
+            return reduced;            
+        }
+        
+    private:
+        int m_Hyst;
+        int m_Reduction;
+        int m_Value = 0;
+    };
     std::string generate_random_tempdir();
 
 }

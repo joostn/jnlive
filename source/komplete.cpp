@@ -59,6 +59,11 @@ namespace komplete
         // 42, 43 = octave?
         // 44..68 = touch strip
     }
+    void Hid::ClearAllLeds()
+    {
+        std::fill(std::begin(m_LedState), std::end(m_LedState), 0);
+        m_LedStateChanged = true;        
+    }
     void Hid::SetLed(TButtonIndex button, TLedColor color, int brightness)
     {
         brightness = std::clamp(brightness, 0, 4);
@@ -378,6 +383,7 @@ namespace komplete
                     if(errcode == LIBUSB_ERROR_NO_DEVICE )
                     {
                         Disconnect();
+                        return;
                     }
                 }
             }

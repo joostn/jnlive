@@ -71,7 +71,7 @@ public:
 private:
     engine::Engine m_Engine;
     conspiracy::Controller m_ConspiracyController { m_Engine };
-    komplete::Gui m_KompleteGui {{0x17cc, 0x1620}};
+    komplete::Gui m_KompleteGui {{0x17cc, 0x1620}, m_Engine};
 };
 
 int main(int argc, char** argv)

@@ -55,9 +55,20 @@ namespace simplegui
         {
             return m_Rectangle;
         }
+        int Width() const
+        {
+            return m_Rectangle.get_width();
+        }
+        int Height() const
+        {
+            return m_Rectangle.get_height();
+        }
 
     protected:
-        virtual void DoPaint(Cairo::Context &cr) const = 0;
+        virtual void DoPaint(Cairo::Context &cr) const
+        {
+            // transparent
+        }
 
     private:
         Gdk::Rectangle m_Rectangle;
