@@ -7,6 +7,73 @@ using std::chrono_literals::operator""ms;
 
 namespace komplete
 {
+    constexpr double sMinSliderValue = -60;
+    constexpr double sMaxSliderValue = 10;
+    constexpr double sSliderPow = 0.6;
+    double multiplierToSliderValue(double multiplier)
+    {
+        if(multiplier <= 0.0) return 0.0;
+        auto db = 20 * log10(multiplier);
+        auto slidervalue = (db - sMinSliderValue) / (sMaxSliderValue - sMinSliderValue);
+        slidervalue = std::clamp(slidervalue, 0.0, 1.0);
+        slidervalue = std::pow(slidervalue, sSliderPow);
+        return slidervalue;
+    }
+
+    double sliderValueToMultiplier(double slidervalue)
+    {
+        if(slidervalue <= 0) return 0.0;
+        slidervalue = std::min(slidervalue, 1.0);
+        slidervalue = std::pow(slidervalue, 1.0 / sSliderPow);
+        auto db = slidervalue * (sMaxSliderValue - sMinSliderValue) + sMinSliderValue;
+        return pow(10, db / 20);
+    }
+
+    double increaseMultiplier(double origvalue, double deltaDb)
+    {   
+        double db;
+        if(origvalue <= 0.0)
+        {
+            db = sMinSliderValue;
+        }
+        else
+        {
+            db = 20 * log10(origvalue);
+            db = std::max(db, sMinSliderValue);
+        }
+        db += deltaDb;
+        if(db <= sMinSliderValue) return 0.0;
+        db = std::min(db, sMaxSliderValue);
+        return pow(10, db / 20);
+    }
+
+    simplegui::Rgba colorForPart(size_t partindex)
+    {
+        return (partindex == 0)? simplegui::Rgba(1, 0.3, 0.3): simplegui::Rgba(0.3, 1, 0.3);
+    }
+
+    std::string multiplierToText(double v)
+    {
+        double db;
+        if(v <= 0.0)
+        {
+            db = sMinSliderValue;
+        }
+        else
+        {
+            db = 20 * log10(v);
+            db = std::max(db, sMinSliderValue);
+        }
+        if(db <= sMinSliderValue) return "-inf";
+        int dbRounded = (int)std::lround(db);
+        if(dbRounded > 0)
+        {
+            return "+" + std::to_string(dbRounded);
+        }
+        return std::to_string(dbRounded);
+    }
+
+
     Gui::Gui(std::pair<int, int> vidPid, engine::Engine &engine) : m_Engine(engine), m_Hid(vidPid, [this](Hid::TButtonIndex button, int delta) { OnButton(button, delta); })
     {
         m_GuiThread = std::thread([vidPid, this]() {
@@ -24,11 +91,7 @@ namespace komplete
             if(button == Hid::TButtonIndex::LcdRotary0)
             {
                 auto v = m_GuiState.m_SelectedPresetHysteresis.Update(delta);
-                if(project.Presets().empty())
-                {
-                    m_GuiState.m_SelectedPreset = 0;
-                }
-                else
+                if(!project.Presets().empty())
                 {
                     if(v != 0)
                     {
@@ -37,11 +100,54 @@ namespace komplete
                     }
                 }
             }
+            if( (button >= Hid::TButtonIndex::LcdRotary5) && (button <= Hid::TButtonIndex::LcdRotary7) )
+            {
+                utils::THysteresis &hysteresis = (button == Hid::TButtonIndex::LcdRotary5)? m_GuiState.m_ReverbLevelHysteresis : (button == Hid::TButtonIndex::LcdRotary6)? m_GuiState.m_Part1LevelHysteresis : m_GuiState.m_Part2LevelHysteresis;
+                auto v = m_GuiState.m_SelectedPresetHysteresis.Update(delta);
+                if(v != 0)
+                {
+                    double dB = v * 0.5;
+                    if(button == Hid::TButtonIndex::LcdRotary5)
+                    {
+                        auto multiplier = project.Reverb().MixLevel();
+                        auto newmultiplier = increaseMultiplier(multiplier, dB);
+                        if(newmultiplier != multiplier)
+                        {
+                            auto newreverb = project.Reverb().ChangeMixLevel(newmultiplier);
+                            auto newproject = project.ChangeReverb(std::move(newreverb));
+                            m_Engine.SetProject(std::move(newproject));
+                        }
+                    }
+                    else
+                    {
+                        size_t partindex = (button == Hid::TButtonIndex::LcdRotary6)? 1:0;
+                        if(project.Parts().size() > partindex)
+                        {
+                            auto multiplier = project.Parts().at(partindex).AmplitudeFactor();
+                            auto newmultiplier = increaseMultiplier(multiplier, dB);
+                            if(newmultiplier != multiplier)
+                            {
+                                auto newpart = project.Parts().at(partindex).ChangeAmplitudeFactor(newmultiplier);
+                                auto newproject = project.ChangePart(partindex, std::move(newpart));
+                                m_Engine.SetProject(std::move(newproject));
+                            }
+                        }
+                    }
+                }
+            }
             if( (button == Hid::TButtonIndex::Shift) && (delta > 0) )
             {
                 m_GuiState.m_Shift = !m_GuiState.m_Shift;
                 RefreshLeds();
                 Refresh();
+            }
+            if( (button == Hid::TButtonIndex::Clear) && (delta > 0) )
+            {
+                const auto &project = m_Engine.Project();
+                if(project.FocusedPart() && (project.FocusedPart() < project.Parts().size()))
+                {
+                    m_Engine.SwitchFocusedPartToPreset(m_GuiState.m_SelectedPreset);
+                }
             }
             if( (button == Hid::TButtonIndex::Instance) && (delta > 0) )
             {
@@ -205,7 +311,7 @@ namespace komplete
 
             if(project.FocusedPart())
             {
-                simplegui::Rgba partcolor = (project.FocusedPart().value() == 0)? simplegui::Rgba(1, 0.5, 0.5): simplegui::Rgba(0.5, 1, 0.5);
+                auto partcolor = colorForPart(project.FocusedPart().value());
                 {
                     int boxwidth = 100;
                     int boxheight = 40;
@@ -250,7 +356,72 @@ namespace komplete
                     }
                 }
             }
-        }
+            bool hasfocusedslider = false;
+            simplegui::Rgba focusedslidercolor;
+            double focusedslidervalue = 0;
+            std::string focusedslidertext;
+            int sliderbottom = 272;
+            int sliderheight = 30;
+            for(int sliderindex = 0; sliderindex < 3; sliderindex++)
+            {
+                int sliderleft = (5+sliderindex)*120 + 5;
+                int sliderright = sliderleft + 120 - 10;
+                double multiplier;
+                simplegui::Rgba slidercolor = simplegui::Rgba(0.7, 0.7, 0.7);
+                if(sliderindex == 0)
+                {
+                    multiplier = project.Reverb().MixLevel();
+                }
+                else
+                {
+                    size_t partindex = (size_t)(2-sliderindex);
+                    multiplier = 0;
+                    if(project.Parts().size() > partindex)
+                    {
+                        multiplier = project.Parts().at(partindex).AmplitudeFactor();
+                    }
+                    slidercolor = colorForPart(partindex);
+                }
+                double slidervalue = multiplierToSliderValue(multiplier);
+                auto slidertext = multiplierToText(multiplier);
+
+                auto slider = mainwindow->AddChild<simplegui::TSlider>(Gdk::Rectangle(sliderleft, sliderbottom - sliderheight, sliderright - sliderleft, sliderheight), slidertext, slidervalue, slidercolor);
+                bool isfocused = m_Hid.GetButtonState(Hid::TButtonIndex(int(Hid::TButtonIndex::TouchLcdRotary5) + sliderindex)) != 0;
+                if(isfocused && (!hasfocusedslider))
+                {
+                    hasfocusedslider = true;
+                    focusedslidercolor = slidercolor;
+                    focusedslidervalue = slidervalue;
+                    focusedslidertext = slidertext;
+                }
+            }
+            if(hasfocusedslider)
+            {
+                int focusedsliderleft = 480 + 40;
+                int focusedsliderright = 960 - 40;
+                int focusedsliderbottom = sliderbottom - sliderheight;
+                int focusedsliderheight = 80;
+                auto focusedslider = mainwindow->AddChild<simplegui::TSlider>(Gdk::Rectangle(focusedsliderleft, focusedsliderbottom - focusedsliderheight, focusedsliderright - focusedsliderleft, focusedsliderheight), focusedslidertext, focusedslidervalue, focusedslidercolor);
+            }
+
+            if(m_Hid.GetButtonState(Hid::TButtonIndex::TouchLcdRotary0) != 0)
+            {
+                // show popup selector:
+                mainwindow->AddChild<simplegui::TListBox>(Gdk::Rectangle(10, 272/2 - 100, 400, 272/2+100), simplegui::Rgba(1,1,1), 25, project.Presets().size(), m_GuiState.m_SelectedPreset, m_GuiState.m_SelectedPreset, [this, &project](size_t index) -> std::string {
+                    auto result = std::to_string(index) + ": ";
+                    if(index < project.Presets().size())
+                    {
+                        const auto &presetOrNull = project.Presets()[index];
+                        if(presetOrNull)
+                        {
+                            result += presetOrNull->Name();
+                        }
+                    }
+                    return result;
+                });
+            }
+
+        } // if performance
 
         SetWindow(std::move(mainwindow));
     }
@@ -258,7 +429,8 @@ namespace komplete
     {
         const auto &project = m_Engine.Project();
         m_Hid.SetLed(Hid::TButtonIndex::Shift, m_GuiState.m_Shift? 4:1);
-        m_Hid.SetLed(Hid::TButtonIndex::Instance, 1);
+        m_Hid.SetLed(Hid::TButtonIndex::Instance, 2);
+        m_Hid.SetLed(Hid::TButtonIndex::Clear, 2);
         if(m_GuiState.m_Mode == TGuiState::TMode::Performance)
         {
             for(size_t quickPresetOffset = 0; quickPresetOffset < 8; quickPresetOffset++)

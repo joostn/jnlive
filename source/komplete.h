@@ -122,6 +122,7 @@ namespace komplete
             SetLed(button, TLedColor::White, brightness);
         }
         void ClearAllLeds();
+        int GetButtonState(TButtonIndex index) const;
 
     private:
         void UpdateButtonState(std::vector<int> &&buttonstate);

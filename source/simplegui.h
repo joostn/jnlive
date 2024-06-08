@@ -105,4 +105,16 @@ namespace simplegui
         Rgba m_Color;
         int m_FontSize;
     };
+
+    class TSlider : public PlainWindow
+    {
+    public:
+        TSlider(Window *parent, const Gdk::Rectangle &rect, std::string_view text, double value, const Rgba &color);       
+    };
+
+    class TListBox : public PlainWindow
+    {
+    public:
+        TListBox(Window *parent, const Gdk::Rectangle &rect, const Rgba &color, int rowheight, size_t numitems, std::optional<size_t> selecteditem, size_t centereditem, const std::function<std::string(size_t)> &itemtextgetter);
+    };
 }

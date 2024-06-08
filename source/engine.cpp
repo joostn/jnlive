@@ -449,7 +449,7 @@ namespace engine
             auto oldpresetdir = Project().Reverb().ReverbPresetSubDir();
             auto reverb = Project().Reverb().ChangeReverbLv2Uri(std::move(uri)).ChangeReverbPresetSubDir(std::string());
             SetProject(Project().ChangeReverb(std::move(reverb)));
-            SaveProject();
+            SaveProjectSync();
             if(!oldpresetdir.empty())
             {
                 auto dirToDelete = PresetsDir() + "/" + oldpresetdir;
@@ -472,7 +472,7 @@ namespace engine
         auto oldpresetdir = Project().Reverb().ReverbPresetSubDir();
         auto reverb = Project().Reverb().ChangeReverbPresetSubDir(std::move(relativePresetDir));
         SetProject(Project().ChangeReverb(std::move(reverb)));
-        SaveProject();
+        SaveProjectSync();
         dirToDelete.clear();
         if(!oldpresetdir.empty())
         {
@@ -510,7 +510,7 @@ namespace engine
                     }
                 }
                 SetProject(std::move(newproject));
-                SaveProject();
+                SaveProjectSync();
                 if(!presetSubdir.empty())
                 {
                     auto dirToDelete = PresetsDir() + "/" + presetSubdir;
@@ -558,7 +558,7 @@ namespace engine
                     auto newpart = newproject.Parts().at(partindex).ChangeActivePresetIndex(presetindex).ChangeActiveInstrumentIndex(instrindex);
                     newproject = newproject.ChangePart(partindex, std::move(newpart));
                     SetProject(std::move(newproject));
-                    SaveProject();
+                    SaveProjectSync();
                     dirToDelete.clear();
                     if(!oldpresetdir.empty())
                     {
@@ -598,6 +598,33 @@ namespace engine
         {
             std::filesystem::create_directory(presetsdir);
         }
+        m_ProjectSaveThread = std::thread([this](){
+            while(true)
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                bool quitting = DoProjectSaveThread();
+                if(quitting)
+                {
+                    break;
+                }
+            }
+        });
+    }
+    bool Engine::DoProjectSaveThread()
+    {
+        std::unique_lock<std::mutex> lock1(m_SaveProjectNowMutex);
+        bool quitting = false;
+        std::unique_ptr<project::TProject> projectToSave;
+        {
+            std::unique_lock<std::mutex> lock(m_ProjectSaveMutex);
+            quitting = m_Quitting;
+            projectToSave = std::move(m_ProjectToSave);
+        }
+        if(projectToSave)
+        {
+            SaveProject(*projectToSave);
+        }
+        return quitting;
     }
     void Engine::LoadProject()
     {
@@ -626,7 +653,6 @@ namespace engine
         project::TInstrument newinstrument(std::move(uricopy), shared, std::move(name));
         auto newproject = Project().AddInstrument(std::move(newinstrument));
         SetProject(std::move(newproject));
-        SaveProject();
     }
     void Engine::DeleteInstrument(size_t instrumentindex)
     {
@@ -646,20 +672,36 @@ namespace engine
         }
         auto newproject = Project().DeleteInstrument(instrumentindex);
         SetProject(std::move(newproject));
-        SaveProject();
+        SaveProjectSync();
         for(const auto &presetSubdir: presetSubdirsToDelete)
         {
             auto dirToDelete = PresetsDir() + "/" + presetSubdir;
             std::filesystem::remove_all(dirToDelete);
         }
     }
-    void Engine::SaveProject()
+    void Engine::SaveProjectSync()
+    {
+        DoProjectSaveThread();
+    }
+    void Engine::SaveProject(const project::TProject &project)
     {
         std::string projectfile = ProjectFile();
-        ProjectToFile(Project(), projectfile);
+        std::string tempfile;
+        do
+        {
+            tempfile = projectfile + ".tmp" + std::to_string(rand());
+        } while (std::filesystem::exists(tempfile));
+        ProjectToFile(project, tempfile);
+        std::filesystem::rename(tempfile, projectfile);
     }
     Engine::~Engine()
     {
+        {
+            std::unique_lock<std::mutex> lock(m_ProjectSaveMutex);
+            m_Quitting = true;
+        }
+        m_ProjectSaveThread.join();
+
         // this will deferredly delete the plugins and midi in ports that are no longer needed:
         SetProject(project::TProject());
         for(auto &port: m_AudioOutPorts)
@@ -689,6 +731,11 @@ namespace engine
     }
     void Engine::SetProject(project::TProject &&project)
     {
+        if(!m_Quitting)
+        {
+            std::unique_lock<std::mutex> lock(m_ProjectSaveMutex);
+            m_ProjectToSave = std::make_unique<project::TProject>(project);
+        }
         m_Project = std::move(project);
         SyncPlugins();
         OnProjectChanged().Notify();

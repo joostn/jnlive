@@ -736,12 +736,12 @@ public:
         m_MainPanelStack.add(*m_InstrumentsPanel);
         m_MainPanelStack.add(*m_ReverbPanel);
         show_all_children();
-        m_SaveProjectMenuItem.signal_activate().connect([this](){
-            DoAndShowException([this](){
-                m_Engine.SaveProject();
-            });
-        });
-        m_PopupMenu.append(m_SaveProjectMenuItem);
+        // m_SaveProjectMenuItem.signal_activate().connect([this](){
+        //     DoAndShowException([this](){
+        //         m_Engine.SaveProject();
+        //     });
+        // });
+        // m_PopupMenu.append(m_SaveProjectMenuItem);
         m_PopupMenu.show_all();
         Update();
     }
@@ -783,7 +783,7 @@ private:
     std::unique_ptr<InstrumentsPanel> m_InstrumentsPanel { std::make_unique<InstrumentsPanel>(m_Engine) };
     std::unique_ptr<ReverbPanel> m_ReverbPanel { std::make_unique<ReverbPanel>(m_Engine) };
     Gtk::Stack m_MainPanelStack;
-    Gtk::MenuItem m_SaveProjectMenuItem {"Save Project"};
+    // Gtk::MenuItem m_SaveProjectMenuItem {"Save Project"};
 };
 
 } // anonymous namespace

@@ -24,6 +24,9 @@ namespace komplete
         bool m_ShowPresetList = false;
         bool m_Shift = false;
         size_t m_QuickPresetPage = 0;
+        utils::THysteresis m_ReverbLevelHysteresis {1, 1};
+        utils::THysteresis m_Part1LevelHysteresis {1, 1};
+        utils::THysteresis m_Part2LevelHysteresis {1, 1};
     };
     class Gui
     {

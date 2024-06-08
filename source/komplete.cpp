@@ -187,12 +187,12 @@ namespace komplete
                 }
                 else
                 {
-                    std::cout << "Read " << numbytes << " bytes" << std::endl;
-                    for(int i = 0; i < numbytes; ++i)
-                    {
-                        std::cout << std::hex << (int)buf[i] << " ";
-                    }
-                    std::cout << std::dec << std::endl;
+                    // std::cout << "Read " << numbytes << " bytes" << std::endl;
+                    // for(int i = 0; i < numbytes; ++i)
+                    // {
+                    //     std::cout << std::hex << (int)buf[i] << " ";
+                    // }
+                    // std::cout << std::dec << std::endl;
                 }
             }
             else if(numbytes < 0)
@@ -209,36 +209,39 @@ namespace komplete
     }
     void Hid::UpdateButtonState(std::vector<int> &&buttonstate)
     {
-        if(buttonstate.empty() && (!m_PrevButtonState.empty()))
+        auto prevbuttonstate = std::move(m_PrevButtonState);
+        m_PrevButtonState = std::move(buttonstate);
+        const auto &newbuttonstate = m_PrevButtonState;
+        if(newbuttonstate.empty() && (!prevbuttonstate.empty()))
         {
             // send button up events
-            for(int i=0; i < std::min(72, (int)m_PrevButtonState.size()); i++)
+            for(int i=0; i < std::min(72, (int)prevbuttonstate.size()); i++)
             {
-                if(m_PrevButtonState[i] != 0)
+                if(prevbuttonstate[i] != 0)
                 {
-                    SendButtonDelta((TButtonIndex)i, -m_PrevButtonState[i]);
+                    SendButtonDelta((TButtonIndex)i, -prevbuttonstate[i]);
                 }
             }
         }
-        else if( (!buttonstate.empty()) && (m_PrevButtonState.empty()))
+        else if( (!newbuttonstate.empty()) && (prevbuttonstate.empty()))
         {
             // send button down events
-            for(int i=0; i < std::min(72, (int)buttonstate.size()); i++)
+            for(int i=0; i < std::min(72, (int)newbuttonstate.size()); i++)
             {
-                if(buttonstate[i] != 0)
+                if(newbuttonstate[i] != 0)
                 {
-                    SendButtonDelta((TButtonIndex)i, buttonstate[i]);
+                    SendButtonDelta((TButtonIndex)i, newbuttonstate[i]);
                 }
             }
         }
-        else if( (!buttonstate.empty()) && (!m_PrevButtonState.empty()))
+        else if( (!newbuttonstate.empty()) && (!prevbuttonstate.empty()))
         {
-            for(int i = 0; i < std::min((int)m_PrevButtonState.size(), (int)buttonstate.size()); i++)
+            for(int i = 0; i < std::min((int)prevbuttonstate.size(), (int)newbuttonstate.size()); i++)
             {
-                if(buttonstate[i] != m_PrevButtonState[i])
+                if(newbuttonstate[i] != prevbuttonstate[i])
                 {
                     int wrapvalue = (i < 72)? 9 : ((i < 80)? 1000 : (i < 82)? 1024 : ((i < 84)? 16 : 256));
-                    int delta = buttonstate[i] - m_PrevButtonState[i];
+                    int delta = newbuttonstate[i] - prevbuttonstate[i];
                     if(delta > wrapvalue / 2)
                     {
                         delta -= wrapvalue;
@@ -251,7 +254,15 @@ namespace komplete
                 }
             }
         }
-        m_PrevButtonState = std::move(buttonstate);
+    }
+    int Hid::GetButtonState(TButtonIndex index) const
+    {
+        auto index_int = (size_t)index;
+        if(index_int < m_PrevButtonState.size())
+        {
+            return m_PrevButtonState[index_int];
+        }
+        return 0;
     }
     void Hid::SendButtonDelta(TButtonIndex button, int delta)
     {

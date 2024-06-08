@@ -149,7 +149,7 @@ namespace engine
         }
         TAuxOutPortBase* AuxOutPort() const { return m_AuxOutPort; }
         bool IsAttached() const { return m_AuxOutPort != nullptr; }
-\
+
     private:
         jackutils::Port m_Port;
         TAuxOutPortBase *m_AuxOutPort;
@@ -195,13 +195,14 @@ namespace engine
         void StoreReverbPreset();
         void ChangeReverbLv2Uri(std::string &&uri);
         void LoadProject();
-        void SaveProject();
+        void SaveProject(const project::TProject &project);
         std::string ReverbPluginName() const;
         void LoadReverbPreset();
         void DeletePreset(size_t presetindex);
         void AddInstrument(const std::string &uri, bool shared);
         void DeleteInstrument(size_t instrumentindex);
         void SwitchFocusedPartToPreset(size_t presetIndex);
+        void SaveProjectSync();
 
     private:
         void LoadCurrentPreset();
@@ -216,6 +217,7 @@ namespace engine
         void AuxOutPortAdded(TAuxOutPortBase *port);
         void AuxOutPortRemoved(TAuxOutPortBase *port);
         void SendMidiAsync(const midi::TMidiOrSysexEvent &event, jackutils::Port &port);
+        bool DoProjectSaveThread();
 
     private:
         jackutils::Client m_JackClient;
@@ -240,6 +242,12 @@ namespace engine
         std::vector<std::unique_ptr<TAuxOutPortLink>> m_AuxOutPorts;
         //bool m_NeedCloseUi = false;
         //bool m_NeedCloseReverbUi = false;
+        std::thread m_ProjectSaveThread;
+        std::unique_ptr<project::TProject> m_ProjectToSave;
+        std::mutex m_ProjectSaveMutex;
+        std::mutex m_SaveProjectNowMutex;
+        bool m_Quitting = false;
+
     };
 
     class TController
