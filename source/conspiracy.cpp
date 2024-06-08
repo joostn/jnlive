@@ -149,7 +149,7 @@ namespace conspiracy {
     }
 
 
-    void Controller::OnProjectChanged(const project::Project &prevProject)
+    void Controller::OnProjectChanged(const project::TProject &prevProject)
     {
         std::optional<size_t> prevPresetIndex;
         if(prevProject.FocusedPart())

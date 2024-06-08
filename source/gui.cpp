@@ -129,7 +129,7 @@ class PresetSelectorDialog : public Gtk::Dialog
 public:
     PresetSelectorDialog(PresetSelectorDialog &&other) = delete;
     PresetSelectorDialog(const PresetSelectorDialog &other) = delete;
-    PresetSelectorDialog(const project::Project &project) : m_Project(project)
+    PresetSelectorDialog(const project::TProject &project) : m_Project(project)
     {
         set_title("Select Preset");
         set_default_size(400, 300);
@@ -150,18 +150,18 @@ public:
             Gtk::TreeModel::Path path;
             Gtk::TreeViewColumn* focus_column;
             m_PresetList.get_cursor(path, focus_column);
-            const project::TQuickPreset *preset = nullptr;
+            const project::TPreset *preset = nullptr;
             if(path)
             {
                 auto iter = m_ListStore->get_iter(path);
                 if(iter)
                 {
                     m_SelectedPreset = iter->get_value(m_Columns.m_Number);
-                    if(m_SelectedPreset && *m_SelectedPreset < m_Project.QuickPresets().size())
+                    if(m_SelectedPreset && *m_SelectedPreset < m_Project.Presets().size())
                     {
-                        if(m_Project.QuickPresets()[*m_SelectedPreset])
+                        if(m_Project.Presets()[*m_SelectedPreset])
                         {
-                            preset = &m_Project.QuickPresets()[*m_SelectedPreset].value();
+                            preset = &m_Project.Presets()[*m_SelectedPreset].value();
                         }
                     }
 
@@ -205,15 +205,15 @@ public:
     void Populate()
     {
         m_ListStore->clear();
-        size_t numpresets = std::max((size_t)128, m_Project.QuickPresets().size());
+        size_t numpresets = std::max((size_t)128, m_Project.Presets().size());
         for(size_t i = 0; i < numpresets; i++)
         {
-            const project::TQuickPreset *preset = nullptr;
-            if(i < m_Project.QuickPresets().size())
+            const project::TPreset *preset = nullptr;
+            if(i < m_Project.Presets().size())
             {
-                if(m_Project.QuickPresets()[i])
+                if(m_Project.Presets()[i])
                 {
-                    preset = &m_Project.QuickPresets()[i].value();
+                    preset = &m_Project.Presets()[i].value();
                 }
             }
             Gtk::TreeModel::Row row = *(m_ListStore->append());
@@ -233,7 +233,7 @@ private:
         Gtk::TreeModelColumn<size_t> m_Number;
         Gtk::TreeModelColumn<std::string> m_Name;
     };
-    const project::Project &m_Project;
+    const project::TProject &m_Project;
     Gtk::ScrolledWindow m_PresetListScrolledWindow;
     std::optional<size_t> m_SelectedPreset;
     Columns m_Columns;
@@ -444,9 +444,9 @@ public:
                     if(m_Engine.Project().FocusedPart() && (*m_Engine.Project().FocusedPart() < m_Engine.Project().Parts().size()))
                     {
                         auto presetindex = m_Engine.Project().Parts().at(*m_Engine.Project().FocusedPart()).ActivePresetIndex();
-                        if(presetindex && (*presetindex < m_Engine.Project().QuickPresets().size()))
+                        if(presetindex && (*presetindex < m_Engine.Project().Presets().size()))
                         {
-                            const auto &currentpreset = m_Engine.Project().QuickPresets().at(*presetindex);
+                            const auto &currentpreset = m_Engine.Project().Presets().at(*presetindex);
                             if(currentpreset)
                             {
                                 std::string msg = "Delete preset "+std::to_string(*presetindex)+" ("+currentpreset.value().Name()+")?";
@@ -470,9 +470,9 @@ public:
             if(m_Engine.Project().FocusedPart() && (*m_Engine.Project().FocusedPart() < m_Engine.Project().Parts().size()))
             {
                 auto presetindex = m_Engine.Project().Parts().at(*m_Engine.Project().FocusedPart()).ActivePresetIndex();
-                if(presetindex && (*presetindex < m_Engine.Project().QuickPresets().size()))
+                if(presetindex && (*presetindex < m_Engine.Project().Presets().size()))
                 {
-                    const auto &currentpreset = m_Engine.Project().QuickPresets().at(*presetindex);
+                    const auto &currentpreset = m_Engine.Project().Presets().at(*presetindex);
                     if(currentpreset)
                     {
                         canDeletePreset = true;
@@ -503,9 +503,9 @@ public:
                 m_PresetsFlowBox.remove(*b);
             }
             m_PresetButtons.clear();
-            for(size_t presetIndex = 0; presetIndex < project.QuickPresets().size(); presetIndex++)
+            for(size_t presetIndex = 0; presetIndex < project.Presets().size(); presetIndex++)
             {
-                const auto &preset = project.QuickPresets()[presetIndex];
+                const auto &preset = project.Presets()[presetIndex];
                 if(preset)
                 {
                     std::unique_ptr<Gtk::ToggleButton> button;

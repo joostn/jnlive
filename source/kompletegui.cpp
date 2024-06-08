@@ -25,7 +25,7 @@ namespace komplete
                 {
                     m_GuiState.m_SelectedPreset += v;
                     const auto &project = m_Engine.Project();
-                    m_GuiState.m_SelectedPreset = std::clamp(m_GuiState.m_SelectedPreset, 0, (int)project.QuickPresets().size() - 1);
+                    m_GuiState.m_SelectedPreset = std::clamp(m_GuiState.m_SelectedPreset, 0, (int)project.Presets().size() - 1);
                     Refresh();
                 }
             }
@@ -123,7 +123,7 @@ namespace komplete
     void Gui::OnProjectChanged()
     {
         const auto &project = m_Engine.Project();
-        m_GuiState.m_SelectedPreset = std::clamp(m_GuiState.m_SelectedPreset, 0, (int)project.QuickPresets().size() - 1);
+        m_GuiState.m_SelectedPreset = std::clamp(m_GuiState.m_SelectedPreset, 0, (int)project.Presets().size() - 1);
         Refresh();
     }
     void Gui::Refresh()
@@ -135,9 +135,9 @@ namespace komplete
 
         const auto &project = m_Engine.Project();
         std::string presetname;
-        if(m_GuiState.m_SelectedPreset < (int)project.QuickPresets().size())
+        if(m_GuiState.m_SelectedPreset < (int)project.Presets().size())
         {
-            const auto &presetOrNull = project.QuickPresets()[m_GuiState.m_SelectedPreset];
+            const auto &presetOrNull = project.Presets()[m_GuiState.m_SelectedPreset];
             if(presetOrNull)
             {
                 presetname = presetOrNull->Name();

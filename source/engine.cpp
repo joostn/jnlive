@@ -421,9 +421,9 @@ namespace engine
                 if(part.ActivePresetIndex())
                 {
                     auto presetindex = *part.ActivePresetIndex();
-                    if(presetindex < Project().QuickPresets().size())
+                    if(presetindex < Project().Presets().size())
                     {
-                        const auto &preset = Project().QuickPresets()[presetindex];
+                        const auto &preset = Project().Presets()[presetindex];
                         if(preset)
                         {
                             auto instrumentindex = preset.value().InstrumentIndex();
@@ -493,9 +493,9 @@ namespace engine
     }
     void Engine::DeletePreset(size_t presetindex)
     {
-        if(presetindex < Project().QuickPresets().size())
+        if(presetindex < Project().Presets().size())
         {
-            auto preset = Project().QuickPresets()[presetindex];
+            auto preset = Project().Presets()[presetindex];
             if(preset)
             {
                 auto presetSubdir = preset->PresetSubDir();
@@ -540,7 +540,7 @@ namespace engine
                     auto relativePresetDir = std::filesystem::relative(presetDir, PresetsDir());
 
                     auto newproject = Project();
-                    auto presets = newproject.QuickPresets();
+                    auto presets = newproject.Presets();
                     std::string oldpresetdir;
                     if(presetindex >= presets.size())
                     {
@@ -553,7 +553,7 @@ namespace engine
                             oldpresetdir = presets[presetindex]->PresetSubDir();
                         }
                     }
-                    presets[presetindex] = project::TQuickPreset(instrindex, std::string(name), std::move(relativePresetDir));
+                    presets[presetindex] = project::TPreset(instrindex, std::string(name), std::move(relativePresetDir));
                     newproject.SetPresets(std::move(presets));
                     auto newpart = newproject.Parts().at(partindex).ChangeActivePresetIndex(presetindex).ChangeActiveInstrumentIndex(instrindex);
                     newproject = newproject.ChangePart(partindex, std::move(newpart));
@@ -604,7 +604,7 @@ namespace engine
         std::string projectfile = ProjectFile();
         if(!std::filesystem::exists(projectfile))
         {
-            auto prj = project::Project();
+            auto prj = project::TProject();
             ProjectToFile(prj, projectfile);
         }
         {
@@ -623,7 +623,7 @@ namespace engine
             name = plugin.Name();
         }
         auto uricopy = uri;
-        project::Instrument newinstrument(std::move(uricopy), shared, std::move(name));
+        project::TInstrument newinstrument(std::move(uricopy), shared, std::move(name));
         auto newproject = Project().AddInstrument(std::move(newinstrument));
         SetProject(std::move(newproject));
         SaveProject();
@@ -631,7 +631,7 @@ namespace engine
     void Engine::DeleteInstrument(size_t instrumentindex)
     {
         std::vector<std::string> presetSubdirsToDelete;
-        for(const auto &preset: Project().QuickPresets())
+        for(const auto &preset: Project().Presets())
         {
             if(preset)
             {
@@ -661,7 +661,7 @@ namespace engine
     Engine::~Engine()
     {
         // this will deferredly delete the plugins and midi in ports that are no longer needed:
-        SetProject(project::Project());
+        SetProject(project::TProject());
         for(auto &port: m_AudioOutPorts)
         {
             auto ptr = port.release();
@@ -687,7 +687,7 @@ namespace engine
         }
         return {};
     }
-    void Engine::SetProject(project::Project &&project)
+    void Engine::SetProject(project::TProject &&project)
     {
         m_Project = std::move(project);
         SyncPlugins();

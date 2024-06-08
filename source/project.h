@@ -7,10 +7,10 @@
 
 namespace project
 {
-    class Instrument
+    class TInstrument
     {
     public:
-        Instrument(std::string &&lv2Uri, bool shared, std::string &&name) : m_Lv2Uri(std::move(lv2Uri)), m_Shared(shared), m_Name(std::move(name))
+        TInstrument(std::string &&lv2Uri, bool shared, std::string &&name) : m_Lv2Uri(std::move(lv2Uri)), m_Shared(shared), m_Name(std::move(name))
         {
         }
         const std::string& Lv2Uri() const
@@ -31,10 +31,10 @@ namespace project
         std::string m_Name;
         bool m_Shared = false;  // for hammond organ, etc: 2 keyboards per instrument
     };
-    class Part  // one for each keyboard
+    class TPart  // one for each keyboard
     {
     public:
-        Part(std::string &&name, int midiChannelForSharedInstruments, const std::optional<size_t>& activeInstrumentIndex, const std::optional<size_t>& activePresetIndex, float amplitudeFactor) : m_Name(std::move(name)), m_MidiChannelForSharedInstruments(midiChannelForSharedInstruments), m_ActiveInstrumentIndex(activeInstrumentIndex), m_ActivePresetIndex(activePresetIndex), m_AmplitudeFactor(amplitudeFactor)
+        TPart(std::string &&name, int midiChannelForSharedInstruments, const std::optional<size_t>& activeInstrumentIndex, const std::optional<size_t>& activePresetIndex, float amplitudeFactor) : m_Name(std::move(name)), m_MidiChannelForSharedInstruments(midiChannelForSharedInstruments), m_ActiveInstrumentIndex(activeInstrumentIndex), m_ActivePresetIndex(activePresetIndex), m_AmplitudeFactor(amplitudeFactor)
         {
         }
         const std::string& Name() const
@@ -48,22 +48,33 @@ namespace project
         const std::optional<size_t>& ActiveInstrumentIndex() const { return m_ActiveInstrumentIndex; }
         const std::optional<size_t>& ActivePresetIndex() const { return m_ActivePresetIndex; }
         float AmplitudeFactor() const { return m_AmplitudeFactor; }
-        Part ChangeActiveInstrumentIndex(std::optional<size_t> activeInstrumentIndex) const
+        TPart ChangeActiveInstrumentIndex(std::optional<size_t> activeInstrumentIndex) const
         {
             auto result = *this;
             result.m_ActiveInstrumentIndex = activeInstrumentIndex;
             return result;
         }
-        Part ChangeActivePresetIndex(std::optional<size_t> activePresetIndex) const
+        TPart ChangeActivePresetIndex(std::optional<size_t> activePresetIndex) const
         {
             auto result = *this;
             result.m_ActivePresetIndex = activePresetIndex;
             return result;
         }
-        Part ChangeAmplitudeFactor(float amplitudeFactor) const
+        TPart ChangeAmplitudeFactor(float amplitudeFactor) const
         {
             auto result = *this;
             result.m_AmplitudeFactor = amplitudeFactor;
+            return result;
+        }
+        std::vector<std::optional<size_t>> QuickPresets() const { return m_QuickPresets; }
+        TPart ChangeQuickPreset(size_t quickpresetindex, std::optional<size_t> presetindex) const
+        {
+            auto result = *this;
+            if(quickpresetindex >= result.m_QuickPresets.size())
+            {
+                result.m_QuickPresets.resize(quickpresetindex+1);
+            }
+            result.m_QuickPresets[quickpresetindex] = presetindex;
             return result;
         }
 
@@ -73,27 +84,28 @@ namespace project
         std::optional<size_t> m_ActiveInstrumentIndex;
         std::optional<size_t> m_ActivePresetIndex;
         float m_AmplitudeFactor = 1.0f;
+        std::vector<std::optional<size_t>> m_QuickPresets;
     };
-    class TQuickPreset
+    class TPreset
     {
     public:
-        TQuickPreset(size_t instrumentIndex, std::string &&name, std::string &&presetSubDir) : m_InstrumentIndex(instrumentIndex), m_PresetSubDir(presetSubDir), m_Name(std::move(name)) {}
+        TPreset(size_t instrumentIndex, std::string &&name, std::string &&presetSubDir) : m_InstrumentIndex(instrumentIndex), m_PresetSubDir(presetSubDir), m_Name(std::move(name)) {}
         size_t InstrumentIndex() const { return m_InstrumentIndex; }
         const std::string &Name() const {return m_Name;}
         const std::string &PresetSubDir() const {return m_PresetSubDir;}
-        TQuickPreset ChangeName(std::string &&name) const
+        TPreset ChangeName(std::string &&name) const
         {
             auto result = *this;
             result.m_Name = name;
             return result;
         }
-        TQuickPreset ChangePresetSubDir(std::string &&presetSubDir) const
+        TPreset ChangePresetSubDir(std::string &&presetSubDir) const
         {
             auto result = *this;
             result.m_PresetSubDir = presetSubDir;
             return result;
         }
-        TQuickPreset ChangeInstrumentIndex(size_t instrumentIndex) const
+        TPreset ChangeInstrumentIndex(size_t instrumentIndex) const
         {
             auto result = *this;
             result.m_InstrumentIndex = instrumentIndex;
@@ -144,34 +156,34 @@ namespace project
         bool m_ShowGui = false;
     };
     
-    class Project
+    class TProject
     {
     public:
-        Project() {}
-        Project(std::vector<Instrument>&& instruments, std::vector<Part>&& parts, std::vector<std::optional<TQuickPreset>> &&quickPresets, std::optional<size_t> focusedPart, bool showUi, TReverb &&reverb) : m_Instruments(std::move(instruments)), m_Parts(std::move(parts)), m_QuickPresets(std::move(quickPresets)), m_FocusedPart(focusedPart), m_ShowUi(showUi), m_Reverb(std::move(reverb))  {}
-        const std::vector<Instrument>& Instruments() const { return m_Instruments; }
-        const std::vector<Part>& Parts() const { return m_Parts; }
-        const std::vector<std::optional<TQuickPreset>>& QuickPresets() const { return m_QuickPresets; }
-        Project Change(std::optional<size_t> focusedPart, bool showUi) const
+        TProject() {}
+        TProject(std::vector<TInstrument>&& instruments, std::vector<TPart>&& parts, std::vector<std::optional<TPreset>> &&presets, std::optional<size_t> focusedPart, bool showUi, TReverb &&reverb) : m_Instruments(std::move(instruments)), m_Parts(std::move(parts)), m_Presets(std::move(presets)), m_FocusedPart(focusedPart), m_ShowUi(showUi), m_Reverb(std::move(reverb))  {}
+        const std::vector<TInstrument>& Instruments() const { return m_Instruments; }
+        const std::vector<TPart>& Parts() const { return m_Parts; }
+        const std::vector<std::optional<TPreset>>& Presets() const { return m_Presets; }
+        TProject Change(std::optional<size_t> focusedPart, bool showUi) const
         {
             auto parts = m_Parts;
             auto instruments = m_Instruments;
-            auto quickPresets = m_QuickPresets;
+            auto presets = m_Presets;
             auto reverb = Reverb();
-            return Project(std::move(instruments), std::move(parts), std::move(quickPresets), focusedPart, showUi, std::move(reverb));
+            return TProject(std::move(instruments), std::move(parts), std::move(presets), focusedPart, showUi, std::move(reverb));
         }
-        Project ChangeReverb(TReverb &&reverb) const
+        TProject ChangeReverb(TReverb &&reverb) const
         {
             auto parts = m_Parts;
             auto instruments = m_Instruments;
-            auto quickPresets = m_QuickPresets;
+            auto presets = m_Presets;
             auto focusedPart = FocusedPart();
             auto showUi = ShowUi();
-            return Project(std::move(instruments), std::move(parts), std::move(quickPresets), focusedPart, showUi, std::move(reverb));
+            return TProject(std::move(instruments), std::move(parts), std::move(presets), focusedPart, showUi, std::move(reverb));
         }
-        Project ChangePart(size_t partIndex, Part &&part) const
+        TProject ChangePart(size_t partIndex, TPart &&part) const
         {
-            std::vector<Part> parts;
+            std::vector<TPart> parts;
             for(size_t i=0; i < m_Parts.size(); ++i)
             {
                 if(i == partIndex)
@@ -184,15 +196,15 @@ namespace project
                 }
             }
             auto instruments = m_Instruments;
-            auto quickPresets = m_QuickPresets;
+            auto presets = m_Presets;
             auto reverb = Reverb();
-            return Project(std::move(instruments), std::move(parts), std::move(quickPresets), FocusedPart(), ShowUi(), std::move(reverb));
+            return TProject(std::move(instruments), std::move(parts), std::move(presets), FocusedPart(), ShowUi(), std::move(reverb));
         }
-        Project SwitchToPreset(size_t partIndex, size_t presetIndex) const
+        TProject SwitchToPreset(size_t partIndex, size_t presetIndex) const
         {
-            if( (partIndex < Parts().size()) && (presetIndex < m_QuickPresets.size()) )
+            if( (partIndex < Parts().size()) && (presetIndex < m_Presets.size()) )
             {
-                const auto &preset = QuickPresets()[presetIndex];
+                const auto &preset = Presets()[presetIndex];
                 if(preset)
                 {
                     auto instrumentindex = preset.value().InstrumentIndex();
@@ -202,16 +214,16 @@ namespace project
             }
             return *this;
         }
-        Project ChangePreset(size_t presetIndex, std::optional<TQuickPreset> &&preset) const
+        TProject ChangePreset(size_t presetIndex, std::optional<TPreset> &&preset) const
         {
-            auto quickPresets = m_QuickPresets;
-            quickPresets[presetIndex] = std::move(preset);
+            auto presets = m_Presets;
+            presets[presetIndex] = std::move(preset);
             auto parts = m_Parts;
             auto instruments = m_Instruments;
             auto reverb = Reverb();
-            return Project(std::move(instruments), std::move(parts), std::move(quickPresets), FocusedPart(), ShowUi(), std::move(reverb));
+            return TProject(std::move(instruments), std::move(parts), std::move(presets), FocusedPart(), ShowUi(), std::move(reverb));
         }
-        Project SwitchFocusedPartToPreset(size_t presetIndex) const
+        TProject SwitchFocusedPartToPreset(size_t presetIndex) const
         {
             if(FocusedPart())
             {
@@ -224,26 +236,26 @@ namespace project
         }
         const bool& ShowUi() const { return m_ShowUi; }
         const std::optional<size_t>& FocusedPart() const { return m_FocusedPart; }
-        void SetPresets(std::vector<std::optional<TQuickPreset>> &&quickPresets)
+        void SetPresets(std::vector<std::optional<TPreset>> &&presets)
         {
-            m_QuickPresets = std::move(quickPresets);
+            m_Presets = std::move(presets);
         }
         const TReverb& Reverb() const { return m_Reverb; }
-        Project AddInstrument(Instrument &&inst) const
+        TProject AddInstrument(TInstrument &&inst) const
         {
             auto instruments = m_Instruments;
             instruments.push_back(std::move(inst));
             auto parts = m_Parts;
-            auto quickPresets = m_QuickPresets;
+            auto presets = m_Presets;
             auto reverb = Reverb();
-            return Project(std::move(instruments), std::move(parts), std::move(quickPresets), FocusedPart(), ShowUi(), std::move(reverb));
+            return TProject(std::move(instruments), std::move(parts), std::move(presets), FocusedPart(), ShowUi(), std::move(reverb));
         }
-        Project DeleteInstrument(size_t index) const;
+        TProject DeleteInstrument(size_t index) const;
 
     private:
-        std::vector<Part> m_Parts;
-        std::vector<Instrument> m_Instruments;
-        std::vector<std::optional<TQuickPreset>> m_QuickPresets;
+        std::vector<TPart> m_Parts;
+        std::vector<TInstrument> m_Instruments;
+        std::vector<std::optional<TPreset>> m_Presets;
         std::optional<size_t> m_FocusedPart;
         bool m_ShowUi = false;
         TReverb m_Reverb;
@@ -265,17 +277,17 @@ namespace project
 
     Json::Value ToJson(const TReverb &reverb);
     TReverb ReverbFromJson(const Json::Value &v);
-    Json::Value ToJson(const Instrument &instrument);
-    Instrument InstrumentFromJson(const Json::Value &v);
-    Json::Value ToJson(const Part &part);
-    Part PartFromJson(const Json::Value &v);
-    Json::Value ToJson(const TQuickPreset &quickPreset);
-    TQuickPreset QuickPresetFromJson(const Json::Value &v);
-    Json::Value ToJson(const Project &project);
-    Project ProjectFromJson(const Json::Value &v);
-    Project ProjectFromFile(const std::string &filename);
-    void ProjectToFile(const Project &project, const std::string &filename);
-    Project TestProject();
+    Json::Value ToJson(const TInstrument &instrument);
+    TInstrument InstrumentFromJson(const Json::Value &v);
+    Json::Value ToJson(const TPart &part);
+    TPart PartFromJson(const Json::Value &v);
+    Json::Value ToJson(const TPreset &preset);
+    TPreset PresetFromJson(const Json::Value &v);
+    Json::Value ToJson(const TProject &project);
+    TProject ProjectFromJson(const Json::Value &v);
+    TProject ProjectFromFile(const std::string &filename);
+    void ProjectToFile(const TProject &project, const std::string &filename);
+    TProject TestProject();
 
     Json::Value ToJson(const TJackConnections &jackConnections);
     TJackConnections JackConnectionsFromJson(const Json::Value &v);

@@ -180,9 +180,9 @@ namespace engine
             std::unique_ptr<jackutils::Port> m_MidiInPort;
         };
         Engine(uint32_t maxBlockSize, int argc, char** argv, std::string &&projectdir);
-        const project::Project& Project() const { return m_Project; }
+        const project::TProject& Project() const { return m_Project; }
         ~Engine();
-        void SetProject(project::Project &&project);
+        void SetProject(project::TProject &&project);
         void ProcessMessages();
         void SetJackConnections(project::TJackConnections &&con);
         void ApplyJackConnections(bool forceNow);
@@ -221,7 +221,7 @@ namespace engine
         jackutils::Client m_JackClient;
         lilvutils::World m_LilvWorld;
         realtimethread::Processor m_RtProcessor {8192};
-        project::Project m_Project;
+        project::TProject m_Project;
         std::vector<std::unique_ptr<PluginInstanceForPart>> m_OwnedPlugins;
         std::unique_ptr<PluginInstance> m_ReverbInstance;
         std::vector<Part> m_Parts;
@@ -278,18 +278,18 @@ namespace engine
         {
             return m_Engine;
         }
-        const project::Project& Project() const
+        const project::TProject& Project() const
         {
             return Engine().Project();
         }
-        void SetProject(project::Project &&project)
+        void SetProject(project::TProject &&project)
         {
             Engine().SetProject(std::move(project));
         }
         void SendMidi(const midi::TMidiOrSysexEvent &event) const;
     protected:
         virtual void OnMidiIn(const midi::TMidiOrSysexEvent &event) = 0;
-        virtual void OnProjectChanged(const project::Project &prevProject) {}
+        virtual void OnProjectChanged(const project::TProject &prevProject) {}
     
     private:
         void ProjectChanged();
@@ -299,6 +299,6 @@ namespace engine
         TInPort m_InPort;
         TOutPort m_OutPort;
         utils::NotifySink m_OnProjectChanged;
-        project::Project m_LastProject;
+        project::TProject m_LastProject;
     };
 }

@@ -2,23 +2,23 @@
 
 namespace project
 {
-    Project TestProject()
+    TProject TestProject()
     {
-        std::vector<Instrument> instruments;
+        std::vector<TInstrument> instruments;
         instruments.emplace_back("http://gareus.org/oss/lv2/b_synth", true, "SetBfree");
         instruments.emplace_back("http://sfztools.github.io/sfizz", false, "SFizz");
         instruments.emplace_back("http://synthv1.sourceforge.net/lv2", false, "LV2");
         instruments.emplace_back("http://tytel.org/helm", false, "Helm");
         instruments.emplace_back("http://www.openavproductions.com/sorcer", false, "Sorcer");
-        std::vector<Part> parts;
+        std::vector<TPart> parts;
         parts.emplace_back("Upper", 0, std::nullopt, std::nullopt, 1.0f);
         parts.emplace_back("Lower", 1, std::nullopt, std::nullopt, 1.0f);
-        std::vector<std::optional<TQuickPreset>> quickPresets;
+        std::vector<std::optional<TPreset>> presets;
         project::TReverb reverb;
-        return Project(std::move(instruments), std::move(parts), std::move(quickPresets), std::nullopt, false, {});
+        return TProject(std::move(instruments), std::move(parts), std::move(presets), std::nullopt, false, {});
     }
 
-    Json::Value ToJson(const Instrument &instrument)
+    Json::Value ToJson(const TInstrument &instrument)
     {
         Json::Value result;
         result["lv2uri"] = instrument.Lv2Uri();
@@ -26,11 +26,11 @@ namespace project
         result["name"] = instrument.Name();
         return result;
     }
-    Instrument InstrumentFromJson(const Json::Value &v)
+    TInstrument InstrumentFromJson(const Json::Value &v)
     {
-        return Instrument(v["lv2uri"].asString(), v["shared"].asBool(), v["name"].asString());
+        return TInstrument(v["lv2uri"].asString(), v["shared"].asBool(), v["name"].asString());
     }
-    Json::Value ToJson(const Part &part)
+    Json::Value ToJson(const TPart &part)
     {
         Json::Value result;
         result["name"] = part.Name();
@@ -54,7 +54,7 @@ namespace project
         result["amplitudefactor"] = part.AmplitudeFactor();
         return result;
     }
-    Part PartFromJson(const Json::Value &v)
+    TPart PartFromJson(const Json::Value &v)
     {
         std::optional<size_t> instrumentIndex;
         if(!v["instrumentindex"].isNull())
@@ -67,21 +67,21 @@ namespace project
             presetIndex = v["presetindex"].asInt();
         }
 
-        return Part(v["name"].asString(), v["midichannelforsharedinstruments"].asInt(), instrumentIndex, presetIndex, v["amplitudefactor"].asFloat());
+        return TPart(v["name"].asString(), v["midichannelforsharedinstruments"].asInt(), instrumentIndex, presetIndex, v["amplitudefactor"].asFloat());
     }
-    Json::Value ToJson(const TQuickPreset &quickPreset)
+    Json::Value ToJson(const TPreset &preset)
     {
         Json::Value result;
-        result["instrumentindex"] = quickPreset.InstrumentIndex();
-        result["name"] = quickPreset.Name();
-        result["subdir"] = quickPreset.PresetSubDir();
+        result["instrumentindex"] = preset.InstrumentIndex();
+        result["name"] = preset.Name();
+        result["subdir"] = preset.PresetSubDir();
         return result;
     }
-    TQuickPreset QuickPresetFromJson(const Json::Value &v)
+    TPreset PresetFromJson(const Json::Value &v)
     {
-        return TQuickPreset(v["instrumentindex"].asInt(), v["name"].asString(), v["subdir"].asString());
+        return TPreset(v["instrumentindex"].asInt(), v["name"].asString(), v["subdir"].asString());
     }
-    Json::Value ToJson(const Project &project)
+    Json::Value ToJson(const TProject &project)
     {
         Json::Value result;
         for (const auto &instrument : project.Instruments())
@@ -92,15 +92,15 @@ namespace project
         {
             result["parts"].append(ToJson(part));
         }
-        for (const auto &quickPreset : project.QuickPresets())
+        for (const auto &preset : project.Presets())
         {
-            if(quickPreset)
+            if(preset)
             {
-                result["quickpresets"].append(ToJson(*quickPreset));
+                result["presets"].append(ToJson(*preset));
             }
             else
             {
-                result["quickpresets"].append(Json::Value::null);
+                result["presets"].append(Json::Value::null);
             }
         }
         result["showui"] = project.ShowUi();
@@ -115,28 +115,28 @@ namespace project
         result["reverb"] = ToJson(project.Reverb());
         return result;
     }
-    Project ProjectFromJson(const Json::Value &v)
+    TProject ProjectFromJson(const Json::Value &v)
     {
-        std::vector<Instrument> instruments;
+        std::vector<TInstrument> instruments;
         for (const auto &instrument : v["instruments"])
         {
             instruments.push_back(InstrumentFromJson(instrument));
         }
-        std::vector<Part> parts;
+        std::vector<TPart> parts;
         for (const auto &part : v["parts"])
         {
             parts.push_back(PartFromJson(part));
         }
-        std::vector<std::optional<TQuickPreset>> quickPresets;
-        for (const auto &quickPreset : v["quickpresets"])
+        std::vector<std::optional<TPreset>> presets;
+        for (const auto &preset : v["presets"])
         {
-            if(quickPreset.isNull())
+            if(preset.isNull())
             {
-                quickPresets.push_back(std::nullopt);
+                presets.push_back(std::nullopt);
             }
             else
             {
-                quickPresets.push_back(QuickPresetFromJson(quickPreset));
+                presets.push_back(PresetFromJson(preset));
             }
         }
         std::optional<size_t> focusedPart;
@@ -153,9 +153,9 @@ namespace project
         {
             reverb = ReverbFromJson(v["reverb"]);
         }
-        return Project(std::move(instruments), std::move(parts), std::move(quickPresets), focusedPart, v["showui"].asBool(), std::move(reverb));
+        return TProject(std::move(instruments), std::move(parts), std::move(presets), focusedPart, v["showui"].asBool(), std::move(reverb));
     }
-    Project ProjectFromFile(const std::string &filename)
+    TProject ProjectFromFile(const std::string &filename)
     {
         Json::Value v;
         std::ifstream ifs(filename);
@@ -166,7 +166,7 @@ namespace project
         ifs >> v;
         return ProjectFromJson(v);
     }
-    void ProjectToFile(const Project &project, const std::string &filename)
+    void ProjectToFile(const TProject &project, const std::string &filename)
     {
         Json::Value v = ToJson(project);
         std::ofstream ofs(filename);
@@ -282,37 +282,37 @@ namespace project
         return TReverb(v["presetdir"].asString(), v["pluginuri"].asString(), v["mixlevel"].asFloat(), v["showgui"].asBool());
     }
 
-    Project Project::DeleteInstrument(size_t index) const
+    TProject TProject::DeleteInstrument(size_t index) const
     {
-        std::vector<std::optional<TQuickPreset>> newQuickPresets;
-        for (const auto &quickPreset : m_QuickPresets)
+        std::vector<std::optional<TPreset>> newPresets;
+        for (const auto &preset : m_Presets)
         {
-            if(quickPreset)
+            if(preset)
             {
-                if(quickPreset->InstrumentIndex() == index)
+                if(preset->InstrumentIndex() == index)
                 {
-                    newQuickPresets.push_back(std::nullopt);
+                    newPresets.push_back(std::nullopt);
                 }
-                else if(quickPreset->InstrumentIndex() > index)
+                else if(preset->InstrumentIndex() > index)
                 {
-                    newQuickPresets.push_back(quickPreset.value().ChangeInstrumentIndex(quickPreset->InstrumentIndex() - 1));
+                    newPresets.push_back(preset.value().ChangeInstrumentIndex(preset->InstrumentIndex() - 1));
                 }
                 else
                 {
-                    newQuickPresets.push_back(*quickPreset);
+                    newPresets.push_back(*preset);
                 }
             }
             else
             {
-                newQuickPresets.push_back(std::nullopt);
+                newPresets.push_back(std::nullopt);
             }
         }
-        std::vector<Part> newparts;
+        std::vector<TPart> newparts;
         for (const auto &part : m_Parts)
         {
             newparts.push_back(part.ChangeActiveInstrumentIndex(std::nullopt).ChangeActivePresetIndex(std::nullopt));
         }
-        std::vector<Instrument> newInstruments;
+        std::vector<TInstrument> newInstruments;
         for (size_t i = 0; i < m_Instruments.size(); i++)
         {
             if(i != index)
@@ -321,7 +321,7 @@ namespace project
             }
         }
         auto reverb = Reverb();
-        return Project(std::move(newInstruments), std::move(newparts), std::move(newQuickPresets), FocusedPart(), ShowUi(), std::move(reverb));
+        return TProject(std::move(newInstruments), std::move(newparts), std::move(newPresets), FocusedPart(), ShowUi(), std::move(reverb));
     }
 
 }
