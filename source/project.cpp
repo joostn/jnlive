@@ -5,14 +5,9 @@ namespace project
     TProject TestProject()
     {
         std::vector<TInstrument> instruments;
-        instruments.emplace_back("http://gareus.org/oss/lv2/b_synth", true, "SetBfree");
-        instruments.emplace_back("http://sfztools.github.io/sfizz", false, "SFizz");
-        instruments.emplace_back("http://synthv1.sourceforge.net/lv2", false, "LV2");
-        instruments.emplace_back("http://tytel.org/helm", false, "Helm");
-        instruments.emplace_back("http://www.openavproductions.com/sorcer", false, "Sorcer");
         std::vector<TPart> parts;
-        parts.emplace_back("Upper", 0, std::nullopt, std::nullopt, 1.0f);
-        parts.emplace_back("Lower", 1, std::nullopt, std::nullopt, 1.0f);
+        parts.emplace_back("Upper", 0, std::nullopt, std::nullopt, std::vector<std::optional<size_t>>{}, 1.0f);
+        parts.emplace_back("Lower", 1, std::nullopt, std::nullopt, std::vector<std::optional<size_t>>{}, 1.0f);
         std::vector<std::optional<TPreset>> presets;
         project::TReverb reverb;
         return TProject(std::move(instruments), std::move(parts), std::move(presets), std::nullopt, false, {});
@@ -52,6 +47,18 @@ namespace project
             result["presetindex"] = Json::Value::null;
         }
         result["amplitudefactor"] = part.AmplitudeFactor();
+        for (const auto &quickpreset : part.QuickPresets())
+        {
+            if(quickpreset)
+            {
+                result["quickpresets"].append(*quickpreset);
+            }
+            else
+            {
+                result["quickpresets"].append(Json::Value::null);
+            }
+        }
+
         return result;
     }
     TPart PartFromJson(const Json::Value &v)
@@ -66,8 +73,19 @@ namespace project
         {
             presetIndex = v["presetindex"].asInt();
         }
-
-        return TPart(v["name"].asString(), v["midichannelforsharedinstruments"].asInt(), instrumentIndex, presetIndex, v["amplitudefactor"].asFloat());
+        std::vector<std::optional<size_t>> quickPresets;
+        for (const auto &preset : v["quickpresets"])
+        {
+            if(preset.isNull())
+            {
+                quickPresets.push_back(std::nullopt);
+            }
+            else
+            {
+                quickPresets.push_back(preset.asUInt64());
+            }
+        }
+        return TPart(v["name"].asString(), v["midichannelforsharedinstruments"].asInt(), instrumentIndex, presetIndex, std::move(quickPresets), v["amplitudefactor"].asFloat());
     }
     Json::Value ToJson(const TPreset &preset)
     {

@@ -20,9 +20,10 @@ namespace komplete
         enum class TMode {Performance};
         TMode m_Mode = TMode::Performance;
         utils::THysteresis m_SelectedPresetHysteresis {10, 20};
-        int m_SelectedPreset = 0;
+        size_t m_SelectedPreset = 0;
         bool m_ShowPresetList = false;
-        bool m_Shift = false;        
+        bool m_Shift = false;
+        size_t m_QuickPresetPage = 0;
     };
     class Gui
     {

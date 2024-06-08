@@ -152,6 +152,7 @@ namespace komplete
         void SendPixels(int x, int y, int width, int height);
         ~Display();
         void TryConnectSometimes();
+        void PingSometimes();
         bool Connected() const
         {
             return m_Device != nullptr;
@@ -168,6 +169,7 @@ namespace komplete
      	libusb_context *m_Context = nullptr;
         libusb_device_handle* m_Device = nullptr;
         std::chrono::time_point<std::chrono::system_clock> m_LastConnectTime = std::chrono::system_clock::now();
+        std::chrono::time_point<std::chrono::system_clock> m_LastPing = std::chrono::system_clock::now();
         std::pair<int, int> m_VidPid;
     };
 }

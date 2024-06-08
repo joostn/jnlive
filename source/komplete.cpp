@@ -379,6 +379,7 @@ namespace komplete
                             destscanline[xInBuf * sBytesPerPixel + 1] = srcscanline[xInBuf * sBytesPerPixel + 0];
                         }
                     }
+                    m_LastPing = std::chrono::system_clock::now();
                     auto errcode = libusb_bulk_transfer(m_Device, 0x03, buf.data(), (int)buf.size(), nullptr, 0);
                     if(errcode == LIBUSB_ERROR_NO_DEVICE )
                     {
@@ -411,9 +412,25 @@ namespace komplete
             }
         }
     }
+    void Display::PingSometimes()
+    {
+        // 'ping' the display by sending a small block of pixels.
+        // SendPixels() will cause a Disconnect() if the device is no longer connected.
+        // This will then start the reconnection attempts.
+        auto now = std::chrono::system_clock::now();
+        if(Connected())
+        {
+            int delay_ms = 1000;
+            if(std::chrono::duration_cast<std::chrono::milliseconds>(now - m_LastPing).count() > delay_ms)
+            {
+                SendPixels(0, 0, 16, 16);
+            }
+        }
+    }
     void Display::Run()
     {
         TryConnectSometimes();
+        PingSometimes();
     }
 
 }

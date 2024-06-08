@@ -768,7 +768,7 @@ namespace engine
                 plugin->pluginInstance()->Ui()->ui()->CallIdle();
             }
         }
-        if(m_ReverbInstance && m_ReverbInstance->Ui())
+        if(m_ReverbInstance && m_ReverbInstance->Ui() && m_ReverbInstance->Ui()->ui())
         {
             m_ReverbInstance->Ui()->ui()->CallIdle();
         }
