@@ -298,8 +298,8 @@ namespace realtimethread
                 }
             }
         }
-
     }
+    
     void Processor::ProcessIncomingMidi(jack_nframes_t nframes)
     {
         if(!m_DataInRtThread) return;

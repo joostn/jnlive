@@ -519,6 +519,48 @@ namespace engine
             }
         }
     }
+
+    void Engine::SendMidiToFocusedPart(const midi::TMidiOrSysexEvent &event) const
+    {
+        if(Project().FocusedPart())
+        {
+            SendMidiToPart(event, *Project().FocusedPart());
+        }
+    }
+
+    void Engine::SendMidiToPart(const midi::TMidiOrSysexEvent &event, size_t partindex) const
+    {
+        if(partindex < Project().Parts().size())
+        {
+            const auto &part = Project().Parts().at(partindex);
+            if(part.ActiveInstrumentIndex())
+            {
+                auto instrindex = *part.ActiveInstrumentIndex();
+                if( (instrindex >= 0) && (instrindex < m_Parts[partindex].PluginIndices().size()) )
+                {
+                    auto ownedpluginindex = m_Parts[partindex].PluginIndices()[instrindex];
+                    const auto &ownedplugin = m_OwnedPlugins[ownedpluginindex];
+                    if(ownedplugin->pluginInstance())
+                    {
+                        SendMidi(event, *ownedplugin->pluginInstance());
+                    }
+                }
+            }
+        }
+    }
+
+    void Engine::SendMidi(const midi::TMidiOrSysexEvent &event, const PluginInstance &plugininstance) const
+    {
+        if(plugininstance.Plugin().MidiInputIndex())
+        {
+            if(auto atomconnection = dynamic_cast<lilvutils::TConnection<lilvutils::TAtomPort>*>(plugininstance.Instance().Connections().at(*plugininstance.Plugin().MidiInputIndex()).get()))
+            {
+                auto midiInBuf = &atomconnection->BufferIterator();
+                TODO: realtimethread
+            }
+        }
+    }
+
     void Engine::SaveCurrentPreset(size_t presetindex, const std::string &name)
     {
         if(Project().FocusedPart() && (*Project().FocusedPart() < Project().Parts().size()) && Project().Parts()[*Project().FocusedPart()].ActiveInstrumentIndex())
@@ -568,6 +610,7 @@ namespace engine
             }
         }
     }
+
     Engine::Engine(uint32_t maxBlockSize, int argc, char** argv, std::string &&projectdir) : m_JackClient {"JN Live", [this](jack_nframes_t nframes){
         m_RtProcessor.Process(nframes);
     }}, m_LilvWorld(m_JackClient.SampleRate(), maxBlockSize, argc, argv), m_ProjectDir(std::move(projectdir))

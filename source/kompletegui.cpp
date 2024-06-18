@@ -226,7 +226,7 @@ namespace komplete
                 if(v != 0)
                 {
                     m_GuiState.m_ProgramChange = (size_t)std::clamp((int)m_GuiState.m_ProgramChange + v, 0, 127);
-                    m_Engine.SendProgramChangeOnActivePart(m_GuiState.m_ProgramChange);
+                    m_Engine.SendProgramChangeOnFocusedPart(m_GuiState.m_ProgramChange);
                 }
             }
         }
