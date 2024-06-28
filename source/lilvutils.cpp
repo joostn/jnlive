@@ -12,6 +12,7 @@
 #include "lv2_external_ui.h"
 #include <iostream>
 #include <cstring>
+#include "midi.h"
 
 namespace 
 {
@@ -493,6 +494,7 @@ namespace lilvutils
         {
             throw std::runtime_error("plugin "+plugin.Name()+" hasv nsupported ports and cannot be instantiated");
         }
+        m_UridMidiEvent = lilvutils::World::Static().UriMapLookup(LV2_MIDI__MidiEvent);
         auto uri_workerinterface = lilvutils::Uri(LV2_WORKER__interface);
         auto uri_threadsaferestore = lilvutils::Uri(LV2_STATE__threadSafeRestore);
         bool needsWorker = lilv_plugin_has_extension_data(plugin.get(),uri_workerinterface.get());
@@ -711,6 +713,14 @@ namespace lilvutils
         if(m_Ui)
         {
             m_Ui->OnAtomPortMessage(connection.Port().Index(), type, datasize, data);
+        }
+        if(type == m_UridMidiEvent)
+        {
+            if(midi::TMidiOrSysexEvent::IsSupported(data, datasize))
+            {
+                midi::TMidiOrSysexEvent evt(data, datasize);
+                std::cout << evt.ToDebugString() << std::endl;
+            }
         }
     }
     

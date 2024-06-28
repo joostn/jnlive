@@ -465,6 +465,7 @@ namespace lilvutils
         UI *m_Ui = nullptr;
         const RealtimeThreadInterface &m_RealtimeThreadInterface;
         bool m_SupportsThreadSafeRestore = false;
+        LV2_URID m_UridMidiEvent;
     };
     class UI
     {

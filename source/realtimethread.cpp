@@ -109,6 +109,10 @@ namespace realtimethread
                 jack_midi_event_write(buf, 0, (const jack_midi_data_t*) midioutmessage->AdditionalDataBuf(), midioutmessage->AdditionalDataSize());
 
             }
+            else if(auto midiMessageToPlugin = dynamic_cast<const realtimethread::TMidiMessageToPlugin*>(message); midiMessageToPlugin)
+            {
+                lv2_evbuf_write(midiMessageToPlugin->DestinationPort(), 0, 0, m_UridMidiEvent, midiMessageToPlugin->AdditionalDataSize(), midiMessageToPlugin->AdditionalDataBuf());
+            }
         }
     }
     void Processor::SendPendingAsyncFunctionMessages()
@@ -361,6 +365,10 @@ namespace realtimethread
     void Processor::SendMidiFromMainThread(const void *data, size_t size, jack_port_t *port)
     {
         RingBufToRtThread().Write(AuxMidiOutMessage(data, size, port));
+    }
+    void Processor::SendMidiToPluginFromMainThread(const void *data, size_t size, LV2_Evbuf_Iterator* destinationPort) 
+    {
+        RingBufToRtThread().Write(TMidiMessageToPlugin(data, size, destinationPort));
     }
     void AuxMidiInMessage::Call() const
     {

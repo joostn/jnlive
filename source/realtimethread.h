@@ -195,6 +195,15 @@ namespace realtimethread
     private:
         std::function<void()> *m_Function;
     };
+    class TMidiMessageToPlugin : public ringbuf::PacketBase
+    {
+    public:
+        TMidiMessageToPlugin(const void *data, size_t size, LV2_Evbuf_Iterator* destinationPort) : ringbuf::PacketBase(size, data), m_DestinationPort(destinationPort) {}
+        LV2_Evbuf_Iterator* DestinationPort() const { return m_DestinationPort; }
+
+    private:
+        LV2_Evbuf_Iterator* m_DestinationPort;
+    };
     class AuxMidiInMessage : public ringbuf::PacketBase
     {
     public:
@@ -238,6 +247,7 @@ namespace realtimethread
         void ProcessMessagesInMainThread(); // should be called regularly
         const lilvutils::RealtimeThreadInterface& realtimeThreadInterface() const { return m_RealtimeThreadInterface; }
         void SendMidiFromMainThread(const void *data, size_t size, jack_port_t *port);
+        void SendMidiToPluginFromMainThread(const void *data, size_t size, LV2_Evbuf_Iterator* destinationPort);
         
     private:
         void ProcessMessagesInRealtimeThread(jack_nframes_t nframes);

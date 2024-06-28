@@ -203,9 +203,9 @@ namespace engine
         void DeleteInstrument(size_t instrumentindex);
         void SwitchFocusedPartToPreset(size_t presetIndex);
         void SaveProjectSync();
-        void SendMidi(const midi::TMidiOrSysexEvent &event, const PluginInstance &plugininstance) const;
-        void SendMidiToPart(const midi::TMidiOrSysexEvent &event, size_t partindex) const;
-        void SendMidiToFocusedPart(const midi::TMidiOrSysexEvent &event) const;
+        void SendMidi(const midi::TMidiOrSysexEvent &event, const PluginInstance &plugininstance);
+        void SendMidiToPart(const midi::TMidiOrSysexEvent &event, size_t partindex);
+        void SendMidiToFocusedPart(const midi::TMidiOrSysexEvent &event);
 
     private:
         void LoadCurrentPreset();

@@ -520,7 +520,7 @@ namespace engine
         }
     }
 
-    void Engine::SendMidiToFocusedPart(const midi::TMidiOrSysexEvent &event) const
+    void Engine::SendMidiToFocusedPart(const midi::TMidiOrSysexEvent &event)
     {
         if(Project().FocusedPart())
         {
@@ -528,7 +528,7 @@ namespace engine
         }
     }
 
-    void Engine::SendMidiToPart(const midi::TMidiOrSysexEvent &event, size_t partindex) const
+    void Engine::SendMidiToPart(const midi::TMidiOrSysexEvent &event, size_t partindex)
     {
         if(partindex < Project().Parts().size())
         {
@@ -549,14 +549,14 @@ namespace engine
         }
     }
 
-    void Engine::SendMidi(const midi::TMidiOrSysexEvent &event, const PluginInstance &plugininstance) const
+    void Engine::SendMidi(const midi::TMidiOrSysexEvent &event, const PluginInstance &plugininstance)
     {
         if(plugininstance.Plugin().MidiInputIndex())
         {
             if(auto atomconnection = dynamic_cast<lilvutils::TConnection<lilvutils::TAtomPort>*>(plugininstance.Instance().Connections().at(*plugininstance.Plugin().MidiInputIndex()).get()))
             {
                 auto midiInBuf = &atomconnection->BufferIterator();
-                TODO: realtimethread
+                m_RtProcessor.SendMidiToPluginFromMainThread(event.Span().data(), event.Span().size(), midiInBuf);
             }
         }
     }
