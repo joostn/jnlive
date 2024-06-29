@@ -297,13 +297,12 @@ namespace project
         Json::Value result;
         result["presetdir"] = reverb.ReverbPresetSubDir();
         result["pluginuri"] = reverb.ReverbLv2Uri();
-        result["showgui"] = reverb.ShowGui();
         result["mixlevel"] = reverb.MixLevel();
         return result;
     }
     TReverb ReverbFromJson(const Json::Value &v)
     {
-        return TReverb(v["presetdir"].asString(), v["pluginuri"].asString(), v["mixlevel"].asFloat(), v["showgui"].asBool());
+        return TReverb(v["presetdir"].asString(), v["pluginuri"].asString(), v["mixlevel"].asFloat());
     }
 
     TProject TProject::DeleteInstrument(size_t index) const

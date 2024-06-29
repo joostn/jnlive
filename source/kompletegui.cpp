@@ -73,6 +73,43 @@ namespace komplete
         return std::to_string(dbRounded);
     }
 
+    void TGuiState::SetEngineData(const engine::Engine::TData &engineData)
+    {
+        m_EngineData = engineData;
+        if(m_EngineData.Project().Presets().empty())
+        {
+            m_SelectedPreset = 0;
+        }
+        else
+        {
+            m_SelectedPreset = std::min(m_SelectedPreset, m_EngineData.Project().Presets().size() - 1);
+        }
+        if(m_FocusedPart)
+        {
+            if(m_EngineData.Project().Parts().empty())
+            {
+                m_FocusedPart = std::nullopt;
+            }
+            else
+            {
+                m_FocusedPart = std::min(*m_FocusedPart, m_EngineData.Project().Parts().size() - 1);
+            }
+        }
+        else
+        {
+            if(!m_EngineData.Project().Parts().empty())
+            {
+                m_FocusedPart = 0;
+            }
+        }
+    }
+
+    void Gui::SetGuiState(TGuiState &&state)
+    {
+        m_GuiState1 = std::move(state);
+        Refresh();
+        RefreshLeds();
+    }
 
     Gui::Gui(std::pair<int, int> vidPid, engine::Engine &engine) : m_Engine(engine), m_Hid(vidPid, [this](Hid::TButtonIndex button, int delta) { OnButton(button, delta); })
     {
@@ -85,94 +122,106 @@ namespace komplete
 
     void Gui::OnButton(Hid::TButtonIndex button, int delta)
     {
-        const auto &project = m_Engine.Project();
         if( (button == Hid::TButtonIndex::Shift) && (delta > 0) )
         {
-            m_GuiState.m_Shift = !m_GuiState.m_Shift;
+            auto guistate = GuiState();
+            guistate.m_Shift = !guistate.m_Shift;
+            SetGuiState(std::move(guistate));
         }
         if( (button == Hid::TButtonIndex::Browser) && (delta > 0) )
         {
-            m_GuiState.m_Mode = TGuiState::TMode::Performance;
+            auto guistate = GuiState();
+            guistate.m_Mode = TGuiState::TMode::Performance;
+            SetGuiState(std::move(guistate));
         }
         if( (button == Hid::TButtonIndex::Midi) && (delta > 0) )
         {
-            m_GuiState.m_Mode = TGuiState::TMode::Midi;
+            auto guistate = GuiState();
+            guistate.m_Mode = TGuiState::TMode::Midi;
+            SetGuiState(std::move(guistate));
         }
         if( (button == Hid::TButtonIndex::Arp) && (delta > 0) )
         {
-            const auto &project = m_Engine.Project();
-            if(!project.Parts().empty())
+            if(GuiState().m_FocusedPart)
             {
-                auto newproject = project.Change(project.FocusedPart(), !project.ShowUi());
-                m_Engine.SetProject(std::move(newproject));
+                auto newenginedata = GuiState().EngineData().ChangeShowUi(!GuiState().EngineData().ShowUi());
+                if(newenginedata.ShowUi())
+                {
+                    newenginedata = newenginedata.ChangeGuiFocusedPart(GuiState().m_FocusedPart);
+                }
+                m_Engine.SetData(std::move(newenginedata));
             }
         }
         if( (button == Hid::TButtonIndex::Instance) && (delta > 0) )
         {
-            const auto &project = m_Engine.Project();
+            auto numparts = GuiState().EngineData().Project().Parts().size();
             std::optional<size_t> newfocusedpart;
-            if(!project.Parts().empty())
+            if(numparts > 0)
             {
-                size_t newfocusedpart = 0;
-                if(project.FocusedPart())
+                auto newguistate = GuiState();
+                if(newguistate.m_FocusedPart)
                 {
-                    newfocusedpart = project.FocusedPart().value() + 1;
-                    if(newfocusedpart >= project.Parts().size())
+                    newguistate.m_FocusedPart = (*newguistate.m_FocusedPart) + 1;
+                    if(newguistate.m_FocusedPart >= numparts)
                     {
-                        newfocusedpart = 0;
-                    }
-                    if(newfocusedpart != project.FocusedPart().value())
-                    {
-                        auto newproject = project.Change(newfocusedpart, project.ShowUi());
-                        m_Engine.SetProject(std::move(newproject));
+                        newguistate.m_FocusedPart = 0;
                     }
                 }
+                else
+                {
+                    newguistate.m_FocusedPart = 0;
+                }
+                SetGuiState(std::move(newguistate));
             }
         }
-        if(m_GuiState.m_Mode == TGuiState::TMode::Performance)
+        if(GuiState().m_Mode == TGuiState::TMode::Performance)
         {
             if(button == Hid::TButtonIndex::LcdRotary0)
             {
-                auto v = m_GuiState.m_SelectedPresetHysteresis.Update(delta);
-                if(!project.Presets().empty())
+                auto v = m_SelectedPresetHysteresis.Update(delta);
+                auto numpresets = GuiState().EngineData().Project().Presets().size();
+                if(numpresets > 0)
                 {
                     if(v != 0)
                     {
-                        m_GuiState.m_SelectedPreset = (size_t)std::clamp((int)m_GuiState.m_SelectedPreset + v, 0, (int)project.Presets().size() - 1);
-                        Refresh();
+                        auto newguistate = GuiState();
+                        newguistate.m_SelectedPreset = (size_t)std::clamp((int)newguistate.m_SelectedPreset + v, 0, (int)numpresets - 1);
+                        SetGuiState(std::move(newguistate));
                     }
                 }
             }
             if( (button >= Hid::TButtonIndex::LcdRotary5) && (button <= Hid::TButtonIndex::LcdRotary7) )
             {
-                utils::THysteresis &hysteresis = (button == Hid::TButtonIndex::LcdRotary5)? m_GuiState.m_ReverbLevelHysteresis : (button == Hid::TButtonIndex::LcdRotary6)? m_GuiState.m_Part1LevelHysteresis : m_GuiState.m_Part2LevelHysteresis;
-                auto v = m_GuiState.m_SelectedPresetHysteresis.Update(delta);
+                utils::THysteresis &hysteresis = (button == Hid::TButtonIndex::LcdRotary5)? m_ReverbLevelHysteresis : (button == Hid::TButtonIndex::LcdRotary6)? m_Part1LevelHysteresis : m_Part2LevelHysteresis;
+                auto v = hysteresis.Update(delta);
                 if(v != 0)
                 {
                     double dB = v * 0.5;
                     if(button == Hid::TButtonIndex::LcdRotary5)
                     {
-                        auto multiplier = project.Reverb().MixLevel();
+                        auto multiplier = GuiState().EngineData().Project().Reverb().MixLevel();
                         auto newmultiplier = increaseMultiplier(multiplier, dB);
                         if(newmultiplier != multiplier)
                         {
-                            auto newreverb = project.Reverb().ChangeMixLevel(newmultiplier);
-                            auto newproject = project.ChangeReverb(std::move(newreverb));
-                            m_Engine.SetProject(std::move(newproject));
+                            auto newreverb = GuiState().EngineData().Project().Reverb().ChangeMixLevel(newmultiplier);
+                            auto newproject = GuiState().EngineData().Project().ChangeReverb(std::move(newreverb));
+                            auto newenginedata = GuiState().EngineData().ChangeProject(std::move(newproject));
+                            m_Engine.SetData(std::move(newenginedata));
                         }
                     }
                     else
                     {
                         size_t partindex = (button == Hid::TButtonIndex::LcdRotary6)? 1:0;
-                        if(project.Parts().size() > partindex)
+                        if(GuiState().EngineData().Project().Parts().size() > partindex)
                         {
-                            auto multiplier = project.Parts().at(partindex).AmplitudeFactor();
+                            auto multiplier = GuiState().EngineData().Project().Parts().at(partindex).AmplitudeFactor();
                             auto newmultiplier = increaseMultiplier(multiplier, dB);
                             if(newmultiplier != multiplier)
                             {
-                                auto newpart = project.Parts().at(partindex).ChangeAmplitudeFactor(newmultiplier);
-                                auto newproject = project.ChangePart(partindex, std::move(newpart));
-                                m_Engine.SetProject(std::move(newproject));
+                                auto newpart = GuiState().EngineData().Project().Parts().at(partindex).ChangeAmplitudeFactor(newmultiplier);
+                                auto newproject = GuiState().EngineData().Project().ChangePart(partindex, std::move(newpart));
+                                auto newenginedata = GuiState().EngineData().ChangeProject(std::move(newproject));
+                                m_Engine.SetData(std::move(newenginedata));
                             }
                         }
                     }
@@ -180,27 +229,26 @@ namespace komplete
             }
             if( (button == Hid::TButtonIndex::Clear) && (delta > 0) )
             {
-                const auto &project = m_Engine.Project();
-                if(project.FocusedPart() && (project.FocusedPart() < project.Parts().size()))
+                const auto &project = GuiState().EngineData().Project();
+                if(GuiState().m_FocusedPart)
                 {
-                    m_Engine.SwitchFocusedPartToPreset(m_GuiState.m_SelectedPreset);
+                    m_Engine.Project().SwitchToPreset(GuiState().m_FocusedPart.value(), GuiState().m_SelectedPreset);
                 }
             }
             if( (button >= Hid::TButtonIndex::Menu0) && (button <= Hid::TButtonIndex::Menu7) && (delta > 0) )
             {
                 size_t buttonindex = (size_t)((int)button - (int)Hid::TButtonIndex::Menu0);
-                if( (m_GuiState.m_Mode == TGuiState::TMode::Performance) && m_Engine.Project().FocusedPart() )
+                if( (GuiState().m_Mode == TGuiState::TMode::Performance) && GuiState().m_FocusedPart )
                 {
-                    auto focusedpartindex = m_Engine.Project().FocusedPart().value();
-                    const auto &part = project.Parts().at(focusedpartindex);
-                    size_t quickPresetIndex = m_GuiState.m_QuickPresetPage * 8 + buttonindex;
-                    if(m_GuiState.m_Shift)
+                    auto focusedpartindex = GuiState().m_FocusedPart.value();
+                    const auto &part = GuiState().EngineData().Project().Parts().at(focusedpartindex);
+                    size_t quickPresetIndex = GuiState().m_QuickPresetPage * 8 + buttonindex;
+                    if(GuiState().m_Shift)
                     {
                         // change quick preset:
-                        auto newpart = part.ChangeQuickPreset(quickPresetIndex, m_GuiState.m_SelectedPreset);
-                        auto newproject = project.ChangePart(focusedpartindex, std::move(newpart));
+                        auto newpart = part.ChangeQuickPreset(quickPresetIndex, GuiState().m_SelectedPreset);
+                        auto newproject = GuiState().EngineData().Project().ChangePart(focusedpartindex, std::move(newpart));
                         m_Engine.SetProject(std::move(newproject));
-                        m_GuiState.m_Shift = false;
                     }
                     else
                     {
@@ -212,26 +260,30 @@ namespace komplete
                         }
                         if(presetIndex)
                         {
-                            m_Engine.SwitchFocusedPartToPreset(*presetIndex);
+                            auto newproject = GuiState().EngineData().Project().SwitchToPreset(focusedpartindex, *presetIndex);
+                            m_Engine.SetProject(std::move(newproject));
                         }
                     }
                 }
             }
         }
-        else if(m_GuiState.m_Mode == TGuiState::TMode::Midi)
+        else if(GuiState().m_Mode == TGuiState::TMode::Midi)
         {
             if(button == Hid::TButtonIndex::LcdRotary0)
             {
-                auto v = m_GuiState.m_ProgramChangeHysteresis.Update(delta);
+                auto v = m_ProgramChangeHysteresis.Update(delta);
                 if(v != 0)
                 {
-                    m_GuiState.m_ProgramChange = (size_t)std::clamp((int)m_GuiState.m_ProgramChange + v, 0, 127);
-                    m_Engine.SendMidiToFocusedPart(midi::SimpleEvent::ProgramChange(0, m_GuiState.m_ProgramChange));
+                    if(GuiState().m_FocusedPart )
+                    {
+                        auto focusedpartindex = GuiState().m_FocusedPart.value();
+                        auto guistate = GuiState();
+                        guistate.m_ProgramChange = (size_t)std::clamp((int)guistate.m_ProgramChange + v, 0, 127);
+                        m_Engine.SendMidiToPart(midi::SimpleEvent::ProgramChange(0, guistate.m_ProgramChange), focusedpartindex);
+                    }
                 }
             }
         }
-        Refresh();
-        RefreshLeds();
     }
 
     Gui::~Gui()
@@ -295,19 +347,11 @@ namespace komplete
         Cairo::Context *context = cr.operator->();
         window.Paint(*context);
     }
-    void Gui::OnProjectChanged()
+    void Gui::OnDataChanged()
     {
-        const auto &project = m_Engine.Project();
-        if(project.Presets().empty())
-        {
-            m_GuiState.m_SelectedPreset = 0;
-        }
-        else
-        {
-            m_GuiState.m_SelectedPreset = std::min(m_GuiState.m_SelectedPreset, project.Presets().size() - 1);
-        }
-        Refresh();
-        RefreshLeds();
+        auto newstate = GuiState();
+        newstate.SetEngineData(m_Engine.Data());
+        SetGuiState(std::move(newstate));
     }
     void Gui::Refresh()
     {
@@ -316,14 +360,14 @@ namespace komplete
         int lineheight = fontsize + 2;
         int linespacing = 2;
 
-        const auto &project = m_Engine.Project();
+        const auto &project = GuiState().EngineData().Project();
 
-        if(m_GuiState.m_Mode == TGuiState::TMode::Performance)
+        if(GuiState().m_Mode == TGuiState::TMode::Performance)
         {
             std::string presetname;
-            if(m_GuiState.m_SelectedPreset < project.Presets().size())
+            if(GuiState().m_SelectedPreset < project.Presets().size())
             {
-                const auto &presetOrNull = project.Presets()[m_GuiState.m_SelectedPreset];
+                const auto &presetOrNull = project.Presets()[GuiState().m_SelectedPreset];
                 if(presetOrNull)
                 {
                     presetname = presetOrNull->Name();
@@ -332,18 +376,18 @@ namespace komplete
             int presetboxheight = 2*lineheight + linespacing + 2;
             auto presetnamebox = mainwindow->AddChild<simplegui::PlainWindow>(Gdk::Rectangle(0, 272-presetboxheight, 120, presetboxheight), simplegui::Rgba(0.2, 0.2, 0.2));
 
-            presetnamebox->AddChild<simplegui::TextWindow>(Gdk::Rectangle(1, 1, presetnamebox->Width() - 2, lineheight), std::to_string(m_GuiState.m_SelectedPreset), simplegui::Rgba(1, 1, 1), fontsize);
+            presetnamebox->AddChild<simplegui::TextWindow>(Gdk::Rectangle(1, 1, presetnamebox->Width() - 2, lineheight), std::to_string(GuiState().m_SelectedPreset), simplegui::Rgba(1, 1, 1), fontsize);
 
             presetnamebox->AddChild<simplegui::TextWindow>(Gdk::Rectangle(1, 1 + lineheight + linespacing, presetnamebox->Width() - 2, lineheight), presetname, simplegui::Rgba(1, 1, 1), fontsize);
 
-            if(project.FocusedPart())
+            if(GuiState().m_FocusedPart)
             {
-                auto partcolor = colorForPart(project.FocusedPart().value());
+                auto partcolor = colorForPart(GuiState().m_FocusedPart.value());
                 {
                     int boxwidth = 100;
                     int boxheight = 40;
                     auto box = mainwindow->AddChild<simplegui::PlainWindow>(Gdk::Rectangle(960-boxwidth, (272-boxheight)/2, boxwidth, boxheight), partcolor);
-                    box->AddChild<simplegui::TextWindow>(Gdk::Rectangle(3, 3, boxwidth - 6, boxheight - 6), project.Parts().at(project.FocusedPart().value()).Name(), simplegui::Rgba(0, 0, 0), 25);
+                    box->AddChild<simplegui::TextWindow>(Gdk::Rectangle(3, 3, boxwidth - 6, boxheight - 6), project.Parts().at(GuiState().m_FocusedPart.value()).Name(), simplegui::Rgba(0, 0, 0), 25);
                 }
                 int quickPresetsBoxHeight = fontsize + 4;
                 int quickPresetHorzPadding = 1;
@@ -351,11 +395,11 @@ namespace komplete
                 auto quickPresetsBar = mainwindow->AddChild<simplegui::Window>(Gdk::Rectangle(0, 0, 960, quickPresetsBoxHeight));
                 for(size_t quickPresetOffset = 0; quickPresetOffset < 8; quickPresetOffset++)
                 {
-                    size_t quickPresetIndex = m_GuiState.m_QuickPresetPage * 8 + quickPresetOffset;
+                    size_t quickPresetIndex = GuiState().m_QuickPresetPage * 8 + quickPresetOffset;
                     std::optional<size_t> presetIndex;
-                    if(quickPresetIndex < project.Parts().at(project.FocusedPart().value()).QuickPresets().size())
+                    if(quickPresetIndex < project.Parts().at(GuiState().m_FocusedPart.value()).QuickPresets().size())
                     {
-                        presetIndex = project.Parts().at(project.FocusedPart().value()).QuickPresets().at(quickPresetIndex);
+                        presetIndex = project.Parts().at(GuiState().m_FocusedPart.value()).QuickPresets().at(quickPresetIndex);
                     }
                     if(presetIndex)
                     {
@@ -377,7 +421,7 @@ namespace komplete
                         {
                             presetName = "(empty)";
                         }
-                        auto boxcolor = m_GuiState.m_Shift? simplegui::Rgba(0.8, 0.8, 0.8): partcolor;
+                        auto boxcolor = GuiState().m_Shift? simplegui::Rgba(0.8, 0.8, 0.8): partcolor;
                         auto quickPresetBox = quickPresetsBar->AddChild<simplegui::PlainWindow>(Gdk::Rectangle(quickPresetOffset * 120 + quickPresetHorzPadding, 0, 120 - 2*quickPresetHorzPadding, quickPresetsBoxHeight), boxcolor);
                         quickPresetBox->AddChild<simplegui::TextWindow>(Gdk::Rectangle(1, 1, quickPresetBox->Width() - 2, quickPresetBox->Height() - 2), presetName, simplegui::Rgba(0, 0, 0), fontsize);
                     }
@@ -434,7 +478,7 @@ namespace komplete
             if(m_Hid.GetButtonState(Hid::TButtonIndex::TouchLcdRotary0) != 0)
             {
                 // show popup selector:
-                mainwindow->AddChild<simplegui::TListBox>(Gdk::Rectangle(10, 272/2 - 100, 400, 272/2+100), simplegui::Rgba(1,1,1), 25, project.Presets().size(), m_GuiState.m_SelectedPreset, m_GuiState.m_SelectedPreset, [this, &project](size_t index) -> std::string {
+                mainwindow->AddChild<simplegui::TListBox>(Gdk::Rectangle(10, 272/2 - 100, 400, 272/2+100), simplegui::Rgba(1,1,1), 25, project.Presets().size(), GuiState().m_SelectedPreset, GuiState().m_SelectedPreset, [this, &project](size_t index) -> std::string {
                     auto result = std::to_string(index) + ": ";
                     if(index < project.Presets().size())
                     {
@@ -449,24 +493,24 @@ namespace komplete
             }
 
         } // if performance
-        else if(m_GuiState.m_Mode == TGuiState::TMode::Midi)
+        else if(GuiState().m_Mode == TGuiState::TMode::Midi)
         {
             int presetboxheight = 2*lineheight + linespacing + 2;
             auto presetnamebox = mainwindow->AddChild<simplegui::PlainWindow>(Gdk::Rectangle(0, 272-presetboxheight, 120, presetboxheight), simplegui::Rgba(0.2, 0.2, 0.2));
 
             presetnamebox->AddChild<simplegui::TextWindow>(Gdk::Rectangle(1, 1, presetnamebox->Width() - 2, lineheight), "Program", simplegui::Rgba(1, 1, 1), fontsize);
 
-            presetnamebox->AddChild<simplegui::TextWindow>(Gdk::Rectangle(1, 1 + lineheight + linespacing, presetnamebox->Width() - 2, lineheight), std::to_string(m_GuiState.m_ProgramChange), simplegui::Rgba(1, 1, 1), fontsize);            
+            presetnamebox->AddChild<simplegui::TextWindow>(Gdk::Rectangle(1, 1 + lineheight + linespacing, presetnamebox->Width() - 2, lineheight), std::to_string(GuiState().m_ProgramChange), simplegui::Rgba(1, 1, 1), fontsize);            
         }
-        if(m_GuiState.m_Mode == TGuiState::TMode::Controller)
+        if(GuiState().m_Mode == TGuiState::TMode::Controller)
         {
-            if(project.FocusedPart() &&  project.Parts().at(project.FocusedPart().value()).ActiveInstrumentIndex())
+            if(GuiState().m_FocusedPart &&  project.Parts().at(GuiState().m_FocusedPart.value()).ActiveInstrumentIndex())
             {
-                const auto &instrument = project.Instruments().at(project.Parts().at(project.FocusedPart().value()).ActiveInstrumentIndex().value());
+                const auto &instrument = project.Instruments().at(project.Parts().at(GuiState().m_FocusedPart.value()).ActiveInstrumentIndex().value());
                 if(instrument.Lv2Uri() == "http://gareus.org/oss/lv2/b_synth")
                 {
-                    TODO:
-                    Add project::THammondData to the engine
+//                    TODO:
+//                    Add project::THammondData to the engine
 
                 }
             }
@@ -475,14 +519,14 @@ namespace komplete
     }
     void Gui::RefreshLeds()
     {
-        const auto &project = m_Engine.Project();
-        m_Hid.SetLed(Hid::TButtonIndex::Shift, m_GuiState.m_Shift? 4:1);
+        const auto &project = GuiState().EngineData().Project();
+        m_Hid.SetLed(Hid::TButtonIndex::Shift, GuiState().m_Shift? 4:1);
         m_Hid.SetLed(Hid::TButtonIndex::Instance, 2);
-        m_Hid.SetLed(Hid::TButtonIndex::Midi, m_GuiState.m_Mode == TGuiState::TMode::Midi? 4:2);
-        m_Hid.SetLed(Hid::TButtonIndex::Browser, m_GuiState.m_Mode == TGuiState::TMode::Performance? 4:2);
-        m_Hid.SetLed(Hid::TButtonIndex::Arp, project.ShowUi()? 4:2);
+        m_Hid.SetLed(Hid::TButtonIndex::Midi, GuiState().m_Mode == TGuiState::TMode::Midi? 4:2);
+        m_Hid.SetLed(Hid::TButtonIndex::Browser, GuiState().m_Mode == TGuiState::TMode::Performance? 4:2);
+        m_Hid.SetLed(Hid::TButtonIndex::Arp, GuiState().EngineData().ShowUi()? 4:2);
 
-        if(m_GuiState.m_Mode == TGuiState::TMode::Midi)
+        if(GuiState().m_Mode == TGuiState::TMode::Midi)
         {
             m_Hid.SetLed(Hid::TButtonIndex::Clear, 0);
             for(size_t btnIndex = 0; btnIndex < 8; btnIndex++)
@@ -490,18 +534,18 @@ namespace komplete
                 m_Hid.SetLed(Hid::TButtonIndex(int(Hid::TButtonIndex::Menu0) + (int)btnIndex), 0);
             }
         }
-        else if(m_GuiState.m_Mode == TGuiState::TMode::Performance)
+        else if(GuiState().m_Mode == TGuiState::TMode::Performance)
         {
             m_Hid.SetLed(Hid::TButtonIndex::Clear, 2);
             for(size_t quickPresetOffset = 0; quickPresetOffset < 8; quickPresetOffset++)
             {
-                size_t quickPresetIndex = m_GuiState.m_QuickPresetPage * 8 + quickPresetOffset;
+                size_t quickPresetIndex = GuiState().m_QuickPresetPage * 8 + quickPresetOffset;
                 auto button = Hid::TButtonIndex(int(Hid::TButtonIndex::Menu0) + (int)quickPresetOffset);
-                if(project.FocusedPart())
+                if(GuiState().m_FocusedPart)
                 {
-                    const auto &part = project.Parts().at(project.FocusedPart().value());
-                    auto ledcolor = (*project.FocusedPart() == 0)? Hid::TLedColor::Red : Hid::TLedColor::Green;
-                    if(m_GuiState.m_Shift)
+                    const auto &part = project.Parts().at(GuiState().m_FocusedPart.value());
+                    auto ledcolor = (*GuiState().m_FocusedPart == 0)? Hid::TLedColor::Red : Hid::TLedColor::Green;
+                    if(GuiState().m_Shift)
                     {
                         m_Hid.SetLed(button, ledcolor, 3);
                     }
