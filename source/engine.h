@@ -50,7 +50,8 @@ namespace engine
     class PluginInstanceForPart
     {
     public:
-        PluginInstanceForPart(std::string &&uri, uint32_t samplerate, const std::optional<size_t> &owningPart, size_t owningInstrumentIndex, const realtimethread::Processor &processor, lilvutils::Instance::TMidiCallback &&midiCallback) : m_PluginInstance(std::make_unique<PluginInstance>(std::move(uri), samplerate,  processor, std::move(midiCallback))), m_OwningInstrumentIndex(owningInstrumentIndex), m_OwningPart(owningPart)
+        using TMidiCallback = std::function<void(PluginInstanceForPart *, const midi::TMidiOrSysexEvent &event)>;
+        PluginInstanceForPart(std::string &&uri, uint32_t samplerate, const std::optional<size_t> &owningPart, size_t owningInstrumentIndex, const realtimethread::Processor &processor, TMidiCallback &&midiCallback) : m_PluginInstance(std::make_unique<PluginInstance>(std::move(uri), samplerate,  processor, [this, midiCallback = std::move(midiCallback)](const midi::TMidiOrSysexEvent &event) mutable { if(midiCallback) {midiCallback(this, event);}})), m_OwningInstrumentIndex(owningInstrumentIndex), m_OwningPart(owningPart)
         {
         }
         const std::unique_ptr<PluginInstance>& pluginInstance() const { return m_PluginInstance; }
@@ -293,7 +294,8 @@ namespace engine
         void AuxOutPortRemoved(TAuxOutPortBase *port);
         void SendMidiAsync(const midi::TMidiOrSysexEvent &event, jackutils::Port &port);
         bool DoProjectSaveThread();
-        //void OnMidiFromPlugin(size_t instrumentindex, const midi::TMidiOrSysexEvent &evt);
+        void OnMidiFromPlugin(PluginInstanceForPart *sender, const midi::TMidiOrSysexEvent &evt);
+        void LoadFirstHammondPreset();
 
     private:
         jackutils::Client m_JackClient;

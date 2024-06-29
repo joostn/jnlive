@@ -284,6 +284,68 @@ namespace engine
         return realtimethread::Data(std::move(plugins), std::move(midiPorts), std::move(auxInPorts), std::move(auxOutPorts), std::move(outputAudioPorts), reverbinstance, reverblevel);
     }
 
+    void Engine::OnMidiFromPlugin(PluginInstanceForPart *sender, const midi::TMidiOrSysexEvent &evt)
+    {
+        if(sender->pluginInstance())
+        {
+            if(Project().Instruments().at(sender->OwningInstrumentIndex()).IsHammond())
+            {
+                if(m_ProcessingDataFromPlugin.count(sender->pluginInstance().get()) == 0)
+                {
+                    m_ProcessingDataFromPlugin.insert(sender->pluginInstance().get());
+                    utils::finally fin1([&](){
+                        m_ProcessingDataFromPlugin.erase(sender->pluginInstance().get());
+                    });
+                    if(!evt.IsSysex())
+                    {
+                        auto simpleevent = evt.GetSimpleEvent();
+                        if(simpleevent.type() == midi::SimpleEvent::Type::ControlChange)
+                        {
+                            if(simpleevent.ControlNumber() >= 70 && simpleevent.ControlNumber() < 79)
+                            {
+                                if(simpleevent.Channel() < 2)
+                                {
+                                    size_t partindex = (size_t)simpleevent.Channel();
+                                    auto drawbarindex = (size_t)(simpleevent.ControlNumber() - 70);
+                                    int drawbarvalue = std::clamp(8 - ((simpleevent.ControlValue() + 8) / 16), 0, 8);
+                                    auto oldvalue = Data().HammondData().Part(partindex).Registers().at(drawbarindex);
+                                    if(drawbarvalue != oldvalue)
+                                    {
+                                        auto newdata = Data().ChangeHammondData(Data().HammondData().ChangePart(partindex, Data().HammondData().Part(partindex).ChangeRegister(drawbarindex, drawbarvalue)));
+                                        SetData(std::move(newdata));
+                                    }
+                                }
+                            }
+                            else if( (simpleevent.ControlNumber() >= 80) && (simpleevent.ControlNumber() < 84) && (simpleevent.Channel() == 0))
+                            {
+                                bool boolvalue = simpleevent.ControlValue() > 63;
+                                auto hammonddata = Data().HammondData();
+                                if(simpleevent.ControlNumber() == 80)
+                                {
+                                    hammonddata = hammonddata.ChangePercussion(boolvalue);
+                                }
+                                else if(simpleevent.ControlNumber() == 81)
+                                {
+                                    hammonddata = hammonddata.ChangePercussionSoft(boolvalue);
+                                }
+                                else if(simpleevent.ControlNumber() == 82)
+                                {
+                                    hammonddata = hammonddata.ChangePercussionFast(boolvalue);
+                                }
+                                else if(simpleevent.ControlNumber() == 83)
+                                {
+                                    hammonddata = hammonddata.ChangePercussion2ndHarmonic(boolvalue);
+                                }
+                                auto newdata = Data().ChangeHammondData(std::move(hammonddata));
+                                SetData(std::move(newdata));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     void Engine::SyncPlugins(std::vector<std::unique_ptr<jackutils::Port>> &midiInPortsToDiscard, std::vector<std::unique_ptr<PluginInstance>> &pluginsToDiscard)
     {
         std::optional<jack_nframes_t> jacksamplerate;
@@ -326,8 +388,8 @@ namespace engine
                             jacksamplerate = jack_get_sample_rate(jackutils::Client::Static().get());
                         }
                         auto lv2uri = instrument.Lv2Uri();
-                        plugin_uq = std::make_unique<PluginInstanceForPart>(std::move(lv2uri), *jacksamplerate, owningpart, instrumentindex, m_RtProcessor, [this, instrumentindex](const midi::TMidiOrSysexEvent &evt){
-                            //OnMidiFromPlugin(instrumentindex, evt);
+                        plugin_uq = std::make_unique<PluginInstanceForPart>(std::move(lv2uri), *jacksamplerate, owningpart, instrumentindex, m_RtProcessor, [this](PluginInstanceForPart *sender, const midi::TMidiOrSysexEvent &evt){
+                            OnMidiFromPlugin(sender, evt);
                         });
                     }
                     instrumentindex2ownedpluginindex.push_back(ownedPlugins.size());
@@ -727,7 +789,40 @@ namespace engine
                 }
             }
         });
-        UpdateHammondPlugins(project::THammondData(), true);
+        //UpdateHammondPlugins(project::THammondData(), true);
+        LoadFirstHammondPreset();
+    }
+    void Engine::LoadFirstHammondPreset()
+    {
+        for(const auto &preset: Project().Presets())
+        {
+            if(preset)
+            {
+                if(Project().Instruments().at(preset->InstrumentIndex()).IsHammond())
+                {
+                    auto instrumentindex = preset.value().InstrumentIndex();
+                    auto pluginindex = m_Parts.at(0).PluginIndices().at(instrumentindex);
+                    const auto &ownedplugin = m_OwnedPlugins.at(pluginindex);
+                    if(ownedplugin)
+                    {
+                        std::string presetdir = PresetsDir() + "/" + preset->PresetSubDir();
+                        auto &instance = ownedplugin->pluginInstance()->Instance();
+                        ownedplugin->pluginInstance()->Instance().LoadState(presetdir);
+                    }
+                    break;
+                }
+            }
+        }
+        for(const auto &ownedplugin: m_OwnedPlugins)
+        {
+            if(ownedplugin && Project().Instruments().at(ownedplugin->OwningInstrumentIndex()).IsHammond())
+            {
+                LoadPresetForPart(*ownedplugin->OwningPart());
+            }
+
+
+        }
+
     }
     bool Engine::DoProjectSaveThread()
     {
