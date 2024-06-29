@@ -156,12 +156,83 @@ namespace engine
         Engine &m_Engine;
     };
 
+
     class Engine
     {
         friend TAuxInPortBase;
         friend TAuxOutPortBase;
         friend TAuxOutPortLink;
     public:
+        class TData
+        {
+        public:
+            TData() = default;
+            const project::TProject& Project() const { return m_Project; }
+            const project::THammondData& HammondData() const { return m_HammondData; }
+            std::optional<size_t> GuiFocusedPart() const { return m_GuiFocusedPart; }
+            bool ShowUi() const { return m_ShowUi; }
+            bool ShowReverbUi() const { return m_ShowReverbUi; }
+            TData ChangeProject(project::TProject &&project) const
+            {
+                TData ret = *this;
+                ret.m_Project = std::move(project);
+                ret.FixFocusedPart();
+                return ret;
+            }
+            TData ChangeHammondData(project::THammondData &&hammonddata) const
+            {
+                TData ret = *this;
+                ret.m_HammondData = std::move(hammonddata);
+                return ret;
+            }
+            TData ChangeGuiFocusedPart(std::optional<size_t> guiFocusedPart) const
+            {
+                TData ret = *this;
+                ret.m_GuiFocusedPart = guiFocusedPart;
+                ret.FixFocusedPart();
+                return ret;
+            }
+            TData ChangeShowUi(bool showUi) const
+            {
+                TData ret = *this;
+                ret.m_ShowUi = showUi;
+                return ret;
+            }
+            TData ChangeShowReverbUi(bool showReverbUi) const
+            {
+                TData ret = *this;
+                ret.m_ShowReverbUi = showReverbUi;
+                return ret;
+            }
+        private:
+            void FixFocusedPart()
+            {
+                if(m_Project.Parts().empty())
+                {
+                    m_GuiFocusedPart = std::nullopt;
+                }
+                else
+                {
+                    if(m_GuiFocusedPart)
+                    {
+                        if(*m_GuiFocusedPart >= m_Project.Parts().size())
+                        {
+                            m_GuiFocusedPart = m_Project.Parts().size()-1;
+                        }
+                    }
+                    else
+                    {
+                        m_GuiFocusedPart = 0;
+                    }
+                }
+            }
+        private:
+            project::TProject m_Project;
+            project::THammondData m_HammondData;
+            std::optional<size_t> m_GuiFocusedPart;
+            bool m_ShowUi = false;
+            bool m_ShowReverbUi = false;
+        };
         class Part
         {
         public:
@@ -180,17 +251,19 @@ namespace engine
             std::unique_ptr<jackutils::Port> m_MidiInPort;
         };
         Engine(uint32_t maxBlockSize, int argc, char** argv, std::string &&projectdir);
-        const project::TProject& Project() const { return m_Project; }
+        const project::TProject& Project() const { return Data().Project(); }
         ~Engine();
         void SetProject(project::TProject &&project);
+        const TData& Data() const { return m_Data; }
+        void SetData(TData &&data);
         void ProcessMessages();
         void SetJackConnections(project::TJackConnections &&con);
         void ApplyJackConnections(bool forceNow);
-        utils::NotifySource& OnProjectChanged() { return m_OnProjectChanged; }
+        utils::NotifySource& OnDataChanged() { return m_OnDataChanged; }
         const std::string& ProjectDir() const { return m_ProjectDir; }
         std::string PresetsDir() const { return m_ProjectDir + "/presets"; }
         std::string ProjectFile() const { return m_ProjectDir + "/project.json"; }
-        void SaveCurrentPreset(size_t presetindex, const std::string &name);
+        void SaveCurrentPreset(size_t partindex, size_t presetindex, const std::string &name);
         std::string SavePresetForInstance(lilvutils::Instance &instance);
         void StoreReverbPreset();
         void ChangeReverbLv2Uri(std::string &&uri);
@@ -201,14 +274,12 @@ namespace engine
         void DeletePreset(size_t presetindex);
         void AddInstrument(const std::string &uri, bool shared);
         void DeleteInstrument(size_t instrumentindex);
-        void SwitchFocusedPartToPreset(size_t presetIndex);
         void SaveProjectSync();
         void SendMidi(const midi::TMidiOrSysexEvent &event, const PluginInstance &plugininstance);
         void SendMidiToPart(const midi::TMidiOrSysexEvent &event, size_t partindex);
-        void SendMidiToFocusedPart(const midi::TMidiOrSysexEvent &event);
 
     private:
-        void LoadCurrentPreset();
+        void LoadPresetForPart(size_t partindex);
         void SyncRtData();
         void SyncPlugins();
         void SyncPlugins(std::vector<std::unique_ptr<jackutils::Port>> &midiInPortsToDiscard, std::vector<std::unique_ptr<PluginInstance>> &pluginsToDiscard);
@@ -226,17 +297,17 @@ namespace engine
         jackutils::Client m_JackClient;
         lilvutils::World m_LilvWorld;
         realtimethread::Processor m_RtProcessor {8192};
-        project::TProject m_Project;
         std::vector<std::unique_ptr<PluginInstanceForPart>> m_OwnedPlugins;
         std::unique_ptr<PluginInstance> m_ReverbInstance;
         std::vector<Part> m_Parts;
+        TData m_Data;
 //        std::unique_ptr<OptionalUI> m_Ui;
 //        std::unique_ptr<OptionalUI> m_UiForReverb;
         realtimethread::Data m_CurrentRtData;
         std::vector<std::unique_ptr<jackutils::Port>> m_AudioOutPorts;
         project::TJackConnections m_JackConnections;
         std::optional<std::chrono::steady_clock::time_point> m_LastApplyJackConnectionTime;
-        utils::NotifySource m_OnProjectChanged;
+        utils::NotifySource m_OnDataChanged;
         bool m_SafeToDestroy = false;
         std::string m_ProjectDir;
         std::unique_ptr<utils::NotifySink> m_UiClosedSink;
@@ -282,34 +353,26 @@ namespace engine
         TController& operator=(const TController&) = delete;
         TController(TController&&) = delete;
         TController& operator=(TController&&) = delete;
-        TController(engine::Engine &engine, std::string &&name) : m_Engine(engine), m_InPort(*this, engine, std::string(name + "_in")), m_OutPort(*this, engine, std::string(name + "_out")), m_OnProjectChanged(m_Engine.OnProjectChanged(), [this](){ this->ProjectChanged(); })
+        TController(engine::Engine &engine, std::string &&name) : m_Engine(engine), m_InPort(*this, engine, std::string(name + "_in")), m_OutPort(*this, engine, std::string(name + "_out")), m_OnEngineDataChanged(m_Engine.OnDataChanged(), [this](){ this->DataChanged(); })
         {
         }
         engine::Engine& Engine() const
         {
             return m_Engine;
         }
-        const project::TProject& Project() const
-        {
-            return Engine().Project();
-        }
-        void SetProject(project::TProject &&project)
-        {
-            Engine().SetProject(std::move(project));
-        }
         void SendMidi(const midi::TMidiOrSysexEvent &event) const;
     protected:
         virtual void OnMidiIn(const midi::TMidiOrSysexEvent &event) = 0;
-        virtual void OnProjectChanged(const project::TProject &prevProject) {}
+        virtual void OnDataChanged(const engine::Engine::TData &prevData) {}
     
     private:
-        void ProjectChanged();
+        void DataChanged();
 
     private:
         engine::Engine &m_Engine;
         TInPort m_InPort;
         TOutPort m_OutPort;
-        utils::NotifySink m_OnProjectChanged;
-        project::TProject m_LastProject;
+        utils::NotifySink m_OnEngineDataChanged;
+        engine::Engine::TData m_LastData;
     };
 }

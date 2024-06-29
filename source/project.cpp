@@ -10,7 +10,21 @@ namespace project
         parts.emplace_back("Lower", 1, std::nullopt, std::nullopt, std::vector<std::optional<size_t>>{}, 1.0f);
         std::vector<std::optional<TPreset>> presets;
         project::TReverb reverb;
-        return TProject(std::move(instruments), std::move(parts), std::move(presets), std::nullopt, false, {});
+        return TProject(std::move(instruments), std::move(parts), std::move(presets), std::move(reverb));
+    }
+
+    Json::Value ToJson(const TInstrument::TParameter &parameter)
+    {
+        Json::Value result;
+        result["label"] = parameter.Label();
+        result["initialvalue"] = parameter.InitialValue();
+        result["ccnum"] = parameter.ControllerNumber();
+        return result;
+    }
+
+    TInstrument::TParameter InstrumentParameterFromJson(const Json::Value &v)
+    {
+        return TInstrument::TParameter(v["ccnum"].asInt(), v["initialvalue"].asInt(), v["label"].asString());
     }
 
     Json::Value ToJson(const TInstrument &instrument)
@@ -19,11 +33,21 @@ namespace project
         result["lv2uri"] = instrument.Lv2Uri();
         result["shared"] = instrument.Shared();
         result["name"] = instrument.Name();
+        result["parameters"] = Json::Value(Json::arrayValue);
+        for (const auto &parameter : instrument.Parameters())
+        {
+            result["parameters"].append(ToJson(parameter));
+        }
         return result;
     }
     TInstrument InstrumentFromJson(const Json::Value &v)
     {
-        return TInstrument(v["lv2uri"].asString(), v["shared"].asBool(), v["name"].asString());
+        std::vector<TInstrument::TParameter> parameters;
+        for (const auto &parameter : v["parameters"])
+        {
+            parameters.push_back(InstrumentParameterFromJson(parameter));
+        }
+        return TInstrument(v["lv2uri"].asString(), v["shared"].asBool(), v["name"].asString(), std::move(parameters));
     }
     Json::Value ToJson(const TPart &part)
     {
@@ -121,15 +145,6 @@ namespace project
                 result["presets"].append(Json::Value::null);
             }
         }
-        result["showui"] = project.ShowUi();
-        if(project.FocusedPart())
-        {
-            result["focusedpart"] = *project.FocusedPart();
-        }
-        else
-        {
-            result["focusedpart"] = Json::Value::null;
-        }
         result["reverb"] = ToJson(project.Reverb());
         return result;
     }
@@ -157,21 +172,12 @@ namespace project
                 presets.push_back(PresetFromJson(preset));
             }
         }
-        std::optional<size_t> focusedPart;
-        if(v["focusedpart"].isNull())
-        {
-            focusedPart = std::nullopt;
-        }
-        else
-        {
-            focusedPart = v["focusedpart"].asInt();
-        }
         TReverb reverb;
         if(!v["reverb"].isNull())
         {
             reverb = ReverbFromJson(v["reverb"]);
         }
-        return TProject(std::move(instruments), std::move(parts), std::move(presets), focusedPart, v["showui"].asBool(), std::move(reverb));
+        return TProject(std::move(instruments), std::move(parts), std::move(presets), std::move(reverb));
     }
     TProject ProjectFromFile(const std::string &filename)
     {
@@ -338,8 +344,11 @@ namespace project
                 newInstruments.push_back(m_Instruments[i]);
             }
         }
-        auto reverb = Reverb();
-        return TProject(std::move(newInstruments), std::move(newparts), std::move(newPresets), FocusedPart(), ShowUi(), std::move(reverb));
+        auto result = *this;
+        result.m_Instruments = std::move(newInstruments);
+        result.m_Parts = std::move(newparts);
+        result.m_Presets = std::move(newPresets);
+        return result;
     }
 
 }

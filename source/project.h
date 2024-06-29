@@ -7,10 +7,128 @@
 
 namespace project
 {
+    class THammondData
+    {
+    public:
+        class TPart
+        {
+        public:
+            TPart() : m_Registers({0,0,0,0,0,0,0,0,0})
+            {
+            }
+            TPart(std::array<int, 9> &&registers) : m_Registers(std::move(registers))
+            {
+            }
+            const std::array<int, 9>& Registers() const { return m_Registers; }
+            TPart ChangeRegister(int index, int value) const
+            {
+                auto newregisters = m_Registers;
+                newregisters[index] = value;
+                return TPart(std::move(newregisters));
+            }
+            auto operator==(const TPart &other) const
+            {
+                return m_Registers == other.m_Registers;
+            }
+        private:
+            std::array<int, 9> m_Registers;
+        };
+        THammondData() : m_Parts({TPart(), TPart()})
+        {
+        }
+        THammondData ChangePart(int partindex, const TPart &part) const
+        {
+            auto newparts = m_Parts;
+            newparts[partindex] = part;
+            THammondData result = *this;
+            result.m_Parts = std::move(newparts);
+            return result;
+        }
+        const TPart& Part(int partindex) const
+        {
+            return m_Parts.at(partindex);
+        }
+        bool Percussion() const { return m_Percussion; }
+        bool PercussionVolume() const { return m_PercussionVolume; }
+        bool PercussionDecay() const { return m_PercussionDecay; }
+        bool PercussionHarmonic() const { return m_PercussionHarmonic; }
+        THammondData ChangePercussion(bool percussion) const
+        {
+            auto result = *this;
+            result.m_Percussion = percussion;
+            return result;
+        }
+        THammondData ChangePercussionVolume(bool percussionVolume) const
+        {
+            auto result = *this;
+            result.m_PercussionVolume = percussionVolume;
+            return result;
+        }
+        THammondData ChangePercussionDecay(bool percussionDecay) const
+        {
+            auto result = *this;
+            result.m_PercussionDecay = percussionDecay;
+            return result;
+        }
+        THammondData ChangePercussionHarmonic(bool percussionHarmonic) const
+        {
+            auto result = *this;
+            result.m_PercussionHarmonic = percussionHarmonic;
+            return result;
+        }        
+        inline auto Tuple() const
+        {
+            return std::tie(m_Parts, m_Percussion, m_PercussionVolume, m_PercussionDecay, m_PercussionHarmonic);
+        }
+        auto operator==(const THammondData &other) const
+        {
+            return Tuple() == other.Tuple();
+        }
+
+    private:
+        std::array<TPart, 2> m_Parts;
+        bool m_Percussion = false;
+        bool m_PercussionVolume = false;
+        bool m_PercussionDecay = false;
+        bool m_PercussionHarmonic = false;
+    };
+        
     class TInstrument
     {
     public:
-        TInstrument(std::string &&lv2Uri, bool shared, std::string &&name) : m_Lv2Uri(std::move(lv2Uri)), m_Shared(shared), m_Name(std::move(name))
+        class TParameter
+        {
+        public:
+            TParameter(int controllerNumber, int initialValue, std::string &&label) : m_ControllerNumber(controllerNumber), m_InitialValue(initialValue), m_Label(std::move(label))
+            {
+            }
+            int ControllerNumber() const
+            {
+                return m_ControllerNumber;
+            }
+            int InitialValue() const
+            {
+                return m_InitialValue;
+            }
+            const std::string& Label() const
+            {
+                return m_Label;
+            }
+            auto Tuple() const
+            {
+                return std::tie(m_ControllerNumber, m_InitialValue, m_Label);
+            }
+            bool operator==(const TParameter &other) const
+            {
+                return Tuple() == other.Tuple();
+            }
+        private:
+            int m_ControllerNumber;
+            int m_InitialValue;
+            std::string m_Label;
+        };
+    public:
+        TInstrument(std::string &&lv2Uri, bool shared, std::string &&name, std::vector<TParameter> &&parameters) : m_Lv2Uri(std::move(lv2Uri)), m_Shared(shared), m_Name(std::move(name))
         {
         }
         const std::string& Lv2Uri() const
@@ -25,11 +143,24 @@ namespace project
         {
             return m_Name;
         }
+        const std::vector<TParameter>& Parameters() const
+        {
+            return m_Parameters;
+        }
+        auto Tuple() const
+        {
+            return std::tie(m_Lv2Uri, m_Name, m_Shared, m_Parameters);
+        }
+        bool operator==(const TInstrument &other) const
+        {
+            return Tuple() == other.Tuple();
+        }
 
     private:
         std::string m_Lv2Uri;
         std::string m_Name;
         bool m_Shared = false;  // for hammond organ, etc: 2 keyboards per instrument
+        std::vector<TParameter> m_Parameters;
     };
     class TPart  // one for each keyboard
     {
@@ -77,6 +208,14 @@ namespace project
             result.m_QuickPresets[quickpresetindex] = presetindex;
             return result;
         }
+        auto Tuple() const
+        {
+            return std::tie(m_Name, m_MidiChannelForSharedInstruments, m_ActiveInstrumentIndex, m_ActivePresetIndex, m_AmplitudeFactor, m_QuickPresets);
+        }
+        bool operator==(const TPart &other) const
+        {
+            return Tuple() == other.Tuple();
+        }
 
     private:
         std::string m_Name;
@@ -111,6 +250,15 @@ namespace project
             result.m_InstrumentIndex = instrumentIndex;
             return result;
         }
+        auto Tuple() const
+        {
+            return std::tie(m_InstrumentIndex, m_Name, m_PresetSubDir);
+        }
+        bool operator==(const TPreset &other) const
+        {
+            return Tuple() == other.Tuple();
+        }
+
     private:
         size_t m_InstrumentIndex = 0;
         std::string m_Name;
@@ -120,17 +268,10 @@ namespace project
     {
     public:
         TReverb() {}
-        TReverb(std::string &&reverbPresetSubDir, std::string &&reverbLv2Uri, float mixLevel, bool showGui) : m_ReverbPresetSubDir(reverbPresetSubDir), m_ReverbLv2Uri(reverbLv2Uri), m_MixLevel(mixLevel), m_ShowGui(showGui) {}
+        TReverb(std::string &&reverbPresetSubDir, std::string &&reverbLv2Uri, float mixLevel) : m_ReverbPresetSubDir(reverbPresetSubDir), m_ReverbLv2Uri(reverbLv2Uri), m_MixLevel(mixLevel) {}
         const std::string &ReverbPresetSubDir() const {return m_ReverbPresetSubDir;}
         const std::string &ReverbLv2Uri() const {return m_ReverbLv2Uri;}
         float MixLevel() const {return m_MixLevel;}
-        bool ShowGui() const {return m_ShowGui;}
-        TReverb ChangeShowGui(bool showgui) const
-        {
-            auto result = *this;
-            result.m_ShowGui = showgui;
-            return result;
-        }
         TReverb ChangeMixLevel(float mixLevel) const
         {
             auto result = *this;
@@ -149,93 +290,78 @@ namespace project
             result.m_ReverbLv2Uri = reverbPresetSubDir;
             return result;
         }
+        auto Tuple() const
+        {
+            return std::tie(m_ReverbPresetSubDir, m_ReverbLv2Uri, m_MixLevel);
+        }
+        bool operator==(const TReverb &other) const
+        {
+            return Tuple() == other.Tuple();
+        }
+
     private:
         std::string m_ReverbPresetSubDir; // or empty for default preset
         std::string m_ReverbLv2Uri;       // or empty (no reverb)
         float m_MixLevel = 0.2f;
-        bool m_ShowGui = false;
     };
     
     class TProject
     {
     public:
         TProject() {}
-        TProject(std::vector<TInstrument>&& instruments, std::vector<TPart>&& parts, std::vector<std::optional<TPreset>> &&presets, std::optional<size_t> focusedPart, bool showUi, TReverb &&reverb) : m_Instruments(std::move(instruments)), m_Parts(std::move(parts)), m_Presets(std::move(presets)), m_FocusedPart(focusedPart), m_ShowUi(showUi), m_Reverb(std::move(reverb))  {}
+        TProject(std::vector<TInstrument>&& instruments, std::vector<TPart>&& parts, std::vector<std::optional<TPreset>> &&presets, TReverb &&reverb) : m_Instruments(std::move(instruments)), m_Parts(std::move(parts)), m_Presets(std::move(presets)), m_Reverb(std::move(reverb))  {}
         const std::vector<TInstrument>& Instruments() const { return m_Instruments; }
         const std::vector<TPart>& Parts() const { return m_Parts; }
         const std::vector<std::optional<TPreset>>& Presets() const { return m_Presets; }
-        TProject Change(std::optional<size_t> focusedPart, bool showUi) const
-        {
-            auto parts = m_Parts;
-            auto instruments = m_Instruments;
-            auto presets = m_Presets;
-            auto reverb = Reverb();
-            return TProject(std::move(instruments), std::move(parts), std::move(presets), focusedPart, showUi, std::move(reverb));
-        }
         TProject ChangeReverb(TReverb &&reverb) const
         {
-            auto parts = m_Parts;
-            auto instruments = m_Instruments;
-            auto presets = m_Presets;
-            auto focusedPart = FocusedPart();
-            auto showUi = ShowUi();
-            return TProject(std::move(instruments), std::move(parts), std::move(presets), focusedPart, showUi, std::move(reverb));
+            auto result = *this;
+            result.m_Reverb = std::move(reverb);
+            return result;
         }
         TProject ChangePart(size_t partIndex, TPart &&part) const
         {
-            std::vector<TPart> parts;
-            for(size_t i=0; i < m_Parts.size(); ++i)
+            auto result = *this;
+            if(part.ActivePresetIndex() && (*part.ActivePresetIndex() >= m_Presets.size()))
             {
-                if(i == partIndex)
-                {
-                    parts.push_back(std::move(part));
-                }
-                else
-                {
-                    parts.push_back(m_Parts[i]);
-                }
+                part = part.ChangeActivePresetIndex(std::nullopt);
             }
-            auto instruments = m_Instruments;
-            auto presets = m_Presets;
-            auto reverb = Reverb();
-            return TProject(std::move(instruments), std::move(parts), std::move(presets), FocusedPart(), ShowUi(), std::move(reverb));
+            if(partIndex < m_Parts.size())
+            {
+                const auto &oldpart = m_Parts[partIndex];
+                if(part.ActivePresetIndex() && (oldpart.ActivePresetIndex() != part.ActivePresetIndex()))
+                {
+                    // switch to new preset
+                    auto presetIndex = part.ActivePresetIndex().value();
+                    auto instrumentindex = part.ActiveInstrumentIndex().value();
+                    const auto &preset = Presets().at(presetIndex);
+                    if(preset)
+                    {
+                        auto instrumentindex = preset.value().InstrumentIndex();
+                        part = part.ChangeActiveInstrumentIndex(instrumentindex);
+                    }
+                }
+                result.m_Parts[partIndex] = std::move(part);
+            }
+            return result;
         }
         TProject SwitchToPreset(size_t partIndex, size_t presetIndex) const
         {
-            if( (partIndex < Parts().size()) && (presetIndex < m_Presets.size()) )
-            {
-                const auto &preset = Presets()[presetIndex];
-                if(preset)
-                {
-                    auto instrumentindex = preset.value().InstrumentIndex();
-                    auto part = Parts().at(partIndex).ChangeActiveInstrumentIndex(instrumentindex).ChangeActivePresetIndex(presetIndex);
-                    return ChangePart(partIndex, std::move(part));
-                }
-            }
-            return *this;
+            return ChangePart(partIndex, m_Parts[partIndex].ChangeActivePresetIndex(presetIndex));
         }
         TProject ChangePreset(size_t presetIndex, std::optional<TPreset> &&preset) const
         {
-            auto presets = m_Presets;
-            presets[presetIndex] = std::move(preset);
-            auto parts = m_Parts;
-            auto instruments = m_Instruments;
-            auto reverb = Reverb();
-            return TProject(std::move(instruments), std::move(parts), std::move(presets), FocusedPart(), ShowUi(), std::move(reverb));
-        }
-        TProject SwitchFocusedPartToPreset(size_t presetIndex) const
-        {
-            if(FocusedPart())
+            auto result = *this;
+            if( (presetIndex >= m_Presets.size()) && (preset))
             {
-                return SwitchToPreset(*FocusedPart(), presetIndex);
+                result.m_Presets.resize(presetIndex+1);
             }
-            else
+            if( (presetIndex < m_Presets.size()) && (preset))
             {
-                return *this;
+                result.m_Presets[presetIndex] = std::move(preset);
             }
+            return result;
         }
-        const bool& ShowUi() const { return m_ShowUi; }
-        const std::optional<size_t>& FocusedPart() const { return m_FocusedPart; }
         void SetPresets(std::vector<std::optional<TPreset>> &&presets)
         {
             m_Presets = std::move(presets);
@@ -243,21 +369,24 @@ namespace project
         const TReverb& Reverb() const { return m_Reverb; }
         TProject AddInstrument(TInstrument &&inst) const
         {
-            auto instruments = m_Instruments;
-            instruments.push_back(std::move(inst));
-            auto parts = m_Parts;
-            auto presets = m_Presets;
-            auto reverb = Reverb();
-            return TProject(std::move(instruments), std::move(parts), std::move(presets), FocusedPart(), ShowUi(), std::move(reverb));
+            auto result = *this;
+            result.m_Instruments.push_back(std::move(inst));
+            return result;
         }
         TProject DeleteInstrument(size_t index) const;
+        auto Tuple() const
+        {
+            return std::tie(m_Instruments, m_Parts, m_Presets, m_Reverb);
+        }
+        bool operator==(const TProject &other) const
+        {
+            return Tuple() == other.Tuple();
+        }
 
     private:
         std::vector<TPart> m_Parts;
         std::vector<TInstrument> m_Instruments;
         std::vector<std::optional<TPreset>> m_Presets;
-        std::optional<size_t> m_FocusedPart;
-        bool m_ShowUi = false;
         TReverb m_Reverb;
     };
     class TJackConnections

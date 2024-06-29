@@ -87,7 +87,9 @@
         "filesystem": "cpp",
         "iostream": "cpp",
         "text_encoding": "cpp",
-        "execution": "cpp"
+        "execution": "cpp",
+        "semaphore": "cpp",
+        "stop_token": "cpp"
     },
     "lldb.displayFormat": "auto",
     "lldb.dereferencePointers": true,

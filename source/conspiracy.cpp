@@ -59,9 +59,10 @@ namespace conspiracy {
                     auto presetNumber = noteNumber2PadNumber(simpleEvent.NoteNumber());
                     if(presetNumber)
                     {
-                        if(Project().FocusedPart())
+                        if(Engine().Data().GuiFocusedPart())
                         {
-                            Engine().SwitchFocusedPartToPreset((size_t)*presetNumber);
+                            auto newproject = Engine().Data().Project().SwitchToPreset(*Engine().Data().GuiFocusedPart(), (size_t)*presetNumber);
+                            Engine().SetProject(std::move(newproject));
                         }
                     }
                 }
@@ -91,13 +92,13 @@ namespace conspiracy {
                             if( (Fkey == 1) || (Fkey == 5) )
                             {
                                 size_t focusedpart = (Fkey == 1) ? 0 : 1;
-                                auto newproject = Project().Change(focusedpart, Project().ShowUi());
-                                SetProject(std::move(newproject));
+                                auto newdata = Engine().Data().ChangeGuiFocusedPart(focusedpart);
+                                Engine().SetData(std::move(newdata));
                             }
                             if(Fkey == 10)
                             {
-                                auto newproject = Project().Change(Project().FocusedPart(), !Project().ShowUi());
-                                SetProject(std::move(newproject));
+                                auto newdata = Engine().Data().ChangeShowUi(!Engine().Data().ShowUi());
+                                Engine().SetData(std::move(newdata));
                             }
                         }
                         else
@@ -124,15 +125,15 @@ namespace conspiracy {
                         if( (slidernum == 2) || (slidernum == 3) )
                         {
                             size_t partindex = (slidernum == 2) ? 0 : 1;
-                            auto newpart = Project().Parts().at(partindex).ChangeAmplitudeFactor(simpleEvent.ControlValue() / 127.0f);
-                            auto newproject = Project().ChangePart(partindex, std::move(newpart));
-                            SetProject(std::move(newproject));
+                            auto newpart = Engine().Data().Project().Parts().at(partindex).ChangeAmplitudeFactor(simpleEvent.ControlValue() / 127.0f);
+                            auto newproject = Engine().Data().Project().ChangePart(partindex, std::move(newpart));
+                            Engine().SetProject(std::move(newproject));
                         }
                         if(slidernum == 5)
                         {
-                            auto reverb = Project().Reverb().ChangeMixLevel(simpleEvent.ControlValue() / 127.0f);
-                            auto newproject = Project().ChangeReverb(std::move(reverb));
-                            SetProject(std::move(newproject));
+                            auto reverb = Engine().Data().Project().Reverb().ChangeMixLevel(simpleEvent.ControlValue() / 127.0f);
+                            auto newproject = Engine().Data().Project().ChangeReverb(std::move(reverb));
+                            Engine().SetProject(std::move(newproject));
                         }
                     }
                 }
@@ -149,19 +150,19 @@ namespace conspiracy {
     }
 
 
-    void Controller::OnProjectChanged(const project::TProject &prevProject)
+    void Controller::OnDataChanged(const engine::Engine::TData &prevData)
     {
         std::optional<size_t> prevPresetIndex;
-        if(prevProject.FocusedPart())
+        if(prevData.GuiFocusedPart())
         {
-            prevPresetIndex = prevProject.Parts().at(*prevProject.FocusedPart()).ActivePresetIndex();
+            prevPresetIndex = prevData.Project().Parts().at(*prevData.GuiFocusedPart()).ActivePresetIndex();
         }
         std::optional<size_t> newPresetIndex;
-        if(Project().FocusedPart())
+        if(Engine().Data().GuiFocusedPart())
         {
-            newPresetIndex = Project().Parts().at(*Project().FocusedPart()).ActivePresetIndex();
+            newPresetIndex = Engine().Data().Project().Parts().at(*Engine().Data().GuiFocusedPart()).ActivePresetIndex();
         }
-        if( (prevPresetIndex != newPresetIndex) || (prevProject.FocusedPart() != Project().FocusedPart()) )
+        if( (prevPresetIndex != newPresetIndex) || (prevData.GuiFocusedPart() != Engine().Data().GuiFocusedPart()) )
         {
             if(prevPresetIndex)
             {
@@ -172,18 +173,18 @@ namespace conspiracy {
                 SendCurrentPadColorPresetIndex(*newPresetIndex);
             }
         }
-        if(prevProject.FocusedPart() != Project().FocusedPart())
+        if(prevData.GuiFocusedPart() != Engine().Data().GuiFocusedPart())
         {
-            if(prevProject.FocusedPart())
+            if(prevData.GuiFocusedPart())
             {
-                SendCurrentPadColorFocusedPart(*prevProject.FocusedPart());
+                SendCurrentPadColorFocusedPart(*prevData.GuiFocusedPart());
             }
-            if(Project().FocusedPart())
+            if(Engine().Data().GuiFocusedPart())
             {
-                SendCurrentPadColorFocusedPart(*Project().FocusedPart());
+                SendCurrentPadColorFocusedPart(*Engine().Data().GuiFocusedPart());
             }
         }
-        if(prevProject.ShowUi() != Project().ShowUi())
+        if(prevData.ShowUi() != Engine().Data().ShowUi())
         {
             SendCurrentPadColorForGuiKey();
         }
@@ -193,12 +194,12 @@ namespace conspiracy {
     {
         if(presetindex >= 25) return; // invisible
         int color = 0;
-        if(Project().FocusedPart())
+        if(Engine().Data().GuiFocusedPart())
         {
-            auto currentPresetNumber = Project().Parts().at(*Project().FocusedPart()).ActivePresetIndex();
+            auto currentPresetNumber = Engine().Data().Project().Parts().at(*Engine().Data().GuiFocusedPart()).ActivePresetIndex();
             if(currentPresetNumber == presetindex)
             {
-                color = cKeyboardcolors.at(*Project().FocusedPart());
+                color = cKeyboardcolors.at(*Engine().Data().GuiFocusedPart());
             }
         }
         int notenumber = (int)presetindex;
@@ -211,9 +212,9 @@ namespace conspiracy {
     {
         if(partindex >= 2) return; // invisible
         int color = 0;
-        if(Project().FocusedPart() == partindex)
+        if(Engine().Data().GuiFocusedPart() == partindex)
         {
-            color = cKeyboardcolors.at(*Project().FocusedPart());
+            color = cKeyboardcolors.at(*Engine().Data().GuiFocusedPart());
         }
         int notenumber = (partindex == 0) ? 25 : 29;
         int velocity = cColormap.at(color);
@@ -224,7 +225,7 @@ namespace conspiracy {
     void Controller::SendCurrentPadColorForGuiKey()
     {
         int color = 0;
-        if(Project().ShowUi())
+        if(Engine().Data().ShowUi())
         {
             color = 2;
         }

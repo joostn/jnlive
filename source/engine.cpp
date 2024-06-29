@@ -34,20 +34,38 @@ namespace engine
         return presetDir;
     }
 
-    void Engine::SwitchFocusedPartToPreset(size_t presetIndex)
+    void Engine::SetData(TData &&data)
     {
-        if(Project().FocusedPart())
+        auto olddata = std::move(m_Data);
+        m_Data = std::move(data);
+        for(size_t partindex = 0; partindex < m_Data.Project().Parts().size(); ++partindex)
         {
-            if(Project().Parts().at(*Project().FocusedPart()).ActivePresetIndex() != presetIndex)
+            if(m_Data.Project().Parts()[partindex].ActivePresetIndex())
             {
-                auto newproject = Project().SwitchFocusedPartToPreset(presetIndex);
-                SetProject(std::move(newproject));
-                OnProjectChanged();
-                LoadCurrentPreset();
+                if(partindex < olddata.Project().Parts().size())
+                {
+                    if(olddata.Project().Parts()[partindex].ActivePresetIndex() != m_Data.Project().Parts()[partindex].ActivePresetIndex())
+                    {
+                        LoadPresetForPart(partindex);
+                    }
+                }
+                else
+                {
+                    LoadPresetForPart(partindex);
+                }
             }
         }
+        if(olddata.Project() != m_Data.Project())
+        {
+            if(!m_Quitting)
+            {
+                std::unique_lock<std::mutex> lock(m_ProjectSaveMutex);
+                m_ProjectToSave = std::make_unique<project::TProject>(m_Data.Project());
+            }
+            SyncPlugins();
+        }
+        OnDataChanged().Notify();
     }
-
     void Engine::ApplyJackConnections(bool forceNow)
     {
         auto now = std::chrono::steady_clock::now();
@@ -286,18 +304,18 @@ namespace engine
         for(const auto &ownedplugin: ownedPlugins)
         {
             bool isfocused = false;
-            if(Project().FocusedPart())
+            if(Data().GuiFocusedPart())
             {
-                if( (ownedplugin->OwningPart() && (*Project().FocusedPart() == *ownedplugin->OwningPart()))
+                if( (ownedplugin->OwningPart() && (*Data().GuiFocusedPart() == *ownedplugin->OwningPart()))
                     || (!ownedplugin->OwningPart()))
                 {
-                    if(Project().Parts().at(*Project().FocusedPart()).ActiveInstrumentIndex() == ownedplugin->OwningInstrumentIndex())
+                    if(Project().Parts().at(*Data().GuiFocusedPart()).ActiveInstrumentIndex() == ownedplugin->OwningInstrumentIndex())
                     {
                         isfocused = true;
                     }
                 }
             }
-            bool showgui = isfocused && Project().ShowUi();
+            bool showgui = isfocused && Data().ShowUi();
             if(showgui)
             {
                 if(!ownedplugin->pluginInstance()->Ui())
@@ -308,10 +326,10 @@ namespace engine
                     {
                         ui = std::make_unique<lilvutils::UI>(instance);
                         m_UiClosedSink = std::make_unique<utils::NotifySink>(ui->OnClose(), [this](){
-                            if(Project().ShowUi())
+                            if(Data().ShowUi())
                             {
-                                auto newproject = Project().Change(Project().FocusedPart(), false);
-                                SetProject(std::move(newproject));
+                                auto newdata = Data().ChangeShowUi(false);
+                                SetData(std::move(newdata));
                             }
                         });
                     }
@@ -363,7 +381,7 @@ namespace engine
         }
         if(m_ReverbInstance)
         {
-            if(Project().Reverb().ShowGui())
+            if(Data().ShowReverbUi())
             {
                 if(!m_ReverbInstance->Ui())
                 {
@@ -372,11 +390,10 @@ namespace engine
                     {
                         ui = std::make_unique<lilvutils::UI>(m_ReverbInstance->Instance());
                         m_ReverbUiClosedSink = std::make_unique<utils::NotifySink>(ui->OnClose(), [this](){
-                            if(Project().Reverb().ShowGui())
+                            if(Data().ShowReverbUi())
                             {
-                                auto newreverb = Project().Reverb().ChangeShowGui(false);
-                                auto newproject = Project().ChangeReverb(std::move(newreverb));
-                                SetProject(std::move(newproject));
+                                auto newdata = Data().ChangeShowReverbUi(false);
+                                SetData(std::move(newdata));
                             }
                         });
                     }
@@ -410,35 +427,30 @@ namespace engine
         m_OwnedPlugins = std::move(ownedPlugins);
         m_Parts = std::move(newparts);
     }
-    void Engine::LoadCurrentPreset()
+    void Engine::LoadPresetForPart(size_t partindex)
     {
-        if(Project().FocusedPart())
+        if(partindex <  Project().Parts().size())
         {
-            auto partindex = *Project().FocusedPart();
-            if(partindex <  Project().Parts().size())
+            const auto &part = Project().Parts()[partindex];
+            if(part.ActivePresetIndex())
             {
-                const auto &part = Project().Parts()[partindex];
-                if(part.ActivePresetIndex())
+                auto presetindex = *part.ActivePresetIndex();
+                if(presetindex < Project().Presets().size())
                 {
-                    auto presetindex = *part.ActivePresetIndex();
-                    if(presetindex < Project().Presets().size())
+                    const auto &preset = Project().Presets()[presetindex];
+                    if(preset)
                     {
-                        const auto &preset = Project().Presets()[presetindex];
-                        if(preset)
+                        auto instrumentindex = preset.value().InstrumentIndex();
+                        auto pluginindex = m_Parts.at(partindex).PluginIndices().at(instrumentindex);
+                        const auto &ownedplugin = m_OwnedPlugins.at(pluginindex);
+                        if(ownedplugin)
                         {
-                            auto instrumentindex = preset.value().InstrumentIndex();
-                            auto pluginindex = m_Parts.at(partindex).PluginIndices().at(instrumentindex);
-                            const auto &ownedplugin = m_OwnedPlugins.at(pluginindex);
-                            if(ownedplugin)
-                            {
-                                std::string presetdir = PresetsDir() + "/" + preset->PresetSubDir();
-                                auto &instance = ownedplugin->pluginInstance()->Instance();
-                                ownedplugin->pluginInstance()->Instance().LoadState(presetdir);
-                            }
+                            std::string presetdir = PresetsDir() + "/" + preset->PresetSubDir();
+                            auto &instance = ownedplugin->pluginInstance()->Instance();
+                            ownedplugin->pluginInstance()->Instance().LoadState(presetdir);
                         }
                     }
-                
-                }
+                }            
             }
         }
     }
@@ -520,14 +532,6 @@ namespace engine
         }
     }
 
-    void Engine::SendMidiToFocusedPart(const midi::TMidiOrSysexEvent &event)
-    {
-        if(Project().FocusedPart())
-        {
-            SendMidiToPart(event, *Project().FocusedPart());
-        }
-    }
-
     void Engine::SendMidiToPart(const midi::TMidiOrSysexEvent &event, size_t partindex)
     {
         if(partindex < Project().Parts().size())
@@ -561,11 +565,10 @@ namespace engine
         }
     }
 
-    void Engine::SaveCurrentPreset(size_t presetindex, const std::string &name)
+    void Engine::SaveCurrentPreset(size_t partindex, size_t presetindex, const std::string &name)
     {
-        if(Project().FocusedPart() && (*Project().FocusedPart() < Project().Parts().size()) && Project().Parts()[*Project().FocusedPart()].ActiveInstrumentIndex())
+        if( (partindex < Project().Parts().size()) && Project().Parts()[partindex].ActiveInstrumentIndex())
         {
-            auto partindex = *Project().FocusedPart();
             const auto &instrumentindex2ownedpluginindex = m_Parts[partindex].PluginIndices();
             auto instrindex = *Project().Parts()[partindex].ActiveInstrumentIndex();
             if( (instrindex >= 0) && (instrindex < instrumentindex2ownedpluginindex.size()) )
@@ -679,7 +682,6 @@ namespace engine
         }
         {
             auto prj = project::ProjectFromFile(projectfile);
-            prj = prj.Change(0,false);
             SetProject(std::move(prj));
         }
         LoadReverbPreset();
@@ -693,7 +695,7 @@ namespace engine
             name = plugin.Name();
         }
         auto uricopy = uri;
-        project::TInstrument newinstrument(std::move(uricopy), shared, std::move(name));
+        project::TInstrument newinstrument(std::move(uricopy), shared, std::move(name), {});
         auto newproject = Project().AddInstrument(std::move(newinstrument));
         SetProject(std::move(newproject));
     }
@@ -774,14 +776,8 @@ namespace engine
     }
     void Engine::SetProject(project::TProject &&project)
     {
-        if(!m_Quitting)
-        {
-            std::unique_lock<std::mutex> lock(m_ProjectSaveMutex);
-            m_ProjectToSave = std::make_unique<project::TProject>(project);
-        }
-        m_Project = std::move(project);
-        SyncPlugins();
-        OnProjectChanged().Notify();
+        auto newdata = Data().ChangeProject(std::move(project));
+        SetData(std::move(newdata));
     }
     void Engine::SyncPlugins()
     {
@@ -973,7 +969,6 @@ namespace engine
         }
     }
 
-
     void TController::TInPort::OnMidi(const midi::TMidiOrSysexEvent &event)
     {
         m_Controller.OnMidiIn(event);
@@ -984,10 +979,10 @@ namespace engine
         m_OutPort.Send(event);
     }
 
-    void TController::ProjectChanged()
+    void TController::DataChanged()
     {
-        OnProjectChanged(m_LastProject);
-        m_LastProject = Project();
+        OnDataChanged(m_LastData);
+        m_LastData = Engine().Data();
     }
 
 }

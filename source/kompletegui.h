@@ -17,7 +17,7 @@ namespace komplete
     class TGuiState
     {
     public:
-        enum class TMode {Performance, Midi};
+        enum class TMode {Performance, Midi, Controller};
         // all modes:
         bool m_Shift = false;
 
@@ -34,6 +34,9 @@ namespace komplete
         // Midi mode:
         int m_ProgramChange = 0;
         utils::THysteresis m_ProgramChangeHysteresis {10, 20};
+
+        // Controller mode:
+        std::vector<utils::THysteresis> m_DrawbarHysteresis {10, 20};
     };
     class Gui
     {

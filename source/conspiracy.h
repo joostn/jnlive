@@ -10,7 +10,7 @@ namespace conspiracy {
         }
     private:
         void OnMidiIn(const midi::TMidiOrSysexEvent &event) override;
-        void OnProjectChanged(const project::TProject &prevProject) override;
+        void OnDataChanged(const engine::Engine::TData &prevData) override;
         void SendCurrentPadColorPresetIndex(size_t presetindex) const;
         void SendCurrentPadColorFocusedPart(size_t partindex) const;
         void SendCurrentPadColorForGuiKey();

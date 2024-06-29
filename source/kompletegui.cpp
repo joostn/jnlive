@@ -458,7 +458,19 @@ namespace komplete
 
             presetnamebox->AddChild<simplegui::TextWindow>(Gdk::Rectangle(1, 1 + lineheight + linespacing, presetnamebox->Width() - 2, lineheight), std::to_string(m_GuiState.m_ProgramChange), simplegui::Rgba(1, 1, 1), fontsize);            
         }
+        if(m_GuiState.m_Mode == TGuiState::TMode::Controller)
+        {
+            if(project.FocusedPart() &&  project.Parts().at(project.FocusedPart().value()).ActiveInstrumentIndex())
+            {
+                const auto &instrument = project.Instruments().at(project.Parts().at(project.FocusedPart().value()).ActiveInstrumentIndex().value());
+                if(instrument.Lv2Uri() == "http://gareus.org/oss/lv2/b_synth")
+                {
+                    TODO:
+                    Add project::THammondData to the engine
 
+                }
+            }
+        }
         SetWindow(std::move(mainwindow));
     }
     void Gui::RefreshLeds()

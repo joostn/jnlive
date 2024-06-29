@@ -263,14 +263,13 @@ public:
                 pack_start(m_ActivateButton);
                 m_ActivateButton.signal_clicked().connect([this](){
                     DoAndShowException([this](){
-                        const auto &prj = m_Engine.Project();
-                        if(m_PartIndex < prj.Parts().size())
+                        if(m_PartIndex < m_Engine.Data().Project().Parts().size())
                         {
-                            bool isSelected = prj.FocusedPart() == m_PartIndex;
-                            if(prj.FocusedPart() != m_PartIndex)
+                            bool isSelected = m_Engine.Data().GuiFocusedPart() == m_PartIndex;
+                            if(m_Engine.Data().GuiFocusedPart() != m_PartIndex)
                             {
-                                auto newproject = prj.Change(m_PartIndex, prj.ShowUi());
-                                m_Engine.SetProject(std::move(newproject));
+                                auto newdata = m_Engine.Data().ChangeGuiFocusedPart(m_PartIndex);
+                                m_Engine.SetData(std::move(newdata));
                             }
                             else
                             {
@@ -280,15 +279,14 @@ public:
                         }
                     });
                 });
-                OnProjectChanged();
+                OnDataChanged();
             }
-            void OnProjectChanged()
+            void OnDataChanged()
             {
-                const auto &prj = m_Engine.Project();
-                bool isSelected = prj.FocusedPart() == m_PartIndex;
-                if(m_PartIndex < prj.Parts().size())
+                bool isSelected = m_Engine.Data().GuiFocusedPart() == m_PartIndex;
+                if(m_PartIndex < m_Engine.Data().Project().Parts().size())
                 {
-                    const auto &part = prj.Parts()[m_PartIndex];
+                    const auto &part = m_Engine.Data().Project().Parts()[m_PartIndex];
                     m_ActivateButton.set_label(part.Name());
                     m_ActivateButton.set_state_flags(isSelected ? Gtk::STATE_FLAG_CHECKED : Gtk::STATE_FLAG_NORMAL, true);
                 }
@@ -297,14 +295,14 @@ public:
             Gtk::ToggleButton m_ActivateButton;
             engine::Engine &m_Engine;
             size_t m_PartIndex;
-            utils::NotifySink m_OnProjectChanged {m_Engine.OnProjectChanged(), [this](){OnProjectChanged();}};
+            utils::NotifySink m_OnDataChanged {m_Engine.OnDataChanged(), [this](){OnDataChanged();}};
         };
         PartsContainer(engine::Engine &engine) : m_Engine(engine)
         {
             set_orientation(Gtk::ORIENTATION_VERTICAL);
-            OnProjectChanged();
+            OnDataChanged();
         }
-        void OnProjectChanged()
+        void OnDataChanged()
         {
             const auto &project = m_Engine.Project();
             while(m_PartContainers.size() > project.Parts().size())
@@ -322,7 +320,7 @@ public:
         }
     private:
         engine::Engine &m_Engine;
-        utils::NotifySink m_OnProjectChanged {m_Engine.OnProjectChanged(), [this](){OnProjectChanged();}};
+        utils::NotifySink m_OnDataChanged {m_Engine.OnDataChanged(), [this](){OnDataChanged();}};
         std::vector<std::unique_ptr<PartContainer>> m_PartContainers;
     };
     class ReverbPanel : public Gtk::ScrolledWindow
@@ -343,10 +341,8 @@ public:
             m_MainBox.pack_start(m_ReverbLevelScale, Gtk::PACK_SHRINK);
             m_ShowGuiButton.signal_clicked().connect([this](){
                 DoAndShowException([this](){
-                    auto reverb = m_Engine.Project().Reverb().ChangeShowGui(!m_Engine.Project().Reverb().ShowGui());
-                    auto project = m_Engine.Project().ChangeReverb(std::move(reverb));
-                    m_Engine.SetProject(std::move(project));
-
+                    auto newdata = m_Engine.Data().ChangeShowReverbUi(!m_Engine.Data().ShowReverbUi());
+                    m_Engine.SetData(std::move(newdata));
                     m_Engine.LoadReverbPreset();
                 });
             });
@@ -379,12 +375,12 @@ public:
                 });
             });
             m_ReverbLevelScale.set_digits(2);
-            OnProjectChanged();
+            OnDataChanged();
         }
-        void OnProjectChanged()
+        void OnDataChanged()
         {
             const auto &project = m_Engine.Project();
-            m_ShowGuiButton.set_state_flags(project.Reverb().ShowGui()?  Gtk::STATE_FLAG_CHECKED : Gtk::STATE_FLAG_NORMAL, true);
+            m_ShowGuiButton.set_state_flags(m_Engine.Data().ShowReverbUi()?  Gtk::STATE_FLAG_CHECKED : Gtk::STATE_FLAG_NORMAL, true);
             m_ReverbNameLabel.set_text(m_Engine.ReverbPluginName());
             show_all_children();
             m_ReverbLevelScale.set_range(0.0, 1.0);
@@ -397,7 +393,7 @@ public:
         }
     private:
         engine::Engine &m_Engine;
-        utils::NotifySink m_OnProjectChanged {m_Engine.OnProjectChanged(), [this](){OnProjectChanged();}};
+        utils::NotifySink m_OnDataChanged {m_Engine.OnDataChanged(), [this](){OnDataChanged();}};
         Gtk::Box m_MainBox {Gtk::ORIENTATION_VERTICAL};
         Gtk::Box m_ButtonsBox {Gtk::ORIENTATION_HORIZONTAL};
         Gtk::ToggleButton m_ShowGuiButton {"Show GUI"};
@@ -434,16 +430,19 @@ public:
                     {
                         if(dialog.SelectedPreset())
                         {
-                            m_Engine.SaveCurrentPreset(*dialog.SelectedPreset(), dialog.PresetName());
+                            if(m_Engine.Data().GuiFocusedPart())
+                            {
+                                m_Engine.SaveCurrentPreset(*m_Engine.Data().GuiFocusedPart(), *dialog.SelectedPreset(), dialog.PresetName());
+                            }
                         }
                     }
                 });
             });
             m_DeletePresetMenuItem.signal_activate().connect([this](){
                 DoAndShowException([this](){
-                    if(m_Engine.Project().FocusedPart() && (*m_Engine.Project().FocusedPart() < m_Engine.Project().Parts().size()))
+                    if(m_Engine.Data().GuiFocusedPart() && (*m_Engine.Data().GuiFocusedPart() < m_Engine.Project().Parts().size()))
                     {
-                        auto presetindex = m_Engine.Project().Parts().at(*m_Engine.Project().FocusedPart()).ActivePresetIndex();
+                        auto presetindex = m_Engine.Project().Parts().at(*m_Engine.Data().GuiFocusedPart()).ActivePresetIndex();
                         if(presetindex && (*presetindex < m_Engine.Project().Presets().size()))
                         {
                             const auto &currentpreset = m_Engine.Project().Presets().at(*presetindex);
@@ -461,15 +460,15 @@ public:
                     }
                 });
             });
-            OnProjectChanged();
+            OnDataChanged();
         }
         void enableItems()
         {
             bool canDeletePreset = false;
             bool canSavePreset = false;
-            if(m_Engine.Project().FocusedPart() && (*m_Engine.Project().FocusedPart() < m_Engine.Project().Parts().size()))
+            if(m_Engine.Data().GuiFocusedPart() && (*m_Engine.Data().GuiFocusedPart() < m_Engine.Project().Parts().size()))
             {
-                auto presetindex = m_Engine.Project().Parts().at(*m_Engine.Project().FocusedPart()).ActivePresetIndex();
+                auto presetindex = m_Engine.Project().Parts().at(*m_Engine.Data().GuiFocusedPart()).ActivePresetIndex();
                 if(presetindex && (*presetindex < m_Engine.Project().Presets().size()))
                 {
                     const auto &currentpreset = m_Engine.Project().Presets().at(*presetindex);
@@ -478,7 +477,7 @@ public:
                         canDeletePreset = true;
                     }
                 }
-                auto instrindex = m_Engine.Project().Parts().at(*m_Engine.Project().FocusedPart()).ActiveInstrumentIndex();
+                auto instrindex = m_Engine.Project().Parts().at(*m_Engine.Data().GuiFocusedPart()).ActiveInstrumentIndex();
                 if(instrindex)
                 {
                     canSavePreset = true;
@@ -487,30 +486,28 @@ public:
             m_DeletePresetMenuItem.set_sensitive(canDeletePreset);
             m_SavePresetMenuItem.set_sensitive(canSavePreset);
         }
-        void OnProjectChanged()
+        void OnDataChanged()
         {
-            const auto &project = m_Engine.Project();
             std::optional<size_t> activePreset;
-            if(project.FocusedPart() && *project.FocusedPart() < project.Parts().size())
+            if(m_Engine.Data().GuiFocusedPart() && *m_Engine.Data().GuiFocusedPart() < m_Engine.Data().Project().Parts().size())
             {
-                const auto &part = project.Parts()[*project.FocusedPart()];
+                const auto &part = m_Engine.Data().Project().Parts()[*m_Engine.Data().GuiFocusedPart()];
                 activePreset = part.ActivePresetIndex();
             }
 
             std::vector<std::unique_ptr<Gtk::ToggleButton>> presetButtons;
-            for(const auto &b: m_PresetButtons)
+            // for(const auto &b: m_PresetButtons)
+            // {
+            //     m_PresetsFlowBox.remove(*b);
+            // }
+            // m_PresetButtons.clear();
+            for(size_t presetIndex = 0; presetIndex < m_Engine.Data().Project().Presets().size(); presetIndex++)
             {
-                m_PresetsFlowBox.remove(*b);
-            }
-            m_PresetButtons.clear();
-            for(size_t presetIndex = 0; presetIndex < project.Presets().size(); presetIndex++)
-            {
-                const auto &preset = project.Presets()[presetIndex];
+                const auto &preset = m_Engine.Data().Project().Presets()[presetIndex];
                 if(preset)
                 {
                     std::unique_ptr<Gtk::ToggleButton> button;
-                    //if(m_PresetButtons.size() > presetButtons.size())
-                    if(false)
+                    if(m_PresetButtons.size() > presetButtons.size())
                     {
                         button = std::move(m_PresetButtons[presetButtons.size()]);
                     }
@@ -518,19 +515,25 @@ public:
                     {
                         button = std::make_unique<Gtk::ToggleButton>();
                         m_PresetsFlowBox.add(*button);
+                        button->signal_clicked().connect([this, presetIndex](){
+                            DoAndShowException([this, presetIndex](){
+                                if(m_Engine.Data().GuiFocusedPart() && *m_Engine.Data().GuiFocusedPart() < m_Engine.Data().Project().Parts().size())
+                                {
+                                    m_Engine.Project().SwitchToPreset(*m_Engine.Data().GuiFocusedPart(), presetIndex);
+                                }
+                            });
+                        });
                     }
                     // set minimum height:
                     button->set_size_request(100, 100);
                     button->set_label(std::to_string(presetIndex) + " " + preset.value().Name());
                     button->set_state_flags(activePreset && *activePreset == presetIndex ? Gtk::STATE_FLAG_CHECKED : Gtk::STATE_FLAG_NORMAL, true);
-                    button->signal_clicked().connect([this, presetIndex](){
-                        DoAndShowException([this, presetIndex](){
-                            m_Engine.SwitchFocusedPartToPreset(presetIndex);
-                            OnProjectChanged();
-                        });
-                    });
                     presetButtons.push_back(std::move(button));
                 }
+            }
+            for(size_t presetIndex = m_Engine.Data().Project().Presets().size(); presetIndex < m_PresetButtons.size(); presetIndex++)
+            {
+                m_PresetsFlowBox.remove(*m_PresetButtons[presetIndex]);
             }
             m_PresetButtons = std::move(presetButtons);
             show_all_children();
@@ -538,7 +541,7 @@ public:
         }
     private:
         engine::Engine &m_Engine;
-        utils::NotifySink m_OnProjectChanged {m_Engine.OnProjectChanged(), [this](){OnProjectChanged();}};
+        utils::NotifySink m_OnDataChanged {m_Engine.OnDataChanged(), [this](){OnDataChanged();}};
         Gtk::ScrolledWindow m_PresetsScrolledWindow;
         Gtk::Box m_PresetsBox {Gtk::ORIENTATION_VERTICAL};
         Gtk::FlowBox m_PresetsFlowBox;
@@ -580,9 +583,9 @@ public:
             });
             m_DeleteInstrumentItem.signal_activate().connect([this](){
                 DoAndShowException([this](){
-                    if(m_Engine.Project().FocusedPart() && (*m_Engine.Project().FocusedPart() < m_Engine.Project().Parts().size()))
+                    if(m_Engine.Data().GuiFocusedPart() && (*m_Engine.Data().GuiFocusedPart() < m_Engine.Project().Parts().size()))
                     {
-                        auto instrumentindex = m_Engine.Project().Parts().at(*m_Engine.Project().FocusedPart()).ActiveInstrumentIndex();
+                        auto instrumentindex = m_Engine.Project().Parts().at(*m_Engine.Data().GuiFocusedPart()).ActiveInstrumentIndex();
                         if(instrumentindex && (*instrumentindex < m_Engine.Project().Instruments().size()))
                         {
                             std::string msg = "Delete instrument "+std::to_string(*instrumentindex)+" ("+m_Engine.Project().Instruments()[*instrumentindex].Name()+")?";
@@ -596,14 +599,14 @@ public:
                     }
                 });
             });
-            OnProjectChanged();
+            OnDataChanged();
         }
         void enableItems()
         {
             bool candelete = false;
-            if(m_Engine.Project().FocusedPart() && (*m_Engine.Project().FocusedPart() < m_Engine.Project().Parts().size()))
+            if(m_Engine.Data().GuiFocusedPart() && (*m_Engine.Data().GuiFocusedPart() < m_Engine.Project().Parts().size()))
             {
-                auto instrumentindex = m_Engine.Project().Parts().at(*m_Engine.Project().FocusedPart()).ActiveInstrumentIndex();
+                auto instrumentindex = m_Engine.Project().Parts().at(*m_Engine.Data().GuiFocusedPart()).ActiveInstrumentIndex();
                 if(instrumentindex && (*instrumentindex < m_Engine.Project().Instruments().size()))
                 {
                     candelete = true;
@@ -611,13 +614,13 @@ public:
             }
             m_DeleteInstrumentItem.set_sensitive(candelete);
         }
-        void OnProjectChanged()
+        void OnDataChanged()
         {
             const auto &project = m_Engine.Project();
             std::optional<size_t> activeInstrument;
-            if(project.FocusedPart() && *project.FocusedPart() < project.Parts().size())
+            if(m_Engine.Data().GuiFocusedPart() && *m_Engine.Data().GuiFocusedPart() < project.Parts().size())
             {
-                const auto &part = project.Parts()[*project.FocusedPart()];
+                const auto &part = project.Parts()[*m_Engine.Data().GuiFocusedPart()];
                 activeInstrument = part.ActiveInstrumentIndex();
             }
 
@@ -633,18 +636,18 @@ public:
                 button->signal_clicked().connect([this, instrumentindex](){
                     DoAndShowException([this, instrumentindex](){
                         const auto &project = m_Engine.Project();
-                        if(project.FocusedPart() && (*project.FocusedPart() < project.Parts().size()))
+                        if(m_Engine.Data().GuiFocusedPart() && (*m_Engine.Data().GuiFocusedPart() < project.Parts().size()))
                         {
-                            const auto &part = project.Parts()[*project.FocusedPart()];
+                            const auto &part = project.Parts()[*m_Engine.Data().GuiFocusedPart()];
                             if(part.ActiveInstrumentIndex() != instrumentindex)
                             {
                                 auto newpart = part.ChangeActiveInstrumentIndex(instrumentindex).ChangeActivePresetIndex(std::nullopt);
 
-                                auto newproject = project.ChangePart(*project.FocusedPart(), std::move(newpart));
+                                auto newproject = project.ChangePart(*m_Engine.Data().GuiFocusedPart(), std::move(newpart));
                                 m_Engine.SetProject(std::move(newproject));
                             }
                         }
-                        OnProjectChanged();
+                        OnDataChanged();
                     });
                 });
                 button->set_size_request(100, 100);
@@ -663,7 +666,7 @@ public:
         }
     private:
         engine::Engine &m_Engine;
-        utils::NotifySink m_OnProjectChanged {m_Engine.OnProjectChanged(), [this](){OnProjectChanged();}};
+        utils::NotifySink m_OnDataChanged {m_Engine.OnDataChanged(), [this](){OnDataChanged();}};
         Gtk::FlowBox m_InstrumentsFlowBox;
         Gtk::Box m_InstrumentsBox {Gtk::ORIENTATION_VERTICAL};
         Gtk::ScrolledWindow m_InstrumentsScrolledWindow;
@@ -695,8 +698,8 @@ public:
             });
             m_ShowGuiButton.signal_clicked().connect([this](){
                 DoAndShowException([this](){
-                    auto prj = m_ApplicationWindow.Engine().Project().Change(m_ApplicationWindow.Engine().Project().FocusedPart(), !m_ApplicationWindow.Engine().Project().ShowUi());
-                    m_ApplicationWindow.Engine().SetProject(std::move(prj));
+                    auto newdata = m_ApplicationWindow.Engine().Data().ChangeShowUi(!m_ApplicationWindow.Engine().Data().ShowUi());
+                    m_ApplicationWindow.Engine().SetData(std::move(newdata));
                 });
             });
             m_MenuButton.set_popup(applicationWindow.PopupMenu());
@@ -713,7 +716,7 @@ public:
             m_ModePresetButton.set_state_flags(focusedTab == FocusedTab::Presets?  Gtk::STATE_FLAG_CHECKED : Gtk::STATE_FLAG_NORMAL, true);
             m_ModeInstrumentsButton.set_state_flags(focusedTab == FocusedTab::Instruments?  Gtk::STATE_FLAG_CHECKED : Gtk::STATE_FLAG_NORMAL, true);
             m_ModeReverbButton.set_state_flags(focusedTab == FocusedTab::Reverb?  Gtk::STATE_FLAG_CHECKED : Gtk::STATE_FLAG_NORMAL, true);
-            m_ShowGuiButton.set_state_flags(m_ApplicationWindow.Engine().Project().ShowUi()?  Gtk::STATE_FLAG_CHECKED : Gtk::STATE_FLAG_NORMAL, true);
+            m_ShowGuiButton.set_state_flags(m_ApplicationWindow.Engine().Data().ShowUi()?  Gtk::STATE_FLAG_CHECKED : Gtk::STATE_FLAG_NORMAL, true);
         }
     private:
         Gtk::ToggleButton m_ModePresetButton {"Presets"};
@@ -722,7 +725,7 @@ public:
         Gtk::ToggleButton m_ShowGuiButton {"GUI"};
         Gtk::MenuButton m_MenuButton;
         ApplicationWindow &m_ApplicationWindow;
-        utils::NotifySink m_OnProjectChanged {m_ApplicationWindow.Engine().OnProjectChanged(), [this](){Update();}};
+        utils::NotifySink m_OnDataChanged {m_ApplicationWindow.Engine().OnDataChanged(), [this](){Update();}};
     };
     ApplicationWindow(engine::Engine &engine) : m_Engine(engine), m_PartsContainer(engine)
     {
@@ -773,7 +776,7 @@ public:
 private:
     FocusedTab m_FocusedTab = FocusedTab::Presets;
     engine::Engine &m_Engine;
-    utils::NotifySink m_OnProjectChanged {m_Engine.OnProjectChanged(), [this](){Update();}};
+    utils::NotifySink m_OnDataChanged {m_Engine.OnDataChanged(), [this](){Update();}};
     PartsContainer m_PartsContainer;
     Gtk::Box m_Box1 {Gtk::ORIENTATION_VERTICAL};
     Gtk::Box m_Box2 {Gtk::ORIENTATION_HORIZONTAL};
