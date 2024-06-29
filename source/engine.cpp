@@ -42,14 +42,19 @@ namespace engine
         {
             if(m_Data.Project().Parts()[partindex].ActivePresetIndex())
             {
+                bool doload = false;
                 if(partindex < olddata.Project().Parts().size())
                 {
                     if(olddata.Project().Parts()[partindex].ActivePresetIndex() != m_Data.Project().Parts()[partindex].ActivePresetIndex())
                     {
-                        LoadPresetForPart(partindex);
+                        doload = true;
                     }
                 }
                 else
+                {
+                    doload = true;
+                }
+                if(doload)
                 {
                     LoadPresetForPart(partindex);
                 }
@@ -70,7 +75,57 @@ namespace engine
         {
             SyncPlugins();
         }
+        if(olddata.HammondData() != m_Data.HammondData())
+        {
+            UpdateHammondPlugins(olddata.HammondData(), false);
+        }
         OnDataChanged().Notify();
+    }
+    void Engine::UpdateHammondPlugins(const project::THammondData &olddata, bool forceNow)
+    {
+        for(const auto &ownedplugin: m_OwnedPlugins)
+        {
+            if(ownedplugin && ownedplugin->pluginInstance())
+            {
+                if(m_ProcessingDataFromPlugin.count(ownedplugin->pluginInstance().get()) == 0)
+                {
+                    for(int channel = 0; channel < 2; channel++)
+                    {
+                        for(int drawbarindex = 0; drawbarindex < 9; drawbarindex++)
+                        {
+                            auto oldvalue = olddata.Part(channel).Registers()[drawbarindex];
+                            auto newvalue = Data().HammondData().Part(channel).Registers()[drawbarindex];
+                            if(forceNow || (oldvalue != newvalue))
+                            {
+                                auto controllervalue = (8 - std::clamp(newvalue, 0, 8)) * 16;
+                                if(controllervalue > 64)
+                                {
+                                    controllervalue--;
+                                }
+                                SendMidi(midi::SimpleEvent::ControlChange(channel, 70 + drawbarindex, controllervalue), *ownedplugin->pluginInstance());
+                            }
+                        }
+                    }
+                    if(forceNow || (olddata.Percussion() != Data().HammondData().Percussion()))
+                    {
+                        SendMidi(midi::SimpleEvent::ControlChange(0, 80, Data().HammondData().Percussion()? 127 : 0), *ownedplugin->pluginInstance());
+                    }
+                    if(forceNow || (olddata.PercussionSoft() != Data().HammondData().PercussionSoft()))
+                    {
+                        SendMidi(midi::SimpleEvent::ControlChange(0, 81, Data().HammondData().PercussionSoft()? 127 : 0), *ownedplugin->pluginInstance());
+                    }
+                    if(forceNow || (olddata.PercussionFast() != Data().HammondData().PercussionFast()))
+                    {
+                        SendMidi(midi::SimpleEvent::ControlChange(0, 82, Data().HammondData().PercussionFast()? 127 : 0), *ownedplugin->pluginInstance());
+                    }
+                    if(forceNow || (olddata.Percussion2ndHarmonic() != Data().HammondData().Percussion2ndHarmonic()))
+                    {
+                        SendMidi(midi::SimpleEvent::ControlChange(0, 83, Data().HammondData().Percussion2ndHarmonic()? 127 : 0), *ownedplugin->pluginInstance());
+                    }
+                }
+            }
+        }
+
     }
     void Engine::ApplyJackConnections(bool forceNow)
     {
@@ -172,6 +227,11 @@ namespace engine
                     }
                 }
                 LV2_Evbuf_Iterator *midiInBuf = nullptr;
+                int transpose = 0;
+                if(Project().Instruments().at(ownedplugin->OwningInstrumentIndex()).IsHammond())
+                {
+                    transpose = 12;
+                }
                 if(ownedplugin->pluginInstance()->Plugin().MidiInputIndex())
                 {
                     if(auto atomconnection = dynamic_cast<lilvutils::TConnection<lilvutils::TAtomPort>*>(ownedplugin->pluginInstance()->Instance().Connections().at(*ownedplugin->pluginInstance()->Plugin().MidiInputIndex()).get()))
@@ -180,7 +240,7 @@ namespace engine
                     }
                 }
                 ownedPluginIndex2RtPluginIndex.push_back(plugins.size());
-                plugins.emplace_back(&ownedplugin->pluginInstance()->Instance(), amplitude, doOverridePort, midiInBuf);
+                plugins.emplace_back(&ownedplugin->pluginInstance()->Instance(), amplitude, doOverridePort, midiInBuf, transpose);
             }
             else
             {
@@ -266,7 +326,9 @@ namespace engine
                             jacksamplerate = jack_get_sample_rate(jackutils::Client::Static().get());
                         }
                         auto lv2uri = instrument.Lv2Uri();
-                        plugin_uq = std::make_unique<PluginInstanceForPart>(std::move(lv2uri), *jacksamplerate, owningpart, instrumentindex, m_RtProcessor);
+                        plugin_uq = std::make_unique<PluginInstanceForPart>(std::move(lv2uri), *jacksamplerate, owningpart, instrumentindex, m_RtProcessor, [this, instrumentindex](const midi::TMidiOrSysexEvent &evt){
+                            //OnMidiFromPlugin(instrumentindex, evt);
+                        });
                     }
                     instrumentindex2ownedpluginindex.push_back(ownedPlugins.size());
                     ownedPlugins.push_back(std::move(plugin_uq));
@@ -375,7 +437,7 @@ namespace engine
             }
             if(!m_ReverbInstance)
             {
-                m_ReverbInstance = std::make_unique<PluginInstance>(std::move(uri), *jacksamplerate, m_RtProcessor);
+                m_ReverbInstance = std::make_unique<PluginInstance>(std::move(uri), *jacksamplerate, m_RtProcessor, lilvutils::Instance::TMidiCallback());
             }
         }
         else
@@ -448,12 +510,15 @@ namespace engine
                     {
                         auto instrumentindex = preset.value().InstrumentIndex();
                         auto pluginindex = m_Parts.at(partindex).PluginIndices().at(instrumentindex);
-                        const auto &ownedplugin = m_OwnedPlugins.at(pluginindex);
-                        if(ownedplugin)
+                        if(!Project().Instruments().at(instrumentindex).IsHammond())
                         {
-                            std::string presetdir = PresetsDir() + "/" + preset->PresetSubDir();
-                            auto &instance = ownedplugin->pluginInstance()->Instance();
-                            ownedplugin->pluginInstance()->Instance().LoadState(presetdir);
+                            const auto &ownedplugin = m_OwnedPlugins.at(pluginindex);
+                            if(ownedplugin)
+                            {
+                                std::string presetdir = PresetsDir() + "/" + preset->PresetSubDir();
+                                auto &instance = ownedplugin->pluginInstance()->Instance();
+                                ownedplugin->pluginInstance()->Instance().LoadState(presetdir);
+                            }
                         }
                     }
                 }            
@@ -625,7 +690,8 @@ namespace engine
     }}, m_LilvWorld(m_JackClient.SampleRate(), maxBlockSize, argc, argv), m_ProjectDir(std::move(projectdir))
     {
         {
-            auto errcode = jack_set_buffer_size(jackutils::Client::Static().get(), 256);
+            auto errcode = jack_set_buffer_size(jackutils::Client::Static().get(), 128
+            );
             if(errcode)
             {
                 throw std::runtime_error("jack_set_buffer_size failed");
@@ -661,6 +727,7 @@ namespace engine
                 }
             }
         });
+        UpdateHammondPlugins(project::THammondData(), true);
     }
     bool Engine::DoProjectSaveThread()
     {

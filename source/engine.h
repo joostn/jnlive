@@ -33,7 +33,7 @@ namespace engine
         PluginInstance& operator=(const PluginInstance&) = delete;
         PluginInstance(PluginInstance&&) = delete;
         PluginInstance& operator=(PluginInstance&&) = delete;
-        PluginInstance(std::string &&uri, uint32_t samplerate, const realtimethread::Processor &processor) : m_Plugin(std::make_unique<lilvutils::Plugin>(lilvutils::Uri(std::move(uri)))), m_Instance(std::make_unique<lilvutils::Instance>(*m_Plugin, samplerate, processor.realtimeThreadInterface()))
+        PluginInstance(std::string &&uri, uint32_t samplerate, const realtimethread::Processor &processor, lilvutils::Instance::TMidiCallback &&midiCallback) : m_Plugin(std::make_unique<lilvutils::Plugin>(lilvutils::Uri(std::move(uri)))), m_Instance(std::make_unique<lilvutils::Instance>(*m_Plugin, samplerate, processor.realtimeThreadInterface(), std::move(midiCallback)))
         {
         }
         lilvutils::Plugin& Plugin() const { return *m_Plugin; }
@@ -50,7 +50,7 @@ namespace engine
     class PluginInstanceForPart
     {
     public:
-        PluginInstanceForPart(std::string &&uri, uint32_t samplerate, const std::optional<size_t> &owningPart, size_t owningInstrumentIndex, const realtimethread::Processor &processor) : m_PluginInstance(std::make_unique<PluginInstance>(std::move(uri), samplerate,  processor)), m_OwningInstrumentIndex(owningInstrumentIndex), m_OwningPart(owningPart)
+        PluginInstanceForPart(std::string &&uri, uint32_t samplerate, const std::optional<size_t> &owningPart, size_t owningInstrumentIndex, const realtimethread::Processor &processor, lilvutils::Instance::TMidiCallback &&midiCallback) : m_PluginInstance(std::make_unique<PluginInstance>(std::move(uri), samplerate,  processor, std::move(midiCallback))), m_OwningInstrumentIndex(owningInstrumentIndex), m_OwningPart(owningPart)
         {
         }
         const std::unique_ptr<PluginInstance>& pluginInstance() const { return m_PluginInstance; }
@@ -256,6 +256,7 @@ namespace engine
         void SetProject(project::TProject &&project);
         const TData& Data() const { return m_Data; }
         void SetData(TData &&data);
+        void UpdateHammondPlugins(const project::THammondData &olddata, bool forceNow);
         void ProcessMessages();
         void SetJackConnections(project::TJackConnections &&con);
         void ApplyJackConnections(bool forceNow);
@@ -292,6 +293,7 @@ namespace engine
         void AuxOutPortRemoved(TAuxOutPortBase *port);
         void SendMidiAsync(const midi::TMidiOrSysexEvent &event, jackutils::Port &port);
         bool DoProjectSaveThread();
+        //void OnMidiFromPlugin(size_t instrumentindex, const midi::TMidiOrSysexEvent &evt);
 
     private:
         jackutils::Client m_JackClient;
@@ -321,6 +323,7 @@ namespace engine
         std::mutex m_ProjectSaveMutex;
         std::mutex m_SaveProjectNowMutex;
         bool m_Quitting = false;
+        std::set<PluginInstance*> m_ProcessingDataFromPlugin;
 
     };
 

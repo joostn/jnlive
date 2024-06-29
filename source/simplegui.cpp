@@ -35,14 +35,23 @@ namespace simplegui
         cr.set_font_size(m_FontSize);
 
         // measure text
-        // Cairo::TextExtents te;
-        // cr.get_text_extents(m_Text, te);
-        // double text_y = 0.0+ (Rectangle().get_height() / 2) + (te.height / 2); // Vertically centered
+        Cairo::TextExtents te;
+        cr.get_text_extents(m_Text, te);
         double textheight = m_FontSize + 2;
+        double textwidth = te.width;
+        double text_x = 0;
+        if(m_Halign == THalign::Right)
+        {
+            text_x = std::floor(0.0 + Rectangle().get_width() - textwidth);
+        }
+        else if(m_Halign == THalign::Center)
+        {
+            text_x = std::round(0.0 + (Rectangle().get_width() - textwidth) / 2);
+        }
 
         double text_y = std::round(0.0+ (Rectangle().get_height() / 2) + (textheight / 2.0)); // Vertically centered
 
-        cr.move_to(0, text_y);
+        cr.move_to(text_x, text_y);
         cr.show_text(m_Text);
     }
 
@@ -51,10 +60,10 @@ namespace simplegui
         auto black = Rgba(0,0,0);
         auto inner = AddChild<PlainWindow>(Gdk::Rectangle(1,1,rect.get_width()-2, rect.get_height()-2), black);
         auto fontsize = std::max(10, inner->Rectangle().get_height() - 4);
-        inner->AddChild<TextWindow>(Gdk::Rectangle(1,1,inner->Rectangle().get_width()-2, inner->Rectangle().get_height()-2), text, color, fontsize);
+        inner->AddChild<TextWindow>(Gdk::Rectangle(1,1,inner->Rectangle().get_width()-2, inner->Rectangle().get_height()-2), text, color, fontsize, TextWindow::THalign::Left);
         int sliderwidth = (int)std::lround(std::clamp(value, 0.0, 1.0) * inner->Rectangle().get_width());
         auto slider = AddChild<PlainWindow>(Gdk::Rectangle(1,1,sliderwidth, rect.get_height()-2), color);
-        slider->AddChild<TextWindow>(Gdk::Rectangle(1,1,sliderwidth-1, inner->Rectangle().get_height()-2), text, black, fontsize);
+        slider->AddChild<TextWindow>(Gdk::Rectangle(1,1,sliderwidth-1, inner->Rectangle().get_height()-2), text, black, fontsize, TextWindow::THalign::Left);
     }
 
     TListBox::TListBox(Window *parent, const Gdk::Rectangle &rect, const Rgba &color, int rowheight, size_t numitems, std::optional<size_t> selecteditem, size_t centereditem, const std::function<std::string(size_t)> &itemtextgetter) : PlainWindow(parent, rect, color)
@@ -97,7 +106,7 @@ namespace simplegui
                 {
                     p = backgroundbox->AddChild<Window>(rowrect);
                 }
-                p->AddChild<TextWindow>(Gdk::Rectangle(2,0,p->Rectangle().get_width()-2, p->Rectangle().get_height()), itemtextgetter(itemindex), selected? black : color, fontsize);
+                p->AddChild<TextWindow>(Gdk::Rectangle(2,0,p->Rectangle().get_width()-2, p->Rectangle().get_height()), itemtextgetter(itemindex), selected? black : color, fontsize, TextWindow::THalign::Left);
             }
         }
     }

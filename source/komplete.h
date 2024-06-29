@@ -67,6 +67,7 @@ namespace komplete
             LcdRotary5 = 77,
             LcdRotary6 = 78,
             LcdRotary7 = 79,
+            BigRotary = 82,
             Menu0 = 0,
             Menu1 = 1,
             Menu2 = 2,

@@ -49,36 +49,36 @@ namespace project
             return m_Parts.at(partindex);
         }
         bool Percussion() const { return m_Percussion; }
-        bool PercussionVolume() const { return m_PercussionVolume; }
-        bool PercussionDecay() const { return m_PercussionDecay; }
-        bool PercussionHarmonic() const { return m_PercussionHarmonic; }
+        bool PercussionSoft() const { return m_PercussionSoft; }
+        bool PercussionFast() const { return m_PercussionFast; }
+        bool Percussion2ndHarmonic() const { return m_Percussion2ndHarmonic; }
         THammondData ChangePercussion(bool percussion) const
         {
             auto result = *this;
             result.m_Percussion = percussion;
             return result;
         }
-        THammondData ChangePercussionVolume(bool percussionVolume) const
+        THammondData ChangePercussionSoft(bool PercussionSoft) const
         {
             auto result = *this;
-            result.m_PercussionVolume = percussionVolume;
+            result.m_PercussionSoft = PercussionSoft;
             return result;
         }
-        THammondData ChangePercussionDecay(bool percussionDecay) const
+        THammondData ChangePercussionFast(bool PercussionFast) const
         {
             auto result = *this;
-            result.m_PercussionDecay = percussionDecay;
+            result.m_PercussionFast = PercussionFast;
             return result;
         }
-        THammondData ChangePercussionHarmonic(bool percussionHarmonic) const
+        THammondData ChangePercussion2ndHarmonic(bool percussion2ndHarmonic) const
         {
             auto result = *this;
-            result.m_PercussionHarmonic = percussionHarmonic;
+            result.m_Percussion2ndHarmonic = percussion2ndHarmonic;
             return result;
         }        
         inline auto Tuple() const
         {
-            return std::tie(m_Parts, m_Percussion, m_PercussionVolume, m_PercussionDecay, m_PercussionHarmonic);
+            return std::tie(m_Parts, m_Percussion, m_PercussionSoft, m_PercussionFast, m_Percussion2ndHarmonic);
         }
         auto operator==(const THammondData &other) const
         {
@@ -88,9 +88,9 @@ namespace project
     private:
         std::array<TPart, 2> m_Parts;
         bool m_Percussion = false;
-        bool m_PercussionVolume = false;
-        bool m_PercussionDecay = false;
-        bool m_PercussionHarmonic = false;
+        bool m_PercussionSoft = false;
+        bool m_PercussionFast = false;
+        bool m_Percussion2ndHarmonic = false;
     };
         
     class TInstrument
@@ -134,6 +134,10 @@ namespace project
         const std::string& Lv2Uri() const
         {
             return m_Lv2Uri;
+        }
+        bool IsHammond() const
+        {
+            return m_Lv2Uri == "http://gareus.org/oss/lv2/b_synth";
         }
         bool Shared() const
         {

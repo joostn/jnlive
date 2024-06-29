@@ -488,7 +488,7 @@ namespace lilvutils
     }
 
 
-    Instance::Instance(const Plugin &plugin, double sample_rate, const RealtimeThreadInterface &realtimeThreadInterface) : m_Plugin(plugin), m_RealtimeThreadInterface(realtimeThreadInterface)
+    Instance::Instance(const Plugin &plugin, double sample_rate, const RealtimeThreadInterface &realtimeThreadInterface, TMidiCallback &&midiCallback) : m_Plugin(plugin), m_RealtimeThreadInterface(realtimeThreadInterface), m_MidiCallback(std::move(midiCallback))
     {
         if(!plugin.CanInstantiate())
         {
@@ -719,7 +719,14 @@ namespace lilvutils
             if(midi::TMidiOrSysexEvent::IsSupported(data, datasize))
             {
                 midi::TMidiOrSysexEvent evt(data, datasize);
-                std::cout << evt.ToDebugString() << std::endl;
+                if(m_MidiCallback)
+                {
+                    m_MidiCallback(evt);
+                }
+                if(!evt.IsSysex() && (evt.GetSimpleEvent().type() == midi::SimpleEvent::Type::ControlChange))
+                {
+                    std::cout << evt.ToDebugString() << std::endl;
+                }
             }
         }
     }
@@ -940,7 +947,12 @@ namespace lilvutils
     {
         if(m_SuilInstance)
         {
-            suil_instance_port_event(m_SuilInstance, portindex, datasize, type, data);
+            std::vector<uint8_t> buffer(datasize + sizeof(LV2_Atom));
+            auto atom = (LV2_Atom*)buffer.data();
+            atom->size = datasize;
+            atom->type = type;
+            memcpy(atom + 1, data, datasize);
+            suil_instance_port_event(m_SuilInstance, portindex, buffer.size(), m_Uridatom_eventTransfer, buffer.data());
         }
     }
 

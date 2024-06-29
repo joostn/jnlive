@@ -341,10 +341,10 @@ namespace realtimethread
                         {
                             targetChannel = midiport.OverrideChannel();
                         }
-                        auto modifiedevent = event.ChangeChannel(targetChannel);
-                        if(plugin.MidiInBuf())
+                        auto modifiedevent = event.ChangeChannel(targetChannel).Transpose(plugin.Transpose());
+                        if(modifiedevent && plugin.MidiInBuf())
                         {
-                            lv2_evbuf_write(plugin.MidiInBuf(), ev.time, 0, m_UridMidiEvent, modifiedevent.Size(), modifiedevent.Buffer());
+                            lv2_evbuf_write(plugin.MidiInBuf(), ev.time, 0, m_UridMidiEvent, modifiedevent->Size(), modifiedevent->Buffer());
                         }
                     }
                 }

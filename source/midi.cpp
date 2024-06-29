@@ -81,6 +81,26 @@ namespace midi {
             return 3;
         }
     }
+    std::optional<SimpleEvent> SimpleEvent::Transpose(int delta) const
+    {
+        if( (type() == Type::NoteOn || type() == Type::NoteOff) && (delta != 0) )
+        {
+            int note = m_Data[1] + delta;
+            if( (note >= 0) && (note <= 127) )
+            {
+                return SimpleEvent({
+                    m_Data[0], 
+                    (char)note, 
+                    m_Data[2]
+                });
+            }
+            else
+            {
+                return std::nullopt;
+            }
+        }
+        return *this;
+    }
     SimpleEvent SimpleEvent::NoteOn(int channel, int note, int velocity)
     {
         if(velocity < 1) velocity = 1;

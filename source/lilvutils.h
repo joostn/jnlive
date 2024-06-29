@@ -22,6 +22,7 @@
 #include "lv2/data-access/data-access.h"
 #include <gtkmm.h>
 #include "lv2_external_ui.h"
+#include "midi.h"
 
 namespace lilvutils
 {
@@ -407,11 +408,12 @@ namespace lilvutils
     class Instance
     {
     public:
+        using TMidiCallback = std::function<void(const midi::TMidiOrSysexEvent &)>;
         Instance(const Instance&) = delete;
         Instance& operator=(const Instance&) = delete;
         Instance(Instance&&) = delete;
         Instance& operator=(Instance&&) = delete;
-        Instance(const Plugin &plugin, double sample_rate, const RealtimeThreadInterface &realtimeThreadInterface);
+        Instance(const Plugin &plugin, double sample_rate, const RealtimeThreadInterface &realtimeThreadInterface, TMidiCallback &&midiCallback);
         ~Instance();
         void OnControlValueChanged(TConnection<TControlPort> &connection);
         void OnAtomPortMessage(TConnection<TAtomPort> &connection, uint32_t frames, uint32_t subframes, LV2_URID type, uint32_t datasize, const void *data);
@@ -466,6 +468,7 @@ namespace lilvutils
         const RealtimeThreadInterface &m_RealtimeThreadInterface;
         bool m_SupportsThreadSafeRestore = false;
         LV2_URID m_UridMidiEvent;
+        TMidiCallback m_MidiCallback;
     };
     class UI
     {

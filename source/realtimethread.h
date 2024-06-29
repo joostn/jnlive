@@ -15,7 +15,7 @@ namespace realtimethread
         {
         public:
             Plugin() = default;
-            Plugin(lilvutils::Instance *pluginInstance, float amplitudeFactor, bool doOverrideChannel, LV2_Evbuf_Iterator *midiInBuf) : m_PluginInstance(pluginInstance), m_AmplitudeFactor(amplitudeFactor), m_DoOverrideChannel(doOverrideChannel), m_MidiInBuf(midiInBuf)
+            Plugin(lilvutils::Instance *pluginInstance, float amplitudeFactor, bool doOverrideChannel, LV2_Evbuf_Iterator *midiInBuf, int transpose) : m_PluginInstance(pluginInstance), m_AmplitudeFactor(amplitudeFactor), m_DoOverrideChannel(doOverrideChannel), m_MidiInBuf(midiInBuf), m_Transpose(transpose)
             {
             }
             lilvutils::Instance& PluginInstance() const
@@ -34,12 +34,17 @@ namespace realtimethread
             {
                 return m_MidiInBuf;
             }
+            int Transpose() const
+            {
+                return m_Transpose;
+            }
             auto operator<=>(const Plugin&) const = default;
         private:
             lilvutils::Instance *m_PluginInstance = nullptr;
             float m_AmplitudeFactor = 0.0f;
             bool m_DoOverrideChannel;
             LV2_Evbuf_Iterator *m_MidiInBuf;
+            int m_Transpose;
         };
         class TMidiKeyboardPort
         {

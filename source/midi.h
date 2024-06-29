@@ -35,6 +35,7 @@ namespace midi
             return {m_Data.data(), Size()};
         }
         static size_t ExpectedSize(char byte0);
+        std::optional<SimpleEvent> Transpose(int delta) const;
         static SimpleEvent NoteOn(int channel, int note, int velocity);
         static SimpleEvent NoteOff(int channel, int note, int velocity);
         static SimpleEvent ControlChange(int channel, int cc, int value);

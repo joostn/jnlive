@@ -93,7 +93,8 @@ namespace simplegui
     class TextWindow : public Window
     {
     public:
-        TextWindow(Window *parent, const Gdk::Rectangle &rect, std::string_view text, const Rgba &color, int fontsize) : Window(parent, rect), m_Text(text), m_Color(color), m_FontSize(fontsize)
+        enum class THalign { Left, Center, Right };
+        TextWindow(Window *parent, const Gdk::Rectangle &rect, std::string_view text, const Rgba &color, int fontsize, THalign halign) : Window(parent, rect), m_Text(text), m_Color(color), m_FontSize(fontsize), m_Halign(halign)
         {
         }
 
@@ -104,6 +105,7 @@ namespace simplegui
         std::string m_Text;
         Rgba m_Color;
         int m_FontSize;
+        THalign m_Halign;
     };
 
     class TSlider : public PlainWindow

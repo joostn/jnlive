@@ -17,7 +17,7 @@ namespace komplete
     class TGuiState
     {
     public:
-        enum class TMode {Performance, Midi, Controller};\
+        enum class TMode {Performance, Midi, Controller};
 
         std::optional<size_t> m_FocusedPart;
         bool m_Shift = false;
@@ -37,6 +37,7 @@ namespace komplete
             return m_EngineData;
         }
         void SetEngineData(const engine::Engine::TData &engineData);
+        std::optional<size_t> ActivePartIsHammond() const;
     private:
         engine::Engine::TData m_EngineData;
 
@@ -44,20 +45,26 @@ namespace komplete
     class Gui
     {
     public:
+        static constexpr int sFontSize = 15;
+        static constexpr int sLineSpacing = 2;
         Gui(std::pair<int, int> vidPid, engine::Engine &engine);
         ~Gui();
         void Run();
-        void SetWindow(std::unique_ptr<simplegui::Window> window);
-        const TGuiState GuiState() const {return m_GuiState1;}
+        const TGuiState& GuiState() const {return m_GuiState1;}
         void SetGuiState(TGuiState &&state);
 
     private:
+        void SetWindow(std::unique_ptr<simplegui::Window> window);
         void PaintWindow(Display &display, const simplegui::Window &window);
         void RunGuiThread(std::pair<int, int> vidPid);
         void OnButton(Hid::TButtonIndex button, int delta);
         void OnDataChanged();
-        void Refresh();
+        void RefreshLcd();
         void RefreshLeds();
+        void PaintPerformanceWindow(simplegui::Window &window) const;
+        void PaintMidiWindow(simplegui::Window &window) const;
+        void PaintControllerWindow(simplegui::Window &window) const;
+        void PaintHammondControllerWindow(simplegui::Window &window, size_t part) const;
 
     private:
         Hid m_Hid;
@@ -72,20 +79,20 @@ namespace komplete
         TGuiState m_GuiState1;
 
         utils::THysteresis m_SelectedPresetHysteresis {10, 20};
-        utils::THysteresis m_ReverbLevelHysteresis {1, 1};
-        utils::THysteresis m_Part1LevelHysteresis {1, 1};
-        utils::THysteresis m_Part2LevelHysteresis {1, 1};
+        utils::THysteresis m_ReverbLevelHysteresis {10, 20};
+        utils::THysteresis m_Part1LevelHysteresis {10, 20};
+        utils::THysteresis m_Part2LevelHysteresis {10, 20};
         utils::THysteresis m_ProgramChangeHysteresis {10, 20};
         std::array<utils::THysteresis, 9> m_DrawbarHysteresis {
-            utils::THysteresis(10,20),
-            utils::THysteresis(10,20),
-            utils::THysteresis(10,20),
-            utils::THysteresis(10,20),
-            utils::THysteresis(10,20),
-            utils::THysteresis(10,20),
-            utils::THysteresis(10,20),
-            utils::THysteresis(10,20),
-            utils::THysteresis(10,20)
+            utils::THysteresis(20, 40),
+            utils::THysteresis(20, 40),
+            utils::THysteresis(20, 40),
+            utils::THysteresis(20, 40),
+            utils::THysteresis(20, 40),
+            utils::THysteresis(20, 40),
+            utils::THysteresis(20, 40),
+            utils::THysteresis(20, 40),
+            utils::THysteresis(0,1)
         };
 
 
