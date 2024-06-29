@@ -519,7 +519,8 @@ public:
                             DoAndShowException([this, presetIndex](){
                                 if(m_Engine.Data().GuiFocusedPart() && *m_Engine.Data().GuiFocusedPart() < m_Engine.Data().Project().Parts().size())
                                 {
-                                    m_Engine.Project().SwitchToPreset(*m_Engine.Data().GuiFocusedPart(), presetIndex);
+                                    auto newproject = m_Engine.Project().SwitchToPreset(*m_Engine.Data().GuiFocusedPart(), presetIndex);
+                                    m_Engine.SetProject(std::move(newproject));
                                 }
                             });
                         });

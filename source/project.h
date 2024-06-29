@@ -333,7 +333,6 @@ namespace project
                 {
                     // switch to new preset
                     auto presetIndex = part.ActivePresetIndex().value();
-                    auto instrumentindex = part.ActiveInstrumentIndex().value();
                     const auto &preset = Presets().at(presetIndex);
                     if(preset)
                     {

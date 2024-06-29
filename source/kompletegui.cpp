@@ -232,7 +232,8 @@ namespace komplete
                 const auto &project = GuiState().EngineData().Project();
                 if(GuiState().m_FocusedPart)
                 {
-                    m_Engine.Project().SwitchToPreset(GuiState().m_FocusedPart.value(), GuiState().m_SelectedPreset);
+                    auto newproject = m_Engine.Project().SwitchToPreset(GuiState().m_FocusedPart.value(), GuiState().m_SelectedPreset);
+                    m_Engine.SetProject(std::move(newproject));
                 }
             }
             if( (button >= Hid::TButtonIndex::Menu0) && (button <= Hid::TButtonIndex::Menu7) && (delta > 0) )

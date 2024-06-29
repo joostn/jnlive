@@ -62,6 +62,12 @@ namespace engine
                 std::unique_lock<std::mutex> lock(m_ProjectSaveMutex);
                 m_ProjectToSave = std::make_unique<project::TProject>(m_Data.Project());
             }
+        }
+        if( (olddata.Project() != m_Data.Project())
+          || (olddata.ShowUi()  != m_Data.ShowUi())
+            || (olddata.ShowReverbUi() != m_Data.ShowReverbUi()) 
+            || (olddata.GuiFocusedPart() != m_Data.GuiFocusedPart()) )
+        {
             SyncPlugins();
         }
         OnDataChanged().Notify();
