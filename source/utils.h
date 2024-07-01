@@ -2,6 +2,10 @@
 #include <functional>
 #include <set>
 #include <string>
+#include <thread>
+#include <mutex>
+#include <gtkmm.h>
+#include <condition_variable>
 
 namespace utils
 {
@@ -116,4 +120,82 @@ namespace utils
     };
     std::string generate_random_tempdir();
 
+    class TEventLoop;
+
+    class TEventLoopAction
+    {
+        friend TEventLoop;
+    public:
+        TEventLoopAction(const TEventLoopAction&) = delete;
+        TEventLoopAction& operator=(const TEventLoopAction&) = delete;
+        TEventLoopAction(TEventLoopAction&&) = delete;
+        TEventLoopAction& operator=(TEventLoopAction&&) = delete;
+        ~TEventLoopAction();
+        TEventLoopAction(TEventLoop &eventloop, std::function<void(void)> &&func);
+        void Signal(); // can be called from other thread
+    private:
+        std::function<void(void)> m_Func;
+        TEventLoop &m_EventLoop;
+    };
+
+    // Abstract base class. Use TGtkAppEventLoop or TThreadWithEventLoop
+    class TEventLoop
+    {
+        friend TEventLoopAction;
+    public:
+        TEventLoop(const TEventLoop&) = delete;
+        TEventLoop& operator=(const TEventLoop&) = delete;
+        TEventLoop(TEventLoop&&) = delete;
+        TEventLoop& operator=(TEventLoop&&) = delete;
+        TEventLoop();
+        virtual ~TEventLoop();
+        void CheckThreadId() const;
+
+    protected:
+        void ActionAdded(TEventLoopAction *action);
+        void ActionRemoved(TEventLoopAction *action);
+        virtual void ActionSignaled(TEventLoopAction *action) = 0;
+        void Call(TEventLoopAction *action)
+        {
+            action->m_Func();
+        }
+
+    protected:
+        std::thread::id m_OwningThreadId;
+        size_t m_NumActions = 0;
+        std::mutex m_Mutex;
+        std::set<TEventLoopAction*> m_SignaledActions;
+    };
+
+    // Event loops which uses the GTK eventloop
+    class TGtkAppEventLoop : public TEventLoop
+    {
+    public:
+        TGtkAppEventLoop();
+        virtual ~TGtkAppEventLoop();
+
+    protected:
+        virtual void ActionSignaled(TEventLoopAction *action) override;
+
+    private:
+        Glib::Dispatcher m_Dispatcher;
+    };
+
+    // Event loop which uses a separate thread
+    class TThreadWithEventLoop : public TEventLoop
+    {
+    public:
+        TThreadWithEventLoop();
+        virtual ~TThreadWithEventLoop();
+        void Run();
+        void Stop();
+
+    protected:
+        virtual void ActionSignaled(TEventLoopAction *action) override;
+
+    private:
+        std::thread m_Thread;
+        std::condition_variable m_QueueCond;
+        bool m_RequestTerminate = false;
+    };
 }

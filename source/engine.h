@@ -14,6 +14,7 @@
 namespace engine
 {
     class Engine;
+    class PluginInstanceForPart;
     class OptionalUI
     {
     public:
@@ -157,6 +158,22 @@ namespace engine
         Engine &m_Engine;
     };
 
+    class TPresetLoader
+    {
+    public:
+        TPresetLoader(TPresetLoader&&) = delete;
+        TPresetLoader& operator=(TPresetLoader&&) = delete;
+        TPresetLoader(const TPresetLoader&) = delete;
+        TPresetLoader& operator=(const TPresetLoader&) = delete;
+        TPresetLoader(Engine &engine, PluginInstanceForPart &pluginInstance, const std::string &presetdir);
+    
+    private:
+        std::thread m_LoadThread;
+        std::mutex m_Mutex;
+        Engine &m_Engine;
+        PluginInstanceForPart &m_PluginInstance;
+    };
+
 
     class Engine
     {
@@ -251,7 +268,7 @@ namespace engine
             std::vector<size_t> m_PluginIndices;
             std::unique_ptr<jackutils::Port> m_MidiInPort;
         };
-        Engine(uint32_t maxBlockSize, int argc, char** argv, std::string &&projectdir);
+        Engine(uint32_t maxBlockSize, int argc, char** argv, std::string &&projectdir, utils::TEventLoop &eventLoop);
         const project::TProject& Project() const { return Data().Project(); }
         ~Engine();
         void SetProject(project::TProject &&project);
@@ -326,7 +343,7 @@ namespace engine
         std::mutex m_SaveProjectNowMutex;
         bool m_Quitting = false;
         std::set<PluginInstance*> m_ProcessingDataFromPlugin;
-
+        utils::TEventLoop &m_EventLoop;
     };
 
     class TController

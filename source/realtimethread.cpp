@@ -198,7 +198,7 @@ namespace realtimethread
                         void*    body      = NULL;
                         lv2_evbuf_get(atomportconnection->BufferIterator(), &frames, &subframes, &type, &size, &body);
 
-                        RingBufFromRtThread().Write(AtomPortEventMessage(atomportconnection, frames, subframes, type, size, body));
+                        RingBufFromRtThread().Write(AtomPortEventMessage(atomportconnection, frames, subframes, type, size, body), false);
                         atomportconnection->BufferIterator() = lv2_evbuf_next(atomportconnection->BufferIterator());
                     }
                 }
@@ -320,22 +320,9 @@ namespace realtimethread
                 if(midi::SimpleEvent::IsSupported(ev.buffer, ev.size))
                 {
                     auto event = midi::SimpleEvent(ev.buffer, ev.size);
-                    bool sendToAllPlugins = (event.type() != midi::SimpleEvent::Type::NoteOn) && (event.type() != midi::SimpleEvent::Type::ProgramChange);
-                    size_t firstPluginIndex = 0;
-                    size_t lastPluginIndex = 0;
-                    if(sendToAllPlugins)
+                    if(pluginindex)
                     {
-                        firstPluginIndex = 0;
-                        lastPluginIndex = data.Plugins().size();
-                    }
-                    else if(pluginindex)
-                    {
-                        firstPluginIndex = (size_t)*pluginindex;
-                        lastPluginIndex = firstPluginIndex + 1;
-                    }
-                    for(size_t pluginindex = firstPluginIndex; pluginindex < lastPluginIndex; pluginindex++)
-                    {
-                        auto &plugin = data.Plugins()[pluginindex];
+                        auto &plugin = data.Plugins()[*pluginindex];
                         int targetChannel = 0;
                         if(plugin.DoOverrideChannel())
                         {

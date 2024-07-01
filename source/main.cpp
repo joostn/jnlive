@@ -16,7 +16,7 @@ class Application : public Gtk::Application
 {
 public:
     static constexpr uint32_t cMaxBlockSize = 4096;
-    Application(int argc, char** argv) : m_Engine(cMaxBlockSize, argc, argv, GetProjectDir()), Gtk::Application("nl.newhouse.jnlive")
+    Application(int argc, char** argv) : m_Engine(cMaxBlockSize, argc, argv, GetProjectDir(), m_MainEventLoop), Gtk::Application("nl.newhouse.jnlive")
     {
         // auto mainwindow = std::make_unique<simplegui::PlainWindow>(nullptr, Gdk::Rectangle(20, 10, 200, 150), simplegui::Rgba(1, 0, 0));
         // mainwindow->AddChild<simplegui::PlainWindow>(Gdk::Rectangle(2, 2, 196, 146), simplegui::Rgba(0.2, 0.2, 0.2));
@@ -70,6 +70,7 @@ public:
         }        
     }
 private:
+    utils::TGtkAppEventLoop m_MainEventLoop;
     engine::Engine m_Engine;
     conspiracy::Controller m_ConspiracyController { m_Engine };
     komplete::Gui m_KompleteGui1 {{0x17cc, 0x1620}, m_Engine}; // 61mk2

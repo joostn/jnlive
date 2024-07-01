@@ -89,4 +89,4 @@ target_link_options(jnlive PRIVATE
 )
 
 # enable AVX2 optimizations:
-target_compile_options(jnlive PRIVATE -mavx2)
+target_compile_options(jnlive PRIVATE -mavx2 -Wno-terminate)

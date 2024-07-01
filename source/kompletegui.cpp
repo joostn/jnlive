@@ -648,8 +648,12 @@ namespace komplete
         int drawbartop = 50;
         int drawbarbottom = 250;
         simplegui::Rgba brown(143/255.0, 69/255.0, 0.0, 1.0);
+        simplegui::Rgba darkgrey(0.3, 0.3, 0.3, 1.0);
+        simplegui::Rgba lightgrey(0.7, 0.7, 0.7, 1.0);
+        
         for(size_t drawbarindex = 0; drawbarindex < 9; drawbarindex++)
         {
+            auto drawbarcolor = (drawbarindex < 2)? brown : (((drawbarindex == 4) || (drawbarindex == 6) || (drawbarindex == 7))? darkgrey : lightgrey);
             int drawbarwidth = 80;
             int drawbarwidth_padded = drawbarwidth + 10;
             int drawbarcenter = 60 + (int)drawbarindex * 120;
@@ -660,7 +664,7 @@ namespace komplete
             }
             int value = hammondpart.Registers()[drawbarindex];
             value = std::clamp(value, 0, 8);
-            window.AddChild<TDrawbarWindow>(Gdk::Rectangle(drawbarcenter - drawbarwidth/2, drawbartop, drawbarwidth, drawbarbottom - drawbartop), brown, value);
+            window.AddChild<TDrawbarWindow>(Gdk::Rectangle(drawbarcenter - drawbarwidth/2, drawbartop, drawbarwidth, drawbarbottom - drawbartop), drawbarcolor, value);
         }
         int menuboxheight = sFontSize + 4;
         int menuhorzpadding = 1;

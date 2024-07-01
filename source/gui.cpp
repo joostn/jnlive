@@ -496,16 +496,16 @@ public:
             }
 
             std::vector<std::unique_ptr<Gtk::ToggleButton>> presetButtons;
-            // for(const auto &b: m_PresetButtons)
-            // {
-            //     m_PresetsFlowBox.remove(*b);
-            // }
-            // m_PresetButtons.clear();
+            std::vector<size_t> btnIndex2PresetIndex;
+            bool needRelayout = false;
+
             for(size_t presetIndex = 0; presetIndex < m_Engine.Data().Project().Presets().size(); presetIndex++)
             {
                 const auto &preset = m_Engine.Data().Project().Presets()[presetIndex];
                 if(preset)
                 {
+                    auto btnIndex = btnIndex2PresetIndex.size();
+                    btnIndex2PresetIndex.push_back(presetIndex);
                     std::unique_ptr<Gtk::ToggleButton> button;
                     if(m_PresetButtons.size() > presetButtons.size())
                     {
@@ -515,8 +515,9 @@ public:
                     {
                         button = std::make_unique<Gtk::ToggleButton>();
                         m_PresetsFlowBox.add(*button);
-                        button->signal_clicked().connect([this, presetIndex](){
-                            DoAndShowException([this, presetIndex](){
+                        button->signal_clicked().connect([this, btnIndex](){
+                            DoAndShowException([this, btnIndex](){
+                                auto presetIndex = m_BtnIndex2PresetIndex.at(btnIndex);
                                 if(m_Engine.Data().GuiFocusedPart() && *m_Engine.Data().GuiFocusedPart() < m_Engine.Data().Project().Parts().size())
                                 {
                                     auto newproject = m_Engine.Project().SwitchToPreset(*m_Engine.Data().GuiFocusedPart(), presetIndex);
@@ -524,20 +525,29 @@ public:
                                 }
                             });
                         });
+                        button->set_size_request(100, 100);
                     }
-                    // set minimum height:
-                    button->set_size_request(100, 100);
-                    button->set_label(std::to_string(presetIndex) + " " + preset.value().Name());
+                    auto label = std::to_string(presetIndex) + " " + preset.value().Name();
+                    if(button->get_label() != label)
+                    {
+                        button->set_label(label);
+                    }
                     button->set_state_flags(activePreset && *activePreset == presetIndex ? Gtk::STATE_FLAG_CHECKED : Gtk::STATE_FLAG_NORMAL, true);
                     presetButtons.push_back(std::move(button));
+                    needRelayout = true;
                 }
             }
             for(size_t presetIndex = m_Engine.Data().Project().Presets().size(); presetIndex < m_PresetButtons.size(); presetIndex++)
             {
                 m_PresetsFlowBox.remove(*m_PresetButtons[presetIndex]);
+                needRelayout = true;
             }
             m_PresetButtons = std::move(presetButtons);
-            show_all_children();
+            m_BtnIndex2PresetIndex = std::move(btnIndex2PresetIndex);
+            if(needRelayout)
+            {
+                show_all_children();
+            }
             enableItems();
         }
     private:
@@ -552,6 +562,7 @@ public:
         Gtk::Menu m_PopupMenu;
         Gtk::MenuItem m_SavePresetMenuItem {"Save Preset"};
         Gtk::MenuItem m_DeletePresetMenuItem {"Delete Current Preset"};
+        std::vector<size_t> m_BtnIndex2PresetIndex;
     };
     class InstrumentsPanel : public Gtk::Box
     {

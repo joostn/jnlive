@@ -29,4 +29,160 @@ namespace utils
         // Convert to std::string
         return std::string(tempdir);
     }
+
+    TEventLoop::TEventLoop() : m_OwningThreadId(std::this_thread::get_id())
+    {
+    }
+
+    TEventLoop::~TEventLoop()
+    {
+        if(m_NumActions != 0)
+        {
+            throw std::runtime_error("Destroy TEventLoopAction first");
+        }
+    }
+
+    void TEventLoop::ActionAdded(TEventLoopAction *action)
+    {
+        CheckThreadId();
+        std::unique_lock<std::mutex> lock(m_Mutex);
+        m_NumActions++;
+    }
+
+    void TEventLoop::ActionRemoved(TEventLoopAction *action)
+    {
+        CheckThreadId();
+        std::unique_lock<std::mutex> lock(m_Mutex);
+        m_NumActions--;
+        m_SignaledActions.erase(action);
+    }
+
+    void TEventLoop::CheckThreadId() const
+    {
+        if(std::this_thread::get_id() != m_OwningThreadId)
+        {
+            throw std::runtime_error("Called from wrong thread");
+        }
+    }
+
+    TEventLoopAction::TEventLoopAction(TEventLoop &eventloop, std::function<void(void)> &&func) : m_Func(std::move(func)), m_EventLoop(eventloop)
+    {
+        m_EventLoop.ActionAdded(this);
+    }
+    
+    TEventLoopAction::~TEventLoopAction()
+    {
+        m_EventLoop.ActionRemoved(this);
+    }
+    
+    void TEventLoopAction::Signal()
+    {
+        m_EventLoop.ActionSignaled(this);
+    }
+    
+    TGtkAppEventLoop::TGtkAppEventLoop() : TEventLoop()
+    {
+        m_Dispatcher.connect([this](){
+            CheckThreadId();
+            while(true)
+            {
+                TEventLoopAction* action = nullptr;
+                {
+                    std::unique_lock<std::mutex> lock(m_Mutex);
+                    if(m_SignaledActions.empty())
+                    {
+                        break;
+                    }
+                    action = *m_SignaledActions.begin();
+                    m_SignaledActions.erase(m_SignaledActions.begin());
+                }
+                Call(action);
+            }
+        });
+    }
+
+    TGtkAppEventLoop::~TGtkAppEventLoop()
+    {
+
+    }
+
+    void TGtkAppEventLoop::ActionSignaled(TEventLoopAction *action)
+    {
+        bool mustwakeup = false;
+        {
+            std::unique_lock<std::mutex> lock(m_Mutex);
+            mustwakeup = m_SignaledActions.empty();
+            m_SignaledActions.insert(action);
+        }
+        if(mustwakeup)
+        {
+            m_Dispatcher.emit();
+        }
+    }
+
+    TThreadWithEventLoop::TThreadWithEventLoop() : TEventLoop()
+    {
+    }
+
+    void TThreadWithEventLoop::Run()
+    {
+        if(!m_Thread.joinable())
+        {
+            m_RequestTerminate = false;
+            m_Thread = std::thread([this](){
+                m_OwningThreadId = std::this_thread::get_id();
+                while(true)
+                {
+                    TEventLoopAction *action = nullptr;
+                    {
+                        std::unique_lock<std::mutex> lock(m_Mutex);
+                        //         std::condition_variable m_QueueCond:
+                        m_QueueCond.wait(lock, [this](){ 
+                            return m_RequestTerminate || !m_SignaledActions.empty(); 
+                        });
+                        if(!m_SignaledActions.empty())
+                        {
+                            action = *m_SignaledActions.begin();
+                            m_SignaledActions.erase(m_SignaledActions.begin());
+                        }
+                        else if(m_RequestTerminate)
+                        {
+                            break;
+                        }
+                    }
+                    Call(action);
+                }
+            });
+        }
+    }
+
+    void TThreadWithEventLoop::ActionSignaled(TEventLoopAction *action)
+    {
+        std::unique_lock<std::mutex> lock(m_Mutex);
+        bool mustwakeup = m_SignaledActions.empty();
+        m_SignaledActions.insert(action);
+        if(mustwakeup)
+        {
+            m_QueueCond.notify_one();
+        }
+    }
+
+    void TThreadWithEventLoop::Stop()
+    {
+        if(m_Thread.joinable())
+        {
+            {
+                std::unique_lock<std::mutex> lock(m_Mutex);
+                m_RequestTerminate = true;
+                m_QueueCond.notify_one();
+            }
+            m_Thread.join();
+        }
+    }
+
+    TThreadWithEventLoop::~TThreadWithEventLoop()
+    {
+        Stop();
+    }
+ 
 }

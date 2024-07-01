@@ -3,6 +3,7 @@
 
 namespace
 {
+    
 }
 
 namespace engine
@@ -228,10 +229,10 @@ namespace engine
                 }
                 LV2_Evbuf_Iterator *midiInBuf = nullptr;
                 int transpose = 0;
-                if(Project().Instruments().at(ownedplugin->OwningInstrumentIndex()).IsHammond())
-                {
-                    transpose = 12;
-                }
+                // if(Project().Instruments().at(ownedplugin->OwningInstrumentIndex()).IsHammond())
+                // {
+                //     transpose = 12;
+                // }
                 if(ownedplugin->pluginInstance()->Plugin().MidiInputIndex())
                 {
                     if(auto atomconnection = dynamic_cast<lilvutils::TConnection<lilvutils::TAtomPort>*>(ownedplugin->pluginInstance()->Instance().Connections().at(*ownedplugin->pluginInstance()->Plugin().MidiInputIndex()).get()))
@@ -747,9 +748,9 @@ namespace engine
         }
     }
 
-    Engine::Engine(uint32_t maxBlockSize, int argc, char** argv, std::string &&projectdir) : m_JackClient {"JN Live", [this](jack_nframes_t nframes){
+    Engine::Engine(uint32_t maxBlockSize, int argc, char** argv, std::string &&projectdir, utils::TEventLoop &eventLoop) : m_JackClient {"JN Live", [this](jack_nframes_t nframes){
         m_RtProcessor.Process(nframes);
-    }}, m_LilvWorld(m_JackClient.SampleRate(), maxBlockSize, argc, argv), m_ProjectDir(std::move(projectdir))
+    }}, m_LilvWorld(m_JackClient.SampleRate(), maxBlockSize, argc, argv), m_ProjectDir(std::move(projectdir)), m_EventLoop(eventLoop)
     {
         {
             auto errcode = jack_set_buffer_size(jackutils::Client::Static().get(), 128
@@ -1152,5 +1153,14 @@ namespace engine
         OnDataChanged(m_LastData);
         m_LastData = Engine().Data();
     }
+
+    TPresetLoader::TPresetLoader(Engine &engine, PluginInstanceForPart &pluginInstance, const std::string &presetdir) : m_Engine(engine), m_PluginInstance(pluginInstance)
+    {
+        m_LoadThread = std::thread([this, presetdir](){
+            m_PluginInstance.pluginInstance()->Instance().LoadState(presetdir);
+        });
+
+    }
+
 
 }

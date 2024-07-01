@@ -275,7 +275,6 @@ namespace komplete
     Hid::~Hid()
     {
         Disconnect();
-        hid_exit();
     }
     /////////////
     Display::Display(std::pair<int, int> vidPid) : m_VidPid(vidPid)
