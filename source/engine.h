@@ -42,6 +42,7 @@ namespace engine
         const std::string& Lv2Uri() const { return Plugin().Lv2Uri(); }
         const std::unique_ptr<OptionalUI>& Ui() const { return m_Ui; }
         void SetUi(std::unique_ptr<OptionalUI>&& ui) { m_Ui = std::move(ui); }
+        LV2_Evbuf_Iterator* GetMidiInBuf() const;
 
     private:
         std::unique_ptr<lilvutils::Plugin> m_Plugin;
@@ -166,14 +167,23 @@ namespace engine
         TPresetLoader(const TPresetLoader&) = delete;
         TPresetLoader& operator=(const TPresetLoader&) = delete;
         TPresetLoader(Engine &engine, PluginInstanceForPart &pluginInstance, const std::string &presetdir);
+        bool Finished() const { return m_Finished; }
+        PluginInstanceForPart& PluginInstance() { return m_PluginInstance; }
+        void Start();
+
+    private:
+        void StartLoad();
+        void LoadDone();
     
     private:
-        std::thread m_LoadThread;
-        std::mutex m_Mutex;
         Engine &m_Engine;
+        utils::TThreadWithEventLoop m_LoaderThread;
+        utils::TEventLoopAction m_DidRoundTripAction;
+        utils::TEventLoopAction m_LoadDoneAction;
         PluginInstanceForPart &m_PluginInstance;
+        std::string m_PresetDir;
+        bool m_Finished = false;
     };
-
 
     class Engine
     {
@@ -296,6 +306,11 @@ namespace engine
         void SaveProjectSync();
         void SendMidi(const midi::TMidiOrSysexEvent &event, const PluginInstance &plugininstance);
         void SendMidiToPart(const midi::TMidiOrSysexEvent &event, size_t partindex);
+        realtimethread::Processor& RtProcessor() { return m_RtProcessor; }
+        utils::TEventLoop &EventLoop() const { return m_EventLoop; }
+        void PresetLoaderFinished(TPresetLoader *loader);
+        bool IsPluginLoading(PluginInstanceForPart *plugin) const;
+        int BufferSize() const { return m_BufferSize; }
 
     private:
         void LoadPresetForPart(size_t partindex);
@@ -313,12 +328,15 @@ namespace engine
         bool DoProjectSaveThread();
         void OnMidiFromPlugin(PluginInstanceForPart *sender, const midi::TMidiOrSysexEvent &evt);
         void LoadFirstHammondPreset();
+        void CleanupPresetLoaders();
+        void StartLoading();
 
     private:
         jackutils::Client m_JackClient;
         lilvutils::World m_LilvWorld;
         realtimethread::Processor m_RtProcessor {8192};
         std::vector<std::unique_ptr<PluginInstanceForPart>> m_OwnedPlugins;
+        std::vector<std::unique_ptr<PluginInstanceForPart>> m_OwnedPluginsToBeDiscardedAfterLoad;
         std::unique_ptr<PluginInstance> m_ReverbInstance;
         std::vector<Part> m_Parts;
         TData m_Data;
@@ -344,6 +362,10 @@ namespace engine
         bool m_Quitting = false;
         std::set<PluginInstance*> m_ProcessingDataFromPlugin;
         utils::TEventLoop &m_EventLoop;
+        utils::TEventLoopAction m_CleanupPresetLoadersAction;
+        std::vector<std::unique_ptr<TPresetLoader>> m_PresetLoaders;
+        std::map<PluginInstanceForPart*, std::string> m_Plugin2LoadQueue;
+        int m_BufferSize = 128;
     };
 
     class TController

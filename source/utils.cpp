@@ -65,6 +65,25 @@ namespace utils
         }
     }
 
+    void TEventLoop::ProcessPendingMessages()
+    {
+        CheckThreadId();
+        while(true)
+        {
+            TEventLoopAction* action = nullptr;
+            {
+                std::unique_lock<std::mutex> lock(m_Mutex);
+                if(m_SignaledActions.empty())
+                {
+                    break;
+                }
+                action = *m_SignaledActions.begin();
+                m_SignaledActions.erase(m_SignaledActions.begin());
+            }
+            Call(action);
+        }
+    }
+
     TEventLoopAction::TEventLoopAction(TEventLoop &eventloop, std::function<void(void)> &&func) : m_Func(std::move(func)), m_EventLoop(eventloop)
     {
         m_EventLoop.ActionAdded(this);
@@ -150,7 +169,10 @@ namespace utils
                             break;
                         }
                     }
-                    Call(action);
+                    if(action)
+                    {
+                        Call(action);
+                    }
                 }
             });
         }
@@ -177,6 +199,7 @@ namespace utils
                 m_QueueCond.notify_one();
             }
             m_Thread.join();
+            m_OwningThreadId = std::this_thread::get_id();
         }
     }
 

@@ -207,6 +207,13 @@ namespace engine
         {
             const auto &ownedplugin = m_OwnedPlugins[ownedPluginIndex];
             bool isActive = activePluginIndices.find(ownedPluginIndex) != activePluginIndices.end();
+            for(const auto &presetLoader: m_PresetLoaders)
+            {
+                if(&presetLoader->PluginInstance() == ownedplugin.get())
+                {
+                    isActive = false;
+                }
+            }
             if(isActive)
             {
                 float amplitude = 0.0f;
@@ -227,19 +234,8 @@ namespace engine
                         doOverridePort = true;
                     }
                 }
-                LV2_Evbuf_Iterator *midiInBuf = nullptr;
                 int transpose = 0;
-                // if(Project().Instruments().at(ownedplugin->OwningInstrumentIndex()).IsHammond())
-                // {
-                //     transpose = 12;
-                // }
-                if(ownedplugin->pluginInstance()->Plugin().MidiInputIndex())
-                {
-                    if(auto atomconnection = dynamic_cast<lilvutils::TConnection<lilvutils::TAtomPort>*>(ownedplugin->pluginInstance()->Instance().Connections().at(*ownedplugin->pluginInstance()->Plugin().MidiInputIndex()).get()))
-                    {
-                        midiInBuf = &atomconnection->BufferIterator();
-                    }
-                }
+                auto midiInBuf = ownedplugin->pluginInstance()->GetMidiInBuf();
                 ownedPluginIndex2RtPluginIndex.push_back(plugins.size());
                 plugins.emplace_back(&ownedplugin->pluginInstance()->Instance(), amplitude, doOverridePort, midiInBuf, transpose);
             }
@@ -428,10 +424,31 @@ namespace engine
         {
             if(plugin)
             {
-                pluginsToDiscard.push_back(std::move(plugin->pluginInstance()));
-                plugin = {};
+                m_Plugin2LoadQueue.erase(plugin.get());
+                m_OwnedPluginsToBeDiscardedAfterLoad.push_back(std::move(plugin));
             }
         }
+
+        decltype(m_OwnedPluginsToBeDiscardedAfterLoad) newOwnedPluginsToBeDiscardedAfterLoad;
+        for(auto &plugin: m_OwnedPluginsToBeDiscardedAfterLoad)
+        {
+            if(plugin)
+            {
+                if(!IsPluginLoading(plugin.get()))
+                {
+                    // not being loaded
+                    pluginsToDiscard.push_back(std::move(plugin->pluginInstance()));
+                    plugin = {};
+                }
+                else
+                {
+                    // still being loaded:
+                    newOwnedPluginsToBeDiscardedAfterLoad.push_back(std::move(plugin));
+                }
+            }
+        }
+        m_OwnedPluginsToBeDiscardedAfterLoad = std::move(newOwnedPluginsToBeDiscardedAfterLoad);
+
         for(const auto &ownedplugin: ownedPlugins)
         {
             bool isfocused = false;
@@ -579,8 +596,9 @@ namespace engine
                             if(ownedplugin)
                             {
                                 std::string presetdir = PresetsDir() + "/" + preset->PresetSubDir();
-                                auto &instance = ownedplugin->pluginInstance()->Instance();
-                                ownedplugin->pluginInstance()->Instance().LoadState(presetdir);
+                                m_Plugin2LoadQueue[ownedplugin.get()] = presetdir;
+                                StartLoading();
+                                // ownedplugin->pluginInstance()->Instance().LoadState(presetdir);
                             }
                         }
                     }
@@ -711,6 +729,10 @@ namespace engine
                 const auto &ownedplugin = m_OwnedPlugins[ownedpluginindex];
                 if(ownedplugin)
                 {
+                    if(IsPluginLoading(ownedplugin.get()))
+                    {
+                        throw std::runtime_error("Cannot save, plugin is loading");
+                    }
                     auto presetDir = SavePresetForInstance(ownedplugin->pluginInstance()->Instance());
                     auto dirToDelete = presetDir;
                     utils::finally fin1([&](){
@@ -750,10 +772,10 @@ namespace engine
 
     Engine::Engine(uint32_t maxBlockSize, int argc, char** argv, std::string &&projectdir, utils::TEventLoop &eventLoop) : m_JackClient {"JN Live", [this](jack_nframes_t nframes){
         m_RtProcessor.Process(nframes);
-    }}, m_LilvWorld(m_JackClient.SampleRate(), maxBlockSize, argc, argv), m_ProjectDir(std::move(projectdir)), m_EventLoop(eventLoop)
+    }}, m_LilvWorld(m_JackClient.SampleRate(), maxBlockSize, argc, argv), m_ProjectDir(std::move(projectdir)), m_EventLoop(eventLoop), m_CleanupPresetLoadersAction(m_EventLoop, [this](){CleanupPresetLoaders();})
     {
         {
-            auto errcode = jack_set_buffer_size(jackutils::Client::Static().get(), 128
+            auto errcode = jack_set_buffer_size(jackutils::Client::Static().get(), BufferSize()
             );
             if(errcode)
             {
@@ -916,6 +938,13 @@ namespace engine
         }
         m_ProjectSaveThread.join();
 
+        m_Plugin2LoadQueue.clear();
+        while(!m_PresetLoaders.empty())
+        {
+            m_EventLoop.ProcessPendingMessages();
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        }
+
         // this will deferredly delete the plugins and midi in ports that are no longer needed:
         SetProject(project::TProject());
         for(auto &port: m_AudioOutPorts)
@@ -1012,6 +1041,62 @@ namespace engine
             });  
         }
     }
+    void Engine::PresetLoaderFinished(TPresetLoader *loader)
+    {
+        m_CleanupPresetLoadersAction.Signal();
+    }
+    void Engine::CleanupPresetLoaders()
+    {
+        std::vector<std::unique_ptr<TPresetLoader>> newPresetLoaders;
+        bool changed = false;
+        for(auto &loader: m_PresetLoaders)
+        {
+            if(loader->Finished())
+            {
+                changed = true;
+            }
+            else
+            {
+                newPresetLoaders.push_back(std::move(loader));
+            }
+        }
+        m_PresetLoaders = std::move(newPresetLoaders);
+        if(changed)
+        {
+            SyncPlugins();
+            SyncRtData();
+            StartLoading();
+        }
+    }
+
+    bool Engine::IsPluginLoading(PluginInstanceForPart *plugin) const
+    {
+        return (std::find_if(m_PresetLoaders.begin(), m_PresetLoaders.end(), [&plugin](const std::unique_ptr<TPresetLoader> &presetLoader){
+            return &presetLoader->PluginInstance() == plugin;
+        }) != m_PresetLoaders.end());
+
+    }
+    void Engine::StartLoading()
+    {
+    again:
+        for(auto it = m_Plugin2LoadQueue.begin(); it != m_Plugin2LoadQueue.end(); it++)
+        {
+            const auto &plugin = it->first;
+            if(!IsPluginLoading(plugin))
+            {
+                auto presetdir = it->second;
+                m_Plugin2LoadQueue.erase(it);
+                auto loader_uq = std::make_unique<TPresetLoader>(*this, *plugin, presetdir);
+                auto loader = loader_uq.get();
+                m_PresetLoaders.push_back(std::move(loader_uq));
+                SyncRtData();
+                loader->Start();
+                goto again; // because it is no longer valid
+            }
+        }
+
+    }
+
     void Engine::ProcessMessages()
     {
         m_RtProcessor.ProcessMessagesInMainThread();
@@ -1154,13 +1239,68 @@ namespace engine
         m_LastData = Engine().Data();
     }
 
-    TPresetLoader::TPresetLoader(Engine &engine, PluginInstanceForPart &pluginInstance, const std::string &presetdir) : m_Engine(engine), m_PluginInstance(pluginInstance)
+    TPresetLoader::TPresetLoader(Engine &engine, PluginInstanceForPart &pluginInstance, const std::string &presetdir) : m_Engine(engine), m_PluginInstance(pluginInstance), m_DidRoundTripAction(m_LoaderThread, [this](){StartLoad();}),  m_LoadDoneAction(m_Engine.EventLoop(), [this](){LoadDone();}), m_PresetDir(presetdir)
     {
-        m_LoadThread = std::thread([this, presetdir](){
-            m_PluginInstance.pluginInstance()->Instance().LoadState(presetdir);
-        });
-
     }
 
+    void TPresetLoader::Start()
+    {
+        m_Engine.RtProcessor().DeferredExecuteAfterRoundTrip([this](){
+            m_DidRoundTripAction.Signal();
+        });  
+        m_LoaderThread.Run();
+    }
 
+    void TPresetLoader::StartLoad()
+    {
+        // called from loader thread after we have made a round trip to the audio thread
+        try
+        {    
+            m_PluginInstance.pluginInstance()->Instance().LoadState(m_PresetDir);
+
+            auto midiinbuf = m_PluginInstance.pluginInstance()->GetMidiInBuf();
+            if(midiinbuf)
+            {
+                auto uridMidiEvent = lilvutils::World::Static().UriMapLookup(LV2_MIDI__MidiEvent);
+                // send a midi event to the plugin and let it generate audio. Misbehaving plugins may initially cause an xrun
+                auto pedalon = midi::SimpleEvent::ControlChange(0, 64, 127);
+                //auto pedaloff = midi::SimpleEvent::NoteOn(0, 64, 100);
+
+                lv2_evbuf_write(midiinbuf, 0, 0, uridMidiEvent, pedalon.Span().size(), pedalon.Span().data());
+
+                for(int i=0; i < 1000; i++)
+                {
+                    m_PluginInstance.pluginInstance()->Instance().Run(m_Engine.BufferSize());
+                }
+                auto pedaloff = midi::SimpleEvent::ControlChange(0, 64, 0);
+                lv2_evbuf_write(midiinbuf, 0, 0, uridMidiEvent, pedalon.Span().size(), pedaloff.Span().data());
+            }
+
+        }
+        catch(const std::exception& e)
+        {
+            std::cerr << e.what() << '\n';
+        }
+        m_LoadDoneAction.Signal();
+    }
+
+    void TPresetLoader::LoadDone()
+    {
+        m_LoaderThread.Stop();
+        m_Finished = true;
+        m_Engine.PresetLoaderFinished(this);
+    }
+
+    LV2_Evbuf_Iterator* PluginInstance::GetMidiInBuf() const
+    {
+        LV2_Evbuf_Iterator *midiInBuf = nullptr;
+        if(Plugin().MidiInputIndex())
+        {
+            if(auto atomconnection = dynamic_cast<lilvutils::TConnection<lilvutils::TAtomPort>*>(Instance().Connections().at(*Plugin().MidiInputIndex()).get()))
+            {
+                midiInBuf = &atomconnection->BufferIterator();
+            }
+        }
+        return midiInBuf;
+    }
 }

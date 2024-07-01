@@ -150,6 +150,7 @@ namespace utils
         TEventLoop();
         virtual ~TEventLoop();
         void CheckThreadId() const;
+        void ProcessPendingMessages();
 
     protected:
         void ActionAdded(TEventLoopAction *action);
