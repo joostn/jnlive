@@ -41,6 +41,7 @@ namespace komplete
         };
         enum class TButtonIndex {
             TouchRotary = 45,
+            RotaryClick = 44,
             RotaryRight = 40,
             RotaryDown = 41,
             RotaryLeft = 43,

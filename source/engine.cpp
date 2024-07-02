@@ -57,8 +57,20 @@ namespace engine
                 }
                 if(doload)
                 {
+                    SyncPlugins();
                     LoadPresetForPart(partindex);
                 }
+            }
+            std::optional<size_t> prevInstrumentIndex;
+            if(partindex < olddata.Project().Parts().size())
+            {
+                prevInstrumentIndex = olddata.Project().Parts()[partindex].ActiveInstrumentIndex();
+            }
+            auto newInstrumentIndex = m_Data.Project().Parts()[partindex].ActiveInstrumentIndex();
+            if(newInstrumentIndex && (prevInstrumentIndex != newInstrumentIndex))
+            {
+                SendMidiToPartInstrument(midi::SimpleEvent::AllNotesOff(0), partindex, *newInstrumentIndex);
+                SendMidiToPartInstrument(midi::SimpleEvent::ControlChange(0, midi::ccSustainPedal, 0), partindex, *newInstrumentIndex);
             }
         }
         if(olddata.Project() != m_Data.Project())
@@ -590,7 +602,11 @@ namespace engine
                     {
                         auto instrumentindex = preset.value().InstrumentIndex();
                         auto pluginindex = m_Parts.at(partindex).PluginIndices().at(instrumentindex);
-                        if(!Project().Instruments().at(instrumentindex).IsHammond())
+                        if(Project().Instruments().at(instrumentindex).IsHammond())
+                        {
+                            UpdateHammondPlugins(Data().HammondData(), true);
+                        }
+                        else
                         {
                             const auto &ownedplugin = m_OwnedPlugins.at(pluginindex);
                             if(ownedplugin)
@@ -691,15 +707,29 @@ namespace engine
             const auto &part = Project().Parts().at(partindex);
             if(part.ActiveInstrumentIndex())
             {
-                auto instrindex = *part.ActiveInstrumentIndex();
-                if( (instrindex >= 0) && (instrindex < m_Parts[partindex].PluginIndices().size()) )
+                SendMidiToPartInstrument(event, partindex, *part.ActiveInstrumentIndex());
+            }
+        }
+    }
+
+    void Engine::SendMidiToPartInstrument(const midi::TMidiOrSysexEvent &event, size_t partindex, size_t instrumentindex)
+    {
+        if( (partindex < Project().Parts().size()) && (partindex < m_Parts.size()) )
+        {
+            const auto &part = Project().Parts().at(partindex);
+            if(instrumentindex < m_Parts.at(partindex).PluginIndices().size())
+            {
+                auto ownedpluginindex = m_Parts[partindex].PluginIndices()[instrumentindex];
+                const auto &ownedplugin = m_OwnedPlugins[ownedpluginindex];
+                if(ownedplugin->pluginInstance())
                 {
-                    auto ownedpluginindex = m_Parts[partindex].PluginIndices()[instrindex];
-                    const auto &ownedplugin = m_OwnedPlugins[ownedpluginindex];
-                    if(ownedplugin->pluginInstance())
+                    int midiChannel = 0;
+                    if(!ownedplugin->OwningPart())
                     {
-                        SendMidi(event, *ownedplugin->pluginInstance());
+                        midiChannel = part.MidiChannelForSharedInstruments();
                     }
+                    auto modifiedevent = event.ChangeChannel(midiChannel);
+                    SendMidi(modifiedevent, *ownedplugin->pluginInstance());
                 }
             }
         }
@@ -812,7 +842,6 @@ namespace engine
                 }
             }
         });
-        //UpdateHammondPlugins(project::THammondData(), true);
         LoadFirstHammondPreset();
     }
     void Engine::LoadFirstHammondPreset()
@@ -1258,6 +1287,7 @@ namespace engine
         {    
             m_PluginInstance.pluginInstance()->Instance().LoadState(m_PresetDir);
 
+/*
             auto midiinbuf = m_PluginInstance.pluginInstance()->GetMidiInBuf();
             if(midiinbuf)
             {
@@ -1275,7 +1305,7 @@ namespace engine
                 auto pedaloff = midi::SimpleEvent::ControlChange(0, 64, 0);
                 lv2_evbuf_write(midiinbuf, 0, 0, uridMidiEvent, pedalon.Span().size(), pedaloff.Span().data());
             }
-
+*/
         }
         catch(const std::exception& e)
         {

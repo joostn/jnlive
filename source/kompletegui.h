@@ -17,29 +17,57 @@ namespace komplete
     class TGuiState
     {
     public:
+        static constexpr auto sDiscardSelectedPresetIndexAfter = std::chrono::seconds(10);
         enum class TMode {Performance, Midi, Controller};
 
         std::optional<size_t> m_FocusedPart;
         bool m_Shift = false;
+        std::array<bool, 9> m_TouchingRotary {false, false, false, false, false, false, false, false, false};
 
         // Performance mode:
         TMode m_Mode = TMode::Performance;
-        size_t m_SelectedPreset = 0;
+        std::optional<size_t> GetSelectedPresetIndex() const;
+        std::optional<size_t> ActivePresetIndexForFocusedPart() const;
+        void SetSelectedPresetIndex(std::optional<size_t> index);
+
         bool m_ShowPresetList = false;
         size_t m_QuickPresetPage = 0;
+
+        std::pair<int, int> VisiblePartVolumeSliders() const
+        {
+            return GetPartRangeAroundFocusedPart(7);
+        }
+
+        std::pair<int, int> VisiblePartPresetNames() const
+        {
+            return GetPartRangeAroundFocusedPart(4);
+        }
 
         // Midi mode:
         int m_ProgramChange = 0;
 
-        // Controller mode:
         const engine::Engine::TData &EngineData() const
         {
             return m_EngineData;
         }
         void SetEngineData(const engine::Engine::TData &engineData);
         std::optional<size_t> ActivePartIsHammond() const;
+        bool operator==(const TGuiState &other) const = default;
+        void SetFocusedPart(std::optional<size_t> focusedPart);
+        std::optional<std::chrono::steady_clock::time_point> NextScreenUpdateNeeded() const;
+
     private:
         engine::Engine::TData m_EngineData;
+        std::optional<size_t> m_SelectedPresetIndex;
+        std::chrono::steady_clock::time_point m_LastSelectedPresetChange;
+        std::pair<int, int> GetPartRangeAroundFocusedPart(int num) const
+        {
+            int numparts = (int)EngineData().Project().Parts().size();
+            int focusedpart = m_FocusedPart.value_or(0);
+            int first = std::max(0, focusedpart - num / 2);
+            int last = std::min(numparts, first + num);
+            return {first, last};
+        }
 
     };
     class Gui
@@ -75,14 +103,22 @@ namespace komplete
         std::unique_ptr<simplegui::Window> m_PrevWindow;
         bool m_AbortRequested = false;
         engine::Engine &m_Engine;
-        utils::NotifySink m_OnProjectChanged {m_Engine.OnDataChanged(), [this](){OnDataChanged();}};
+        utils::NotifySink m_OnProjectChanged;
         TGuiState m_GuiState1;
+        bool m_GuiStateNoRecurse = false;
 
         utils::THysteresis m_SelectedPresetHysteresis {10, 20};
-        utils::THysteresis m_ReverbLevelHysteresis {10, 20};
-        utils::THysteresis m_Part1LevelHysteresis {10, 20};
-        utils::THysteresis m_Part2LevelHysteresis {10, 20};
         utils::THysteresis m_ProgramChangeHysteresis {10, 20};
+        std::array<utils::THysteresis, 8> m_VolumeHysteresis {
+            utils::THysteresis(10, 20),
+            utils::THysteresis(10, 20),
+            utils::THysteresis(10, 20),
+            utils::THysteresis(10, 20),
+            utils::THysteresis(10, 20),
+            utils::THysteresis(10, 20),
+            utils::THysteresis(10, 20),
+            utils::THysteresis(10, 20)
+        };
         std::array<utils::THysteresis, 9> m_DrawbarHysteresis {
             utils::THysteresis(20, 40),
             utils::THysteresis(20, 40),
@@ -94,6 +130,7 @@ namespace komplete
             utils::THysteresis(20, 40),
             utils::THysteresis(0,1)
         };
+        std::optional<std::chrono::steady_clock::time_point> m_NextScheduledLcdRefresh;
 
 
     };

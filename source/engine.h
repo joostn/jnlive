@@ -232,6 +232,14 @@ namespace engine
                 ret.m_ShowReverbUi = showReverbUi;
                 return ret;
             }
+            auto Tuple() const
+            {
+                return std::tie(m_Project, m_HammondData, m_GuiFocusedPart, m_ShowUi, m_ShowReverbUi);
+            }
+            bool operator==(const TData &other) const
+            {
+                return Tuple() == other.Tuple();
+            }
         private:
             void FixFocusedPart()
             {
@@ -305,7 +313,8 @@ namespace engine
         void DeleteInstrument(size_t instrumentindex);
         void SaveProjectSync();
         void SendMidi(const midi::TMidiOrSysexEvent &event, const PluginInstance &plugininstance);
-        void SendMidiToPart(const midi::TMidiOrSysexEvent &event, size_t partindex);
+        void SendMidiToPart(const midi::TMidiOrSysexEvent &event, size_t partindex); // midi channel is ignored!
+        void SendMidiToPartInstrument(const midi::TMidiOrSysexEvent &event, size_t partindex, size_t instrumentindex); // midi channel is ignored!
         realtimethread::Processor& RtProcessor() { return m_RtProcessor; }
         utils::TEventLoop &EventLoop() const { return m_EventLoop; }
         void PresetLoaderFinished(TPresetLoader *loader);

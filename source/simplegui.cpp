@@ -35,9 +35,11 @@ namespace simplegui
         cr.set_font_size(m_FontSize);
 
         // measure text
+        Cairo::FontExtents fe;
+        cr.get_font_extents(fe);
         Cairo::TextExtents te;
         cr.get_text_extents(m_Text, te);
-        double textheight = m_FontSize + 2;
+        double textheight = fe.ascent + fe.descent;
         double textwidth = te.width;
         double text_x = 0;
         if(m_Halign == THalign::Right)
@@ -49,7 +51,7 @@ namespace simplegui
             text_x = std::round(0.0 + (Rectangle().get_width() - textwidth) / 2);
         }
 
-        double text_y = std::round(0.0+ (Rectangle().get_height() / 2) + (textheight / 2.0)); // Vertically centered
+        double text_y = std::round(0.0+ (Rectangle().get_height() / 2) + (textheight / 2.0) - fe.descent); // Vertically centered
 
         cr.move_to(text_x, text_y);
         cr.show_text(m_Text);
@@ -111,4 +113,36 @@ namespace simplegui
         }
     }
 
+    void TTriangle::DoPaint(Cairo::Context &cr) const
+    {
+        cr.set_source_rgba(m_Color.Red(), m_Color.Green(), m_Color.Blue(), m_Color.Alpha());
+        int width = Rectangle().get_width();
+        int height = Rectangle().get_height();
+        if(m_Direction == TDirection::Up)
+        {
+            cr.move_to(width/2, 0);
+            cr.line_to(width, height);
+            cr.line_to(0, height);
+        }
+        else if(m_Direction == TDirection::Right)
+        {
+            cr.move_to(width, height/2);
+            cr.line_to(0, height);
+            cr.line_to(0, 0);
+        }
+        else if(m_Direction == TDirection::Left)
+        {
+            cr.move_to(0, height/2);
+            cr.line_to(width, 0);
+            cr.line_to(width, height);
+        }
+        else
+        {
+            cr.move_to(width/2, height);
+            cr.line_to(0, 0);
+            cr.line_to(width, 0);
+        }
+        cr.close_path();
+        cr.fill();
+    }
 }

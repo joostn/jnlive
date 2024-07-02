@@ -119,4 +119,17 @@ namespace simplegui
     public:
         TListBox(Window *parent, const Gdk::Rectangle &rect, const Rgba &color, int rowheight, size_t numitems, std::optional<size_t> selecteditem, size_t centereditem, const std::function<std::string(size_t)> &itemtextgetter);
     };
+
+    class TTriangle : public PlainWindow
+    {
+    public:
+        enum class TDirection {Up, Down, Left, Right};
+        TTriangle(Window *parent, const Gdk::Rectangle &rect, const Rgba &color, TDirection direction) : PlainWindow(parent, rect, color), m_Direction(direction), m_Color(color)
+        {
+        }
+        void DoPaint(Cairo::Context &cr) const override;
+    private:
+        TDirection m_Direction;
+        Rgba m_Color;
+    };
 }

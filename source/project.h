@@ -33,7 +33,7 @@ namespace project
         private:
             std::array<int, 9> m_Registers;
         };
-        THammondData() : m_Parts({TPart(), TPart()})
+        THammondData() : m_Parts({TPart({8,8,8,0,0,0,0,0,0}), TPart({0,0,8,8,0,0,0,0,0})}), m_Percussion(true), m_PercussionSoft(false), m_PercussionFast(true), m_Percussion2ndHarmonic(true)
         {
         }
         THammondData ChangePart(int partindex, const TPart &part) const

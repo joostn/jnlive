@@ -8,6 +8,11 @@
 
 namespace midi
 {
+    static constexpr int ccSustainPedal = 64;
+    static constexpr int ccModWheel = 1;
+    static constexpr int ccVolume = 7;
+    static constexpr int ccPan = 10;
+    static constexpr int ccExpression = 11;
     class SimpleEvent
     {
     public:
@@ -41,7 +46,7 @@ namespace midi
         static SimpleEvent ControlChange(int channel, int cc, int value);
         static SimpleEvent ProgramChange(int channel, int p);
         SimpleEvent ChangeChannel(int channel) const;
-        SimpleEvent AllNotesOff(int channel) const;
+        static SimpleEvent AllNotesOff(int channel);
         auto operator<=>(const SimpleEvent&) const = default;
         void ToDebugStream(std::ostream &str) const;
         std::string ToDebugString() const;
@@ -137,6 +142,14 @@ namespace midi
         }
         void ToDebugStream(std::ostream &str) const;
         std::string ToDebugString() const;
+        TMidiOrSysexEvent ChangeChannel(int channel) const
+        {
+            if(IsSysex())
+            {
+                return *this;
+            }
+            return TMidiOrSysexEvent(GetSimpleEvent().ChangeChannel(channel));
+        }
 
     private:
         std::optional<SimpleEvent> m_Event;

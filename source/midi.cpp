@@ -147,7 +147,7 @@ namespace midi {
             m_Data[2]
         });
     }
-    SimpleEvent SimpleEvent::AllNotesOff(int channel) const
+    SimpleEvent SimpleEvent::AllNotesOff(int channel)
     {
         return ControlChange(channel, 123, 0);
     }

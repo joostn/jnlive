@@ -64,7 +64,7 @@ namespace project
         }
         if(part.ActivePresetIndex())
         {
-            result["instrumentindex"] = *part.ActivePresetIndex();
+            result["presetindex"] = *part.ActivePresetIndex();
         }
         else
         {
