@@ -6,6 +6,7 @@
 #include <mutex>
 #include <gtkmm.h>
 #include <condition_variable>
+#include <regex>
 
 namespace utils
 {
@@ -118,7 +119,12 @@ namespace utils
         int m_Reduction;
         int m_Value = 0;
     };
+
     std::string generate_random_tempdir();
+    // make a regular expression from a string
+    // '*' matches any substring
+    // '?' matches any character
+    std::regex makeSimpleRegex(std::string_view s);
 
     class TEventLoop;
 

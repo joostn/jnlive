@@ -6,6 +6,7 @@
 #include "utils.h"
 #include <mutex>
 #include <condition_variable>
+#include <regex>
 
 namespace jackutils
 {
@@ -28,6 +29,12 @@ namespace jackutils
         void ListAllPorts()
         {
             auto ports = jack_get_ports(m_Client, nullptr, nullptr, 0);
+            utils::finally fin1([&](){
+                if(ports)
+                {
+                    jack_free(ports);
+                }
+            });
             if(ports)
             {
                 size_t index = 0;
@@ -41,7 +48,6 @@ namespace jackutils
                     printf("%s\n", port);
                 }
             }
-            jack_free(ports);
         }
         void ShutDown()
         {
@@ -150,8 +156,11 @@ namespace jackutils
         }
         // returns true on success
         bool LinkToPortByName(const std::string &portname);
-        bool LinkToAnyPortByName(const std::vector<std::string> &portnames);
-        void LinkToAllPortsByName(const std::vector<std::string> &portnames);
+        bool LinkToAnyPortByPattern(const std::vector<std::string> &portnames);
+        bool LinkToAnyPortByName(const std::vector<std::regex> &portnames);
+        void LinkToAllPortsByPattern(const std::vector<std::string> &portnames);
+        void LinkToAllPortsByName(const std::vector<std::regex> &portnames);
+        std::vector<std::string> GetMatchingPortNames(const std::vector<std::regex> &portnames);
 
     private:
         jack_port_t *m_Port = nullptr;

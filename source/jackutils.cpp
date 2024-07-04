@@ -60,17 +60,55 @@ namespace jackutils
         }
         return false;
     }
-    bool Port::LinkToAnyPortByName(const std::vector<std::string> &portnames)
+    std::vector<std::string> Port::GetMatchingPortNames(const std::vector<std::regex> &portnames)
     {
+        auto jackclient = Client::Static().get();
+        std::vector<std::string> matchingPortNames;
+        auto ports = jack_get_ports(jackclient, nullptr, nullptr, 0);
+        if(ports)
+        {
+            utils::finally fin1([&](){
+                jack_free(ports);
+            });
+            size_t index = 0;
+            while(true)
+            {
+                const char *port = ports[index++];
+                if(!port) break;
+                std::string port_str(port);
+                for(const auto &portname: portnames)
+                {
+                    if(std::regex_match(port, portname))
+                    {
+                        matchingPortNames.push_back(port);
+                    }
+                }
+            }
+        }
+        return matchingPortNames;
+    }
+    bool Port::LinkToAnyPortByPattern(const std::vector<std::string> &portnames)
+    {
+        std::vector<std::regex> patterns;
         for(const auto &portname: portnames)
+        {
+            patterns.push_back(utils::makeSimpleRegex(portname));
+        }
+        return LinkToAnyPortByName(patterns);
+    }
+
+    bool Port::LinkToAnyPortByName(const std::vector<std::regex> &portnames)
+    {
+        auto jackclient = Client::Static().get();
+        auto matchingportnames = GetMatchingPortNames(portnames);
+        for(const auto &portname: matchingportnames)
         {
             if(jack_port_connected_to(m_Port, portname.c_str()))
             {
                 return true;
             }
         }
-        auto jackclient = Client::Static().get();
-        for(const auto &portname: portnames)
+        for(const auto &portname: matchingportnames)
         {
             int result;
             if(direction() == Direction::Input)
@@ -88,14 +126,24 @@ namespace jackutils
         }
         return false;
     }
-    void Port::LinkToAllPortsByName(const std::vector<std::string> &portnames)
+    void Port::LinkToAllPortsByPattern(const std::vector<std::string> &portnames)
     {
+        std::vector<std::regex> patterns;
+        for(const auto &portname: portnames)
+        {
+            patterns.push_back(utils::makeSimpleRegex(portname));
+        }
+        LinkToAllPortsByName(patterns);
+    }
+    void Port::LinkToAllPortsByName(const std::vector<std::regex> &portnames)
+    {
+        auto jackclient = Client::Static().get();
+        auto matchingportnames = GetMatchingPortNames(portnames);
         if(direction() == Direction::Input)
         {
             throw std::runtime_error("LinkToAllPortsByName only works for output ports");
         }
-        auto jackclient = Client::Static().get();
-        for(const auto &portname: portnames)
+        for(const auto &portname: matchingportnames)
         {
             jack_connect(jackclient,  jack_port_name(m_Port), portname.c_str());
         }

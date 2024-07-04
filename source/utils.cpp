@@ -207,5 +207,32 @@ namespace utils
     {
         Stop();
     }
+
+    std::regex makeSimpleRegex(std::string_view s)
+    {
+        std::string regexPattern;
+        for (char ch : s) 
+        {
+            if (ch == '*') 
+            {
+                regexPattern += ".*";
+            } 
+            else if (ch == '?') 
+            {
+                regexPattern += ".";
+            }
+            else if ( (ch == '.') || (ch == '[') || (ch == '\\') || (ch == '^') || (ch == '$') ) 
+            {
+                // https://pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap09.html#tag_09_03_03
+                regexPattern += "\\";
+                regexPattern += ch;
+            } 
+            else 
+            {
+                regexPattern += ch;
+            }
+        }
+        return std::regex(regexPattern, std::regex_constants::basic);
+    }
  
 }

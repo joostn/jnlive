@@ -159,7 +159,7 @@ namespace engine
                 break;
             }
             const auto &part = m_Parts[partindex];
-            part.MidiInPort()->LinkToAnyPortByName(midiInPortNames);
+            part.MidiInPort()->LinkToAnyPortByPattern(midiInPortNames);
             partindex++;
         }
         for(size_t portindex = 0; portindex < m_AudioOutPorts.size(); ++portindex)
@@ -167,7 +167,7 @@ namespace engine
             if(portindex < m_JackConnections.AudioOutputs().size())
             {
                 const auto &audioportnames = m_JackConnections.AudioOutputs()[portindex];
-                m_AudioOutPorts[portindex]->LinkToAllPortsByName(audioportnames);
+                m_AudioOutPorts[portindex]->LinkToAllPortsByPattern(audioportnames);
             }
         }
         for(const auto &auxinport: m_AuxInPorts)
@@ -179,7 +179,7 @@ namespace engine
                 {
                     if(portpair.first == name)
                     {
-                        auxinport->Port().LinkToAnyPortByName(portpair.second);
+                        auxinport->Port().LinkToAnyPortByPattern(portpair.second);
                     }
                 }
             }
@@ -193,7 +193,7 @@ namespace engine
                 {
                     if(portpair.first == name)
                     {
-                        auxOutport->Port().LinkToAllPortsByName(portpair.second);
+                        auxOutport->Port().LinkToAllPortsByPattern(portpair.second);
                     }
                 }
             }
