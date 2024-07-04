@@ -60,7 +60,8 @@ public:
                 };
                 std::vector<std::vector<std::string>> midiInputs {};
                 std::vector<std::pair<std::string, std::vector<std::string>>> controllermidiports;
-                project::TJackConnections jackconn(std::move(m_AudioOutputs), std::move(midiInputs), std::move(controllermidiports));
+                std::vector<std::string> vocoderinput;
+                project::TJackConnections jackconn(std::move(m_AudioOutputs), std::move(midiInputs), std::move(controllermidiports), std::move(vocoderinput));
                 JackConnectionsToFile(jackconn, jackconnectionfile);
             }
             {

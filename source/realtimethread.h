@@ -15,7 +15,7 @@ namespace realtimethread
         {
         public:
             Plugin() = default;
-            Plugin(lilvutils::Instance *pluginInstance, float amplitudeFactor, bool doOverrideChannel, LV2_Evbuf_Iterator *midiInBuf, int transpose) : m_PluginInstance(pluginInstance), m_AmplitudeFactor(amplitudeFactor), m_DoOverrideChannel(doOverrideChannel), m_MidiInBuf(midiInBuf), m_Transpose(transpose)
+            Plugin(lilvutils::Instance *pluginInstance, float amplitudeFactor, bool doOverrideChannel, LV2_Evbuf_Iterator *midiInBuf, int transpose, bool hasVocoderInput) : m_PluginInstance(pluginInstance), m_AmplitudeFactor(amplitudeFactor), m_DoOverrideChannel(doOverrideChannel), m_MidiInBuf(midiInBuf), m_Transpose(transpose), m_HasVocoderInput(hasVocoderInput)
             {
             }
             lilvutils::Instance& PluginInstance() const
@@ -38,6 +38,10 @@ namespace realtimethread
             {
                 return m_Transpose;
             }
+            bool HasVocoderInput() const
+            {
+                return m_HasVocoderInput;
+            }
             auto operator<=>(const Plugin&) const = default;
         private:
             lilvutils::Instance *m_PluginInstance = nullptr;
@@ -45,6 +49,7 @@ namespace realtimethread
             bool m_DoOverrideChannel;
             LV2_Evbuf_Iterator *m_MidiInBuf;
             int m_Transpose;
+            bool m_HasVocoderInput;
         };
         class TMidiKeyboardPort
         {
@@ -100,7 +105,7 @@ namespace realtimethread
     public:
         Data() = default;
         Data(const std::vector<Plugin>& plugins, const std::vector<TMidiKeyboardPort>& midiPorts, const std::vector<TMidiAuxInPort> &midiAuxInPorts, const std::vector<TMidiAuxOutPort> &midiAuxOutPorts, const std::array<jack_port_t*, 2>& outputAudioPorts, lilvutils::Instance *reverbInstance,
-        float reverbLevel) : m_Plugins(plugins), m_MidiPorts(midiPorts), m_OutputAudioPorts(outputAudioPorts), m_MidiAuxInPorts(midiAuxInPorts), m_MidiAuxOutPorts(midiAuxOutPorts), m_ReverbInstance(reverbInstance), m_ReverbLevel(reverbLevel) {}
+        float reverbLevel, jack_port_t* vocoderInPort) : m_Plugins(plugins), m_MidiPorts(midiPorts), m_OutputAudioPorts(outputAudioPorts), m_MidiAuxInPorts(midiAuxInPorts), m_MidiAuxOutPorts(midiAuxOutPorts), m_ReverbInstance(reverbInstance), m_ReverbLevel(reverbLevel), m_VocoderInPort(vocoderInPort) {}
         const std::vector<Plugin>& Plugins() const { return m_Plugins; }
         const std::vector<TMidiKeyboardPort>& MidiPorts() const { return m_MidiPorts; }
         const std::array<jack_port_t*, 2>& OutputAudioPorts() const { return m_OutputAudioPorts; }
@@ -109,6 +114,7 @@ namespace realtimethread
         auto operator<=>(const Data&) const = default;
         lilvutils::Instance *ReverbInstance() const { return m_ReverbInstance; }
         float ReverbLevel() const { return m_ReverbLevel; }
+        jack_port_t* VocoderInPort() const { return m_VocoderInPort; }
         
     private:
         std::vector<Plugin> m_Plugins;
@@ -116,6 +122,7 @@ namespace realtimethread
         std::vector<TMidiAuxInPort> m_MidiAuxInPorts;
         std::vector<TMidiAuxOutPort> m_MidiAuxOutPorts;
         std::array<jack_port_t*, 2> m_OutputAudioPorts = {nullptr, nullptr};
+        jack_port_t* m_VocoderInPort = nullptr;
         lilvutils::Instance *m_ReverbInstance = nullptr;
         float m_ReverbLevel = 0.0f;
     };
@@ -263,6 +270,7 @@ namespace realtimethread
         void RunInstances(jack_nframes_t nframes);
         void ProcessOutgoingAudio(jack_nframes_t nframes);
         void ProcessIncomingMidi(jack_nframes_t nframes);
+        void ProcessIncomingAudio(jack_nframes_t nframes);
         void RunReverbInstance(jack_nframes_t nframes);
         void AddReverb(jack_nframes_t nframes);
         void ClearOutputMidiBuffers(jack_nframes_t nframes);

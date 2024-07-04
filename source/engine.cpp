@@ -170,6 +170,10 @@ namespace engine
                 m_AudioOutPorts[portindex]->LinkToAllPortsByPattern(audioportnames);
             }
         }
+        if(m_VocoderInPort)
+        {
+            m_VocoderInPort->LinkToAnyPortByPattern(m_JackConnections.VocoderInput());
+        }
         for(const auto &auxinport: m_AuxInPorts)
         {
             if(auxinport && auxinport->AuxInPort())
@@ -218,6 +222,7 @@ namespace engine
         for(size_t ownedPluginIndex = 0; ownedPluginIndex < m_OwnedPlugins.size(); ownedPluginIndex++)
         {
             const auto &ownedplugin = m_OwnedPlugins[ownedPluginIndex];
+            const auto &instrument = Project().Instruments().at(ownedplugin->OwningInstrumentIndex());
             bool isActive = activePluginIndices.find(ownedPluginIndex) != activePluginIndices.end();
             for(const auto &presetLoader: m_PresetLoaders)
             {
@@ -249,7 +254,7 @@ namespace engine
                 int transpose = 0;
                 auto midiInBuf = ownedplugin->pluginInstance()->GetMidiInBuf();
                 ownedPluginIndex2RtPluginIndex.push_back(plugins.size());
-                plugins.emplace_back(&ownedplugin->pluginInstance()->Instance(), amplitude, doOverridePort, midiInBuf, transpose);
+                plugins.emplace_back(&ownedplugin->pluginInstance()->Instance(), amplitude, doOverridePort, midiInBuf, transpose, instrument.HasVocoderInput());
             }
             else
             {
@@ -276,6 +281,7 @@ namespace engine
             m_AudioOutPorts.size() > 0? m_AudioOutPorts[0]->get() : nullptr,
             m_AudioOutPorts.size() > 1?m_AudioOutPorts[1]->get() : nullptr
         };
+        jack_port_t* vocoderInPort = m_VocoderInPort->get();
         std::vector<realtimethread::Data::TMidiAuxInPort> auxInPorts;
         for(const auto &auxport: m_AuxInPorts)
         {
@@ -290,7 +296,7 @@ namespace engine
 
         auto reverbinstance = m_ReverbInstance? &m_ReverbInstance->Instance() : nullptr;
         auto reverblevel = Project().Reverb().MixLevel();
-        return realtimethread::Data(std::move(plugins), std::move(midiPorts), std::move(auxInPorts), std::move(auxOutPorts), std::move(outputAudioPorts), reverbinstance, reverblevel);
+        return realtimethread::Data(std::move(plugins), std::move(midiPorts), std::move(auxInPorts), std::move(auxOutPorts), std::move(outputAudioPorts), reverbinstance, reverblevel, vocoderInPort);
     }
 
     void Engine::OnMidiFromPlugin(PluginInstanceForPart *sender, const midi::TMidiOrSysexEvent &evt)
@@ -825,6 +831,7 @@ namespace engine
         {
             std::filesystem::create_directory(m_ProjectDir);
         }
+        m_VocoderInPort = std::make_unique<jackutils::Port>("vocoder_in", jackutils::Port::Kind::Audio, jackutils::Port::Direction::Input);
         LoadProject();
         auto presetsdir = PresetsDir();
         if(!std::filesystem::exists(presetsdir))
@@ -915,7 +922,8 @@ namespace engine
             name = plugin.Name();
         }
         auto uricopy = uri;
-        project::TInstrument newinstrument(std::move(uricopy), shared, std::move(name), {});
+        bool hasVocoder = false;
+        project::TInstrument newinstrument(std::move(uricopy), shared, std::move(name), {}, hasVocoder);
         auto newproject = Project().AddInstrument(std::move(newinstrument));
         SetProject(std::move(newproject));
     }
@@ -984,6 +992,12 @@ namespace engine
             });  
         }
         m_AudioOutPorts.clear();
+        {
+            auto ptr = m_VocoderInPort.release();
+            m_RtProcessor.DeferredExecuteAfterRoundTrip([ptr](){
+                delete ptr;
+            });  
+        }
         m_RtProcessor.DeferredExecuteAfterRoundTrip([this](){
             m_SafeToDestroy = true;
         });

@@ -17,6 +17,7 @@ namespace realtimethread
         ClearOutputMidiBuffers(nframes);
         ProcessMessagesInRealtimeThread(nframes);
         ProcessIncomingMidi(nframes);
+        ProcessIncomingAudio(nframes);
         RunInstances(nframes);
         ProcessOutgoingAudio(nframes);
         RunReverbInstance(nframes);
@@ -149,7 +150,6 @@ namespace realtimethread
             auto buf = jack_port_get_buffer(outport.Port(), nframes);
             jack_midi_clear_buffer(buf);            
         }
-
     }
 
     void Processor::ProcessOutputPorts()
@@ -212,6 +212,44 @@ namespace realtimethread
         for(const auto &plugin: data.Plugins())
         {
             plugin.PluginInstance().Run(nframes);
+        }
+    }
+    void Processor::ProcessIncomingAudio(jack_nframes_t nframes)
+    {
+        if(!m_DataInRtThread) return;
+        const auto &data = *m_DataInRtThread;
+        auto vocoderbuf = data.VocoderInPort()? (const float*)jack_port_get_buffer(data.VocoderInPort(), nframes) : (const float*) nullptr;
+        for(const auto &plugin: data.Plugins())
+        {
+            if(plugin.HasVocoderInput())
+            {
+                for(size_t channel: {0,1})
+                {
+                    auto inputPortindexOrNull = plugin.PluginInstance().plugin().InputAudioPortIndices()[channel];
+                    if(inputPortindexOrNull)
+                    {
+                        float *destbuffer = dynamic_cast<lilvutils::TConnection<lilvutils::TAudioPort>*>(plugin.PluginInstance().Connections().at(*inputPortindexOrNull).get())->Buffer();
+                        if(destbuffer)
+                        {
+                            // for(size_t i = 0; i < nframes; ++i)
+                            // {
+                            //     destbuffer[i] = i&8? 0.5f : -0.5f;
+                            // }
+                            if(vocoderbuf)
+                            {
+                                for(size_t i = 0; i < nframes; i++)
+                                {
+                                    destbuffer[i] = vocoderbuf[i];
+                                }
+                            }
+                            else
+                            {
+                                std::fill(destbuffer, destbuffer + nframes, 0.0f);
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
     void Processor::RunReverbInstance(jack_nframes_t nframes)

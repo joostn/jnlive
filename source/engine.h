@@ -353,6 +353,7 @@ namespace engine
 //        std::unique_ptr<OptionalUI> m_UiForReverb;
         realtimethread::Data m_CurrentRtData;
         std::vector<std::unique_ptr<jackutils::Port>> m_AudioOutPorts;
+        std::unique_ptr<jackutils::Port> m_VocoderInPort;
         project::TJackConnections m_JackConnections;
         std::optional<std::chrono::steady_clock::time_point> m_LastApplyJackConnectionTime;
         utils::NotifySource m_OnDataChanged;

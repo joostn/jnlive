@@ -128,7 +128,7 @@ namespace project
             std::string m_Label;
         };
     public:
-        TInstrument(std::string &&lv2Uri, bool shared, std::string &&name, std::vector<TParameter> &&parameters) : m_Lv2Uri(std::move(lv2Uri)), m_Shared(shared), m_Name(std::move(name))
+        TInstrument(std::string &&lv2Uri, bool shared, std::string &&name, std::vector<TParameter> &&parameters, bool hasVocoderInput) : m_Lv2Uri(std::move(lv2Uri)), m_Shared(shared), m_Name(std::move(name)), m_HasVocoderInput(hasVocoderInput)
         {
         }
         const std::string& Lv2Uri() const
@@ -153,7 +153,11 @@ namespace project
         }
         auto Tuple() const
         {
-            return std::tie(m_Lv2Uri, m_Name, m_Shared, m_Parameters);
+            return std::tie(m_Lv2Uri, m_Name, m_Shared, m_Parameters, m_HasVocoderInput);
+        }
+        bool HasVocoderInput() const
+        {
+            return m_HasVocoderInput;
         }
         bool operator==(const TInstrument &other) const
         {
@@ -165,6 +169,7 @@ namespace project
         std::string m_Name;
         bool m_Shared = false;  // for hammond organ, etc: 2 keyboards per instrument
         std::vector<TParameter> m_Parameters;
+        bool m_HasVocoderInput = false;
     };
     class TPart  // one for each keyboard
     {
@@ -396,15 +401,17 @@ namespace project
     {
     public:
         TJackConnections() {}
-        TJackConnections(std::array<std::vector<std::string>, 2> &&audioOutputs, std::vector<std::vector<std::string>> &&midiInputs, std::vector<std::pair<std::string, std::vector<std::string>>> &&controllermidiports) : m_AudioOutputs(std::move(audioOutputs)), m_MidiInputs(std::move(midiInputs)), m_ControllerMidiPorts(std::move(controllermidiports)) {}
+        TJackConnections(std::array<std::vector<std::string>, 2> &&audioOutputs, std::vector<std::vector<std::string>> &&midiInputs, std::vector<std::pair<std::string, std::vector<std::string>>> &&controllermidiports, std::vector<std::string> &&vocoderInput) : m_AudioOutputs(std::move(audioOutputs)), m_MidiInputs(std::move(midiInputs)), m_ControllerMidiPorts(std::move(controllermidiports)), m_VocoderInput(std::move(vocoderInput)) {}
         const std::array<std::vector<std::string>, 2>& AudioOutputs() const { return m_AudioOutputs; }
         const std::vector<std::vector<std::string>>& MidiInputs() const { return m_MidiInputs; }
         const std::vector<std::pair<std::string /* id */, std::vector<std::string> /* jackname */>>& ControllerMidiPorts() const { return m_ControllerMidiPorts; }
+        const std::vector<std::string>& VocoderInput() const { return m_VocoderInput; }
 
     private:
         std::array<std::vector<std::string>, 2> m_AudioOutputs;
         std::vector<std::vector<std::string>> m_MidiInputs;
         std::vector<std::pair<std::string /* id */, std::vector<std::string> /* jacknames */>> m_ControllerMidiPorts; 
+        std::vector<std::string> m_VocoderInput;
     };
 
     Json::Value ToJson(const TReverb &reverb);

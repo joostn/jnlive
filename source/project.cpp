@@ -38,6 +38,7 @@ namespace project
         {
             result["parameters"].append(ToJson(parameter));
         }
+        result["hasvocoder"] = instrument.HasVocoderInput();
         return result;
     }
     TInstrument InstrumentFromJson(const Json::Value &v)
@@ -47,7 +48,7 @@ namespace project
         {
             parameters.push_back(InstrumentParameterFromJson(parameter));
         }
-        return TInstrument(v["lv2uri"].asString(), v["shared"].asBool(), v["name"].asString(), std::move(parameters));
+        return TInstrument(v["lv2uri"].asString(), v["shared"].asBool(), v["name"].asString(), std::move(parameters), v["hasvocoder"].asBool());
     }
     Json::Value ToJson(const TPart &part)
     {
@@ -231,6 +232,10 @@ namespace project
                 result["controllermidiports"][result["controllermidiports"].size() - 1]["device"].append(portname);
             }
         }
+        for(const auto &portname: jackConnections.VocoderInput())
+        {
+            result["vocoderinput"].append(portname);
+        }
         return result;
     }
     TJackConnections JackConnectionsFromJson(const Json::Value &v)
@@ -268,7 +273,12 @@ namespace project
             }
             controllermidiports.emplace_back(portid, std::move(portnames));
         }
-        return TJackConnections(std::move(audioOutputs), std::move(midiInputs), std::move(controllermidiports));
+        std::vector<std::string> vocoderInput;
+        for(const auto &portname: v["vocoderinput"])
+        {
+            vocoderInput.push_back(portname.asString());
+        }
+        return TJackConnections(std::move(audioOutputs), std::move(midiInputs), std::move(controllermidiports), std::move(vocoderInput));
     }
 
     TJackConnections JackConnectionsFromFile(const std::string &filename)
