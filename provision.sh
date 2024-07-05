@@ -66,3 +66,5 @@ if [[ ! -d ~/.config/jnlive-data ]]; then
     mkdir -p ~/.config
     git clone git@github.com:joostn/jnlive-data.git ~/.config/jnlive-data
 fi
+
+mkdir -p '~/Documents/Surge XT'
