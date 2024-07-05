@@ -68,3 +68,13 @@ if [[ ! -d ~/.config/jnlive-data ]]; then
 fi
 
 mkdir -p '~/Documents/Surge XT'
+
+mkdir -p ~/.local/share/applications/
+cat << EOF > ~/.local/share/applications/jnlive.desktop
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=JN Live
+Exec=XDG_BACKEND=x11 /home/$USER/jnlive/app/build/jnlive
+Terminal=true
+EOF
