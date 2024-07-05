@@ -78,3 +78,6 @@ Name=JN Live
 Exec=XDG_BACKEND=x11 /home/$USER/jnlive/app/build/jnlive
 Terminal=true
 EOF
+
+git config --global user.name "Joost Nieuwenhuijse"
+git config --global user.email "joost@newhouse.nl"
