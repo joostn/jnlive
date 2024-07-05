@@ -25,8 +25,8 @@ mkdir -p ~/.config/environment.d/
 echo 'SSH_AUTH_SOCK=$XDG_RUNTIME_DIR/gcr/ssh' > ~/.config/environment.d/joost_sshagent.conf
 systemctl --user enable --now gcr-ssh-agent.socket
 
-sudo echo "deny = 30" > /etc/security/faillock.conf
-sudo echo "Defaults timestamp_timeout=1440" > /etc/sudoers.d/timeout
+echo "deny = 30" | sudo tee /etc/security/faillock.conf > /dev/null
+echo "Defaults timestamp_timeout=1440" | sudo tee /etc/sudoers.d/timeout > /dev/null
 
 if [[ ! -d '/usr/local/lib/lv2/Surge XT.lv2' ]]; then
     cd /tmp
