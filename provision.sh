@@ -67,7 +67,7 @@ if [[ ! -d ~/.config/jnlive-data ]]; then
     git clone git@github.com:joostn/jnlive-data.git ~/.config/jnlive-data
 fi
 
-mkdir -p '~/Documents/Surge XT'
+mkdir -p "/home/$USER/Documents/Surge XT"
 
 mkdir -p ~/.local/share/applications/
 cat << EOF > ~/.local/share/applications/jnlive.desktop
@@ -75,9 +75,12 @@ cat << EOF > ~/.local/share/applications/jnlive.desktop
 Type=Application
 Version=1.0
 Name=JN Live
-Exec=XDG_BACKEND=x11 /home/$USER/jnlive/app/build/jnlive
+Exec=env GDK_BACKEND=x11 FLTK_SCALING_FACTOR=2.0 "/home/$USER/jnlive/app/build/jnlive" %F
 Terminal=true
 EOF
 
 git config --global user.name "Joost Nieuwenhuijse"
 git config --global user.email "joost@newhouse.nl"
+git config --global pull.rebase true
+
+gsettings set org.gnome.mutter experimental-features "['scale-monitor-framebuffer']"
