@@ -6,7 +6,7 @@ set -x
 # get dir containing this script:
 SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
-sudo pacman --noconfirm -S python3 git nano rsync cmake base-devel curl gnome-tweaks inetutils arch-install-scripts pipewire-alsa pipewire-jack pipewire-pulse pavucontrol bluez bluez-utils wireplumber helvum libtool autoconf ardour pro-audio lsp-plugins-lv2 ninja
+sudo pacman --noconfirm --needed -S python3 git nano rsync cmake base-devel curl gnome-tweaks inetutils arch-install-scripts pipewire-alsa pipewire-jack pipewire-pulse pavucontrol bluez bluez-utils wireplumber helvum libtool autoconf ardour pro-audio lsp-plugins-lv2 ninja
 
 if [[ ! -f /usr/bin/yay ]]; then
     cd /tmp
@@ -19,7 +19,7 @@ if [[ ! -f /usr/bin/yay ]]; then
     fi
 fi;
 
-yay -S --noconfirm  visual-studio-code-bin
+yay -S --noconfirm --needed  visual-studio-code-bin
 
 mkdir -p ~/.config/environment.d/
 echo 'SSH_AUTH_SOCK=$XDG_RUNTIME_DIR/gcr/ssh' > ~/.config/environment.d/joost_sshagent.conf
