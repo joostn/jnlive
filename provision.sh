@@ -43,7 +43,7 @@ if [[ ! -d '/usr/local/lib/lv2/Surge XT.lv2' ]]; then
 fi
 
 if [[ ! -d '/usr/lib/lv2/Fluida.lv2/' ]]; then
-    cd tmp
+    cd /tmp
     git clone https://github.com/brummer10/Fluida.lv2.git
     cd Fluida.lv2
     git submodule init
