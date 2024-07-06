@@ -84,3 +84,8 @@ git config --global user.email "joost@newhouse.nl"
 git config --global pull.rebase true
 
 gsettings set org.gnome.mutter experimental-features "['scale-monitor-framebuffer']"
+
+if [[ ! -d ~/sfz ]]; then
+    cd ~
+    git clone fileserver@fileserver.lan.newhouse.nl:/fileserver/files/nobackup/jnlive/sfz
+fi
