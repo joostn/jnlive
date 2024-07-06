@@ -8,6 +8,8 @@ SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
 sudo pacman --noconfirm --needed -S python3 git nano rsync cmake base-devel curl gnome-tweaks inetutils arch-install-scripts pipewire-alsa pipewire-jack pipewire-pulse pavucontrol bluez bluez-utils wireplumber helvum libtool autoconf ardour pro-audio lsp-plugins-lv2 ninja p7zip
 
+sudo systemctl enable --now bluetooth
+
 if [[ ! -f /usr/bin/yay ]]; then
     cd /tmp
     git clone https://aur.archlinux.org/yay.git
