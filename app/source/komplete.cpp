@@ -2,6 +2,8 @@
 #include <hidapi.h>
 #include <libusb.h>
 #include <stdexcept>
+#include <span>
+#include <bit>
 
 namespace komplete
 {

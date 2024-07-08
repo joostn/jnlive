@@ -110,9 +110,10 @@ namespace schedule
         m_WorkerInterface = iface;
         if(m_WorkerInterface)
         {
-            m_WorkerThread = std::thread([this](){
+            auto func = [this]() mutable {
                 WorkerThreadFunc();
-            });
+            };
+            m_WorkerThread = std::thread(std::move(func));
         }
     }
 

@@ -5,6 +5,7 @@
 #include <span>
 #include <iostream>
 #include <vector>
+#include <optional>
 
 namespace midi
 {

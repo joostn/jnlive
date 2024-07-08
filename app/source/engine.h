@@ -294,7 +294,6 @@ namespace engine
         void SetData(TData &&data);
         void UpdateHammondPlugins(const project::THammondData &olddata, bool forceNow);
         void ProcessMessages();
-        void SetJackConnections(project::TJackConnections &&con);
         void ApplyJackConnections(bool forceNow);
         utils::NotifySource& OnDataChanged() { return m_OnDataChanged; }
         const std::string& ProjectDir() const { return m_ProjectDir; }
@@ -339,6 +338,7 @@ namespace engine
         void LoadFirstHammondPreset();
         void CleanupPresetLoaders();
         void StartLoading();
+        void LoadJackConnections();
 
     private:
         jackutils::Client m_JackClient;

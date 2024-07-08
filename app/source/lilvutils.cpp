@@ -340,9 +340,16 @@ namespace lilvutils
     }
     TPluginList World::BuildPluginList(const LilvWorld* world)
     {
-        const LilvPluginClasses *lilvpluginclasses = lilv_world_get_plugin_classes(world); // Returned list is owned by world and must not be freed by the caller
+        //const LilvPluginClasses *lilvpluginclasses = lilv_world_get_plugin_classes(world); // Returned list is owned by world and must not be freed by the caller
         std::map<const LilvPluginClass*, size_t> class2Index;
         std::vector<TPluginList::TClass> classes;
+        auto addpluginclass = [&](const LilvPluginClass *lilvpluginclass){
+            std::string uri = lilv_node_as_uri(lilv_plugin_class_get_uri(lilvpluginclass));
+            std::string label = lilv_node_as_string(lilv_plugin_class_get_label(lilvpluginclass));
+            class2Index.emplace(lilvpluginclass, classes.size());
+            classes.emplace_back(std::move(uri), std::move(label));
+        };
+/*
         LILV_FOREACH(plugin_classes, i, lilvpluginclasses)
         {
             auto lilvpluginclass = lilv_plugin_classes_get(lilvpluginclasses, i);
@@ -350,10 +357,12 @@ namespace lilvutils
             {
                 std::string uri = lilv_node_as_uri(lilv_plugin_class_get_uri(lilvpluginclass));
                 std::string label = lilv_node_as_string(lilv_plugin_class_get_label(lilvpluginclass));
-                class2Index[lilvpluginclass] = classes.size();
+                class2Index.emplace(lilvpluginclass, classes.size());
                 classes.emplace_back(std::move(uri), std::move(label));
             }
         }
+    
+    */
         auto lilvplugis = lilv_world_get_all_plugins(world); // Returned list is owned by world and must not be freed by the caller
         std::vector<TPluginList::TPlugin> plugins;
         LILV_FOREACH(plugins, i, lilvplugis)
@@ -362,7 +371,12 @@ namespace lilvutils
             if(plugin)
             {
                 auto lilvpluginclass = lilv_plugin_get_class(plugin);
-                auto classindex = class2Index[lilvpluginclass];
+                auto it = class2Index.find(lilvpluginclass);
+                if(it == class2Index.end())
+                {
+                    addpluginclass(lilvpluginclass);
+                }
+                auto classindex = class2Index.at(lilvpluginclass);
                 std::string uri = lilv_node_as_uri(lilv_plugin_get_uri(plugin));
                 std::string label = lilv_node_as_string(lilv_plugin_get_name(plugin));
                 plugins.emplace_back(std::move(label), std::move(uri), classindex);
@@ -403,7 +417,7 @@ namespace lilvutils
         for(size_t portindex = 0; portindex < m_Ports.size(); portindex++)
         {
             const auto& port = m_Ports[portindex];
-            m_PortsBySymbol[port->Symbol()] = port.get();
+            m_PortsBySymbol.emplace(port->Symbol(), port.get());
             if(auto audioport = dynamic_cast<const TAudioPort*>(port.get()); audioport)
             {
                 auto &portindices = (audioport->Direction() == TAudioPort::TDirection::Output)? m_AudioOutputIndex:m_AudioInputIndex;

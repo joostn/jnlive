@@ -16,6 +16,7 @@ class Application : public Gtk::Application
 {
 public:
     static constexpr uint32_t cMaxBlockSize = 4096;
+    ~Application() noexcept override = default;
     Application(int argc, char** argv) : m_Engine(cMaxBlockSize, argc, argv, GetProjectDir(), m_MainEventLoop), Gtk::Application("nl.newhouse.jnlive")
     {
         // auto mainwindow = std::make_unique<simplegui::PlainWindow>(nullptr, Gdk::Rectangle(20, 10, 200, 150), simplegui::Rgba(1, 0, 0));
@@ -24,7 +25,6 @@ public:
         // m_KompleteGui.SetWindow(std::move(mainwindow));
     }
     void on_activate() override {
-        InitEngine();
         auto window = guiCreateApplicationWindow(m_Engine);
         add_window(*window);
         window->show_all();
@@ -48,28 +48,7 @@ public:
         std::string projectdir = homedir + "/.config/jnlive-data";
         return projectdir;
     }
-    void InitEngine()
-    {
-        {
-            std::string jackconnectionfile = m_Engine.ProjectDir() + "/jackconnection.json";
-            if(!std::filesystem::exists(jackconnectionfile))
-            {
-                std::array<std::vector<std::string>, 2> m_AudioOutputs {
-                    std::vector<std::string>{"Family 17h/19h HD Audio Controller Analog Stereo:playback_FL"s},
-                    std::vector<std::string>{"Family 17h/19h HD Audio Controller Analog Stereo:playback_FR"s},
-                };
-                std::vector<std::vector<std::string>> midiInputs {};
-                std::vector<std::pair<std::string, std::vector<std::string>>> controllermidiports;
-                std::vector<std::string> vocoderinput;
-                project::TJackConnections jackconn(std::move(m_AudioOutputs), std::move(midiInputs), std::move(controllermidiports), std::move(vocoderinput));
-                JackConnectionsToFile(jackconn, jackconnectionfile);
-            }
-            {
-                auto jackconn = project::JackConnectionsFromFile(jackconnectionfile);
-                m_Engine.SetJackConnections(std::move(jackconn));
-            }
-        }        
-    }
+
 private:
     utils::TGtkAppEventLoop m_MainEventLoop;
     engine::Engine m_Engine;

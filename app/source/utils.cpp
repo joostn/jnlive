@@ -34,7 +34,7 @@ namespace utils
     {
     }
 
-    TEventLoop::~TEventLoop()
+    TEventLoop::~TEventLoop()  noexcept(false)
     {
         if(m_NumActions != 0)
         {
@@ -148,7 +148,7 @@ namespace utils
         if(!m_Thread.joinable())
         {
             m_RequestTerminate = false;
-            m_Thread = std::thread([this](){
+            auto func = [this](){
                 m_OwningThreadId = std::this_thread::get_id();
                 while(true)
                 {
@@ -174,7 +174,8 @@ namespace utils
                         Call(action);
                     }
                 }
-            });
+            };
+            m_Thread = std::thread(func);
         }
     }
 
@@ -233,6 +234,7 @@ namespace utils
             }
         }
         return std::regex(regexPattern, std::regex_constants::basic);
+        //return std::regex();
     }
  
 }

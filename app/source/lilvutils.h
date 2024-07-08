@@ -105,7 +105,8 @@ namespace lilvutils
             else
             {
                 auto index = m_UriMapReverse.size() + 1;
-                m_UriMap[str] = index;
+                // m_UriMap[str] = index;
+                m_UriMap.emplace(str, index);
                 m_UriMapReverse.push_back(str);
                 if(index > std::numeric_limits<LV2_URID>::max())
                 {

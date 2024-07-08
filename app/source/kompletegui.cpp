@@ -11,14 +11,24 @@ namespace komplete
     constexpr double sMinSliderValue = -60;
     constexpr double sMaxSliderValue = 10;
     constexpr double sSliderPow = 0.6;
-    double multiplierToSliderValue(double multiplier)
+
+    double dbToSliderValue(double db)
     {
-        if(multiplier <= 0.0) return 0.0;
-        auto db = 20 * log10(multiplier);
         auto slidervalue = (db - sMinSliderValue) / (sMaxSliderValue - sMinSliderValue);
         slidervalue = std::clamp(slidervalue, 0.0, 1.0);
         slidervalue = std::pow(slidervalue, sSliderPow);
         return slidervalue;
+    }
+
+    double multiplierToDb(double multiplier)
+    {
+        if(multiplier <= 0.0) return - std::numeric_limits<double>::infinity();
+        return 20 * log10(multiplier);
+    }
+
+    double multiplierToSliderValue(double multiplier)
+    {
+        return dbToSliderValue(multiplierToDb(multiplier));
     }
 
     double sliderValueToMultiplier(double slidervalue)
@@ -53,18 +63,8 @@ namespace komplete
         return (partindex == 0)? simplegui::Rgba(1, 0.3, 0.3): simplegui::Rgba(0.3, 1, 0.3);
     }
 
-    std::string multiplierToText(double v)
+    std::string dbToText(double db)
     {
-        double db;
-        if(v <= 0.0)
-        {
-            db = sMinSliderValue;
-        }
-        else
-        {
-            db = 20 * log10(v);
-            db = std::max(db, sMinSliderValue);
-        }
         if(db <= sMinSliderValue) return "-inf";
         int dbRounded = (int)std::lround(db);
         if(dbRounded > 0)
@@ -72,6 +72,11 @@ namespace komplete
             return "+" + std::to_string(dbRounded);
         }
         return std::to_string(dbRounded);
+    }
+
+    std::string multiplierToText(double v)
+    {
+        return dbToText(multiplierToDb(v));
     }
 
     class TDrawbarKnob : public simplegui::Window
@@ -82,6 +87,7 @@ namespace komplete
         }
         void DoPaint(Cairo::Context &cr) const override
         {
+            simplegui::Window::DoPaint(cr);
             // draw a rounded rectangle:
             cr.set_source_rgba(m_Color.Red(), m_Color.Green(), m_Color.Blue(), m_Color.Alpha());
             auto rect = Rectangle();
@@ -108,6 +114,17 @@ namespace komplete
             cr.close_path();
             cr.stroke();
         }
+
+    protected:
+        virtual bool DoGetEquals(const Window *other) const override
+        {
+            auto otherOurs = dynamic_cast<const decltype(this)>(other);
+            if (!otherOurs) return false;
+            if(!Window::DoGetEquals(other)) return false;
+            if(m_Color != otherOurs->m_Color) return false;
+            return true;
+        }
+
     private:
         simplegui::Rgba m_Color;
     };
@@ -135,9 +152,14 @@ namespace komplete
             AddChild<TDrawbarKnob>(Gdk::Rectangle(0, buttontop, rect.get_width(), buttonheight), color);
         }
 
-    private:
-        int m_ButtonHeight;
-
+    protected:
+        virtual bool DoGetEquals(const Window *other) const override
+        {
+            auto otherOurs = dynamic_cast<const decltype(this)>(other);
+            if (!otherOurs) return false;
+            if(!Window::DoGetEquals(other)) return false;
+            return true;
+        }
     };
 
     std::optional<size_t> TGuiState::GetSelectedPresetIndex() const
@@ -259,7 +281,7 @@ namespace komplete
         }
     }
 
-    Gui::Gui(std::pair<int, int> vidPid, engine::Engine &engine) : m_Engine(engine), m_Hid(vidPid, [this](Hid::TButtonIndex button, int delta) { OnButton(button, delta); }), m_OnProjectChanged {m_Engine.OnDataChanged(), [this](){OnDataChanged();}}
+    Gui::Gui(std::pair<int, int> vidPid, engine::Engine &engine) : m_Engine(engine), m_Hid(vidPid, [this](Hid::TButtonIndex button, int delta) { OnButton(button, delta); }), m_OnProjectChanged {m_Engine.OnDataChanged(), [this](){OnDataChanged();}}, m_OnOutputLevelUpdate(m_Engine.RtProcessor().OnOutputLevelChange(), [this](){OnOutputLevelChanged();})
     {
         m_GuiThread = std::thread([vidPid, this]() {
             RunGuiThread(vidPid);
@@ -571,13 +593,42 @@ namespace komplete
         m_GuiThread.join();
     }
 
+    void Gui::OnOutputLevelChanged()
+    {
+        auto newoutputlevel = m_Engine.RtProcessor().OutputPeakLevelDb();
+        auto newguistate = GuiState();
+        if(newguistate.m_OutputLevel != newoutputlevel)
+        {
+            newguistate.m_OutputLevel = newoutputlevel;
+            SetGuiState(std::move(newguistate));
+        }
+    }
+
     void Gui::Run()
     {
         // called periodically
         m_Hid.Run();
+        auto now = std::chrono::steady_clock::now();
+        constexpr auto peaklevelrefreshtime = std::chrono::milliseconds(500);
+        auto newguistate = GuiState();
+        bool guistatechanged = false;
+        if(now >= m_LastPeakLevelUpdate + peaklevelrefreshtime)
+        {
+            m_LastPeakLevelUpdate = now;
+            auto peaklevel = m_Engine.RtProcessor().OutputPeakLevelDb();
+            if(GuiState().m_OutputPeakLevel != peaklevel)
+            {
+                auto newguistate = GuiState();
+                newguistate.m_OutputPeakLevel = peaklevel;
+                guistatechanged = true;
+            }
+        }
+        if(guistatechanged)
+        {
+            SetGuiState(std::move(newguistate));
+        }
         if(m_NextScheduledLcdRefresh)
         {
-            auto now = std::chrono::steady_clock::now();
             if(now >= *m_NextScheduledLcdRefresh)
             {
                 m_NextScheduledLcdRefresh = std::nullopt;
@@ -603,8 +654,12 @@ namespace komplete
             if(window)
             {
                 auto starttime = std::chrono::steady_clock::now();
+                auto dirtyregion_ptr = Cairo::Region::create();
+                auto &dirtyregion = *(dirtyregion_ptr.operator->());
+                
+                window->GetUpdateRegion(m_PrevWindow.get(), dirtyregion, 0, 0);
                 // todo: find dirty regions
-                PaintWindow(display, *window);
+                PaintWindow(display, *window, dirtyregion);
                 m_PrevWindow = std::move(window);
                 display.SendPixels(0, 0, Display::sWidth, Display::sHeight);
                 auto endtime = std::chrono::steady_clock::now();
@@ -622,7 +677,7 @@ namespace komplete
         m_NewWindow = std::move(window);
     }
 
-    void Gui::PaintWindow(Display &display, const simplegui::Window &window)
+    void Gui::PaintWindow(Display &display, const simplegui::Window &window, Cairo::Region &dirtyregion)
     {
         uint16_t* pixelbuf = display.DisplayBuffer(0, 0);
         auto surface = Cairo::ImageSurface::create((unsigned char*)pixelbuf, Cairo::Format::FORMAT_RGB16_565, Display::sWidth, Display::sHeight, Display::sDisplayBufferStride);
@@ -632,6 +687,18 @@ namespace komplete
         cr->paint();
         Cairo::Context *context = cr.operator->();
         window.Paint(*context);
+        // draw dirty regions:
+        auto randomcolor = simplegui::Rgba((double)rand() / RAND_MAX, (double)rand() / RAND_MAX, (double)rand() / RAND_MAX);
+        for(size_t i = 0; i < dirtyregion.get_num_rectangles(); i++)
+        {
+            auto rect = dirtyregion.get_rectangle(i);
+            cr->set_source_rgba(randomcolor.Red(), randomcolor.Green(), randomcolor.Blue(), randomcolor.Alpha());
+            // draw outline with single pixel pen:
+            cr->set_line_width(1.0);
+            cr->rectangle(rect.x, rect.y, rect.width, rect.height);
+            cr->stroke();                    
+        }
+
     }
     void Gui::OnDataChanged()
     {
@@ -667,6 +734,17 @@ namespace komplete
 
         presetnamebox->AddChild<simplegui::TextWindow>(Gdk::Rectangle(1, 1 + lineheight + sLineSpacing, presetnamebox->Width() - 2, lineheight), presetname, simplegui::Rgba(1, 1, 1), sFontSize, simplegui::TextWindow::THalign::Left);
 */
+        {
+            // output level:
+            int levelmetertop = 80;
+            int levelmeterheight = 20;
+            int levelmeterleft = 0;
+            int levelmeterwidth = 200;
+
+            auto text = dbToText(GuiState().m_OutputPeakLevel);
+            auto slidervalue = dbToSliderValue(GuiState().m_OutputLevel);
+            window.AddChild<simplegui::TSlider>(Gdk::Rectangle(levelmeterleft, levelmetertop, levelmeterwidth, levelmeterheight), text, slidervalue, simplegui::Rgba(0.8, 0.8, 0.8));
+        }
         {
             // Pager:
             int pagertop = 50;

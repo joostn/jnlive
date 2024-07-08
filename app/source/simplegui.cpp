@@ -2,6 +2,111 @@
 
 namespace simplegui
 {
+    Cairo::RectangleInt gdkRect2CairoRect(const Gdk::Rectangle &rect)
+    {
+        return Cairo::RectangleInt(rect.get_x(), rect.get_y(), rect.get_width(), rect.get_height());
+    }
+
+    void Window::GetUpdateRegion(const Window *other, Cairo::Region &region, int x_offset, int y_offset) const
+    {
+        if( (!other) || (!Equals(other)) )
+        {
+            {
+                Cairo::RectangleInt rect {
+                    .x = x_offset + Rectangle().get_x(),
+                    .y = y_offset + Rectangle().get_y(),
+                    .width = Rectangle().get_width(),
+                    .height = Rectangle().get_height()
+                };
+                region.do_union(rect);
+            }
+            if(other)
+            {
+                Cairo::RectangleInt otherrect {
+                    .x = x_offset + other->Rectangle().get_x(),
+                    .y = y_offset + other->Rectangle().get_y(),
+                    .width = other->Rectangle().get_width(),
+                    .height = other->Rectangle().get_height()
+                };
+                region.do_union(otherrect);
+            }
+        }
+        else
+        {
+            int child_x_offset = x_offset + Rectangle().get_x();
+            int child_y_offset = y_offset + Rectangle().get_y();
+            std::vector<Window*> ourchildren;
+            std::vector<Window*> otherchildren;
+            for(auto &child : Children())
+            {
+                ourchildren.push_back(child.get());
+            }
+            for(auto &child : other->Children())
+            {
+                otherchildren.push_back(child.get());
+            }
+            // clear identical children:
+            auto ourit = ourchildren.begin();
+            auto otherit = otherchildren.begin();
+        again1:
+            if(ourit != ourchildren.end() && otherit != otherchildren.end())
+            {
+                if((*ourit)->Equals(*otherit))
+                {
+                foundmatch:
+                    // add the child's update region:
+                    (*ourit)->GetUpdateRegion(*otherit, region, child_x_offset, child_y_offset);
+                    *ourit = nullptr;  // exclude the pair from further checks
+                    *otherit = nullptr;
+                    ourit++;
+                    otherit++;
+                    goto again1;
+                }
+                else
+                {
+                    // try to match ourit with otherit+n:
+                    (*ourit)->Equals(*otherit);
+                    auto otherit2 = otherit;
+                    otherit2++;
+                    while(otherit2 != otherchildren.end())
+                    {
+                        if((*ourit)->Equals(*otherit2))
+                        {
+                            // so a new child was inserted. Skip it for now
+                            otherit = otherit2;
+                            goto foundmatch;
+                        }
+                        otherit2++;
+                    }
+                    auto ourit2 = ourit;
+                    ourit2++;
+                    while(ourit2 != ourchildren.end())
+                    {
+                        if((*ourit2)->Equals(*otherit))
+                        {
+                            // a child was deleted. Skip it for now:
+                            ourit = ourit2;
+                            goto foundmatch;
+                        }
+                        ourit2++;
+                    }
+                    // no further matches found.
+                }
+            }
+            // add all new and deleted windows entirely to the update region:
+            for(const auto &vec: {ourchildren, otherchildren})
+            {
+                for(const auto &win: vec)
+                {
+                    if(win)
+                    {
+                        win->GetUpdateRegion(nullptr, region, child_x_offset, child_y_offset);
+                    }
+
+                }
+            }
+        }
+    }
 
     void Window::Paint(Cairo::Context &cr) const
     {
@@ -23,6 +128,7 @@ namespace simplegui
 
     void PlainWindow::DoPaint(Cairo::Context &cr) const
     {
+        Window::DoPaint(cr);
         cr.set_source_rgba(m_Color.Red(), m_Color.Green(), m_Color.Blue(), m_Color.Alpha());
         // fill entire context:
         cr.paint();
@@ -30,6 +136,7 @@ namespace simplegui
     
     void TextWindow::DoPaint(Cairo::Context &cr) const
     {
+        Window::DoPaint(cr);
         cr.set_source_rgba(m_Color.Red(), m_Color.Green(), m_Color.Blue(), m_Color.Alpha());
         cr.select_font_face("Sans", Cairo::FONT_SLANT_NORMAL, Cairo::FONT_WEIGHT_BOLD);
         cr.set_font_size(m_FontSize);
@@ -115,6 +222,7 @@ namespace simplegui
 
     void TTriangle::DoPaint(Cairo::Context &cr) const
     {
+        Window::DoPaint(cr);
         cr.set_source_rgba(m_Color.Red(), m_Color.Green(), m_Color.Blue(), m_Color.Alpha());
         int width = Rectangle().get_width();
         int height = Rectangle().get_height();

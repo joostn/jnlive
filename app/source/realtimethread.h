@@ -105,7 +105,7 @@ namespace realtimethread
     public:
         Data() = default;
         Data(const std::vector<Plugin>& plugins, const std::vector<TMidiKeyboardPort>& midiPorts, const std::vector<TMidiAuxInPort> &midiAuxInPorts, const std::vector<TMidiAuxOutPort> &midiAuxOutPorts, const std::array<jack_port_t*, 2>& outputAudioPorts, lilvutils::Instance *reverbInstance,
-        float reverbLevel, jack_port_t* vocoderInPort) : m_Plugins(plugins), m_MidiPorts(midiPorts), m_OutputAudioPorts(outputAudioPorts), m_MidiAuxInPorts(midiAuxInPorts), m_MidiAuxOutPorts(midiAuxOutPorts), m_ReverbInstance(reverbInstance), m_ReverbLevel(reverbLevel), m_VocoderInPort(vocoderInPort) {}
+        float reverbLevel, jack_port_t* vocoderInPort, float levelMeterTimeConstant) : m_Plugins(plugins), m_MidiPorts(midiPorts), m_OutputAudioPorts(outputAudioPorts), m_MidiAuxInPorts(midiAuxInPorts), m_MidiAuxOutPorts(midiAuxOutPorts), m_ReverbInstance(reverbInstance), m_ReverbLevel(reverbLevel), m_VocoderInPort(vocoderInPort), m_LevelMeterTimeConstant(levelMeterTimeConstant) {}
         const std::vector<Plugin>& Plugins() const { return m_Plugins; }
         const std::vector<TMidiKeyboardPort>& MidiPorts() const { return m_MidiPorts; }
         const std::array<jack_port_t*, 2>& OutputAudioPorts() const { return m_OutputAudioPorts; }
@@ -115,6 +115,7 @@ namespace realtimethread
         lilvutils::Instance *ReverbInstance() const { return m_ReverbInstance; }
         float ReverbLevel() const { return m_ReverbLevel; }
         jack_port_t* VocoderInPort() const { return m_VocoderInPort; }
+        float LevelMeterTimeConstant() const {return m_LevelMeterTimeConstant;}
         
     private:
         std::vector<Plugin> m_Plugins;
@@ -125,6 +126,7 @@ namespace realtimethread
         jack_port_t* m_VocoderInPort = nullptr;
         lilvutils::Instance *m_ReverbInstance = nullptr;
         float m_ReverbLevel = 0.0f;
+        float m_LevelMeterTimeConstant = 0.5f;
     };
     class SetDataMessage : public ringbuf::PacketBase
     {
@@ -134,6 +136,15 @@ namespace realtimethread
     private:
         const Data *m_Data;
     };
+    class OutputLevelUpdateMessage : public ringbuf::PacketBase
+    {
+    public:
+        OutputLevelUpdateMessage(float amplitudeSquared) : m_AmplitudeSquared(amplitudeSquared) {}
+        float AmplitudeSquared() const { return m_AmplitudeSquared; }
+    private:
+        float m_AmplitudeSquared;
+    };
+    
     class ControlPortChangedMessage : public ringbuf::PacketBase
     {
     public:
@@ -260,6 +271,9 @@ namespace realtimethread
         const lilvutils::RealtimeThreadInterface& realtimeThreadInterface() const { return m_RealtimeThreadInterface; }
         void SendMidiFromMainThread(const void *data, size_t size, jack_port_t *port);
         void SendMidiToPluginFromMainThread(const void *data, size_t size, LV2_Evbuf_Iterator* destinationPort);
+        utils::NotifySource& OnOutputLevelChange() { return m_OnOutputLevelChange; }
+        float OutputLevelDb() const { return m_OutputLevelDb; }
+        float OutputPeakLevelDb() const { return m_OutputPeakLevelDb; }
         
     private:
         void ProcessMessagesInRealtimeThread(jack_nframes_t nframes);
@@ -274,6 +288,8 @@ namespace realtimethread
         void RunReverbInstance(jack_nframes_t nframes);
         void AddReverb(jack_nframes_t nframes);
         void ClearOutputMidiBuffers(jack_nframes_t nframes);
+        void ProcessOutputLevel(jack_nframes_t nframes);
+        void UpdateOutputLevelDbInMainThread(float v);
 
     private:
         std::unique_ptr<Data> m_CurrentData;
@@ -285,5 +301,13 @@ namespace realtimethread
         std::array<AsyncFunctionMessage, 400> m_BufferForAsyncFunctionMessages;
         size_t m_NumStoredAsyncFunctionMessages = 0;
         lilvutils::RealtimeThreadInterface m_RealtimeThreadInterface;
+        std::array<float, 1> m_LevelMeterOutputBuf = {0.0f};
+        size_t m_LevelMeterOutputSampleCounter = 0;
+        float m_OutputLevelDb = -100.0f;
+          // accessible in main thread
+        float m_OutputPeakLevelDb = -100.0f;
+        utils::NotifySource m_OnOutputLevelChange;
+        std::deque<std::pair<std::chrono::steady_clock::time_point, float>> m_LevelMeterHistory;
+        std::chrono::steady_clock::time_point m_LastPeakUpdate;
     };
 }

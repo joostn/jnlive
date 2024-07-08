@@ -3,6 +3,30 @@
 
 namespace jackutils
 {
+    Port::Port(std::string &&name, Kind kind, Direction direction) : m_Kind(kind), m_Direction(direction), m_Name(name)
+    {
+        auto jackclient = Client::Static().get();
+        auto jackport = jack_port_register(jackclient, m_Name.c_str(), 
+            kind == Kind::Audio ? JACK_DEFAULT_AUDIO_TYPE : JACK_DEFAULT_MIDI_TYPE, 
+            direction == Direction::Input ? JackPortIsInput : JackPortIsOutput, 0);
+        if (!jackport) {
+            throw std::runtime_error("Failed to open JACK port.");
+        }
+        utils::finally fin1([&](){
+            if(jackport)
+            {
+                jack_port_unregister(Client::Static().get(), jackport); 
+            }
+        });
+        m_Port = jackport;
+        jackport = nullptr;
+        std::cout << "Port " << m_Name << " created\n";
+    }
+    Port::~Port()
+    {
+        if(m_Port) jack_port_unregister(Client::Static().get(), m_Port);
+    }
+    
     Client::Client(const std::string &name, std::function<void(jack_nframes_t nframes)> &&processcallback) : m_ProcessCallback(std::move(processcallback))
     {
         if(staticptr())
@@ -23,6 +47,10 @@ namespace jackutils
         jack_set_xrun_callback 	(jackclient, [](void*) -> int {
             std::cout << "XRUN!\n";
             return 0;
+        }, this);
+
+        jack_set_port_registration_callback(jackclient, [] (jack_port_id_t port, int reg, void *arg){
+            std::cout << "port registration: "  << reg << "\n";
         }, this);
 
         // jack_on_shutdown(jackclient, [](void* arg){
@@ -118,6 +146,10 @@ namespace jackutils
             else
             {
                 result = jack_connect(jackclient, jack_port_name(m_Port), portname.c_str());
+            }
+            if(result == 0)
+            {
+                std::cout << "- Connected to " << portname << "\n";
             }
             if( (result == 0) || (result == EEXIST) )
             {

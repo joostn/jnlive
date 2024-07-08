@@ -32,6 +32,8 @@ namespace komplete
 
         bool m_ShowPresetList = false;
         size_t m_QuickPresetPage = 0;
+        float m_OutputLevel = - std::numeric_limits<float>::infinity();
+        float m_OutputPeakLevel = - std::numeric_limits<float>::infinity();
 
         std::pair<int, int> VisiblePartVolumeSliders() const
         {
@@ -83,7 +85,7 @@ namespace komplete
 
     private:
         void SetWindow(std::unique_ptr<simplegui::Window> window);
-        void PaintWindow(Display &display, const simplegui::Window &window);
+        void PaintWindow(Display &display, const simplegui::Window &window, Cairo::Region &dirtyregion);
         void RunGuiThread(std::pair<int, int> vidPid);
         void OnButton(Hid::TButtonIndex button, int delta);
         void OnDataChanged();
@@ -93,6 +95,7 @@ namespace komplete
         void PaintMidiWindow(simplegui::Window &window) const;
         void PaintControllerWindow(simplegui::Window &window) const;
         void PaintHammondControllerWindow(simplegui::Window &window, size_t part) const;
+        void OnOutputLevelChanged();
 
     private:
         Hid m_Hid;
@@ -106,6 +109,7 @@ namespace komplete
         utils::NotifySink m_OnProjectChanged;
         TGuiState m_GuiState1;
         bool m_GuiStateNoRecurse = false;
+        utils::NotifySink m_OnOutputLevelUpdate;
 
         utils::THysteresis m_SelectedPresetHysteresis {10, 20};
         utils::THysteresis m_ProgramChangeHysteresis {10, 20};
@@ -131,7 +135,7 @@ namespace komplete
             utils::THysteresis(0,1)
         };
         std::optional<std::chrono::steady_clock::time_point> m_NextScheduledLcdRefresh;
-
+        std::chrono::steady_clock::time_point m_LastPeakLevelUpdate;
 
     };
 }

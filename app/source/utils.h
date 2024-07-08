@@ -154,7 +154,7 @@ namespace utils
         TEventLoop(TEventLoop&&) = delete;
         TEventLoop& operator=(TEventLoop&&) = delete;
         TEventLoop();
-        virtual ~TEventLoop();
+        virtual ~TEventLoop() noexcept(false);
         void CheckThreadId() const;
         void ProcessPendingMessages();
 

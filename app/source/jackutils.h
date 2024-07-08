@@ -118,28 +118,8 @@ namespace jackutils
         Port& operator=(const Port&) = delete;
         Port(Port&&) = delete;
         Port& operator=(Port&&) = delete;
-        Port(std::string &&name, Kind kind, Direction direction) : m_Kind(kind), m_Direction(direction), m_Name(name)
-        {
-            auto jackclient = Client::Static().get();
-            auto jackport = jack_port_register(jackclient, m_Name.c_str(), 
-                kind == Kind::Audio ? JACK_DEFAULT_AUDIO_TYPE : JACK_DEFAULT_MIDI_TYPE, 
-                direction == Direction::Input ? JackPortIsInput : JackPortIsOutput, 0);
-            if (!jackport) {
-                throw std::runtime_error("Failed to open JACK port.");
-            }
-            utils::finally fin1([&](){
-                if(jackport)
-                {
-                    jack_port_unregister(Client::Static().get(), jackport); 
-                }
-            });
-            m_Port = jackport;
-            jackport = nullptr;
-        }
-        ~Port()
-        {
-            if(m_Port) jack_port_unregister(Client::Static().get(), m_Port);
-        }
+        Port(std::string &&name, Kind kind, Direction direction);
+        ~Port();
         Kind kind() const { return m_Kind; }
         Direction direction() const { return m_Direction; }
         jack_port_t* get()

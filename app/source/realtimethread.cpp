@@ -22,6 +22,7 @@ namespace realtimethread
         ProcessOutgoingAudio(nframes);
         RunReverbInstance(nframes);
         AddReverb(nframes);
+        ProcessOutputLevel(nframes);
         ProcessOutputPorts();
         ResetEvBufs();
         SendPendingAsyncFunctionMessages();
@@ -71,9 +72,42 @@ namespace realtimethread
             {
                 auxMidiInMessage->Call();
             }
+            else if(auto outputLevelUpdateMessage = dynamic_cast<const OutputLevelUpdateMessage*>(message))
+            {
+                UpdateOutputLevelDbInMainThread(outputLevelUpdateMessage->AmplitudeSquared());
+            }
         }
     }    
-
+    void Processor::UpdateOutputLevelDbInMainThread(float ampsquared)
+    {
+        m_OutputLevelDb = 10.0f * std::log10(ampsquared);
+        m_OnOutputLevelChange.Notify();
+        auto now = std::chrono::steady_clock::now();
+        m_LevelMeterHistory.emplace_back(now, m_OutputLevelDb);
+        if(m_OutputLevelDb > m_OutputPeakLevelDb)
+        {
+            m_OutputPeakLevelDb = m_OutputLevelDb;
+        }
+        constexpr auto peakHoldTime = std::chrono::milliseconds(1000);
+        bool recalculate = false;
+        while(!m_LevelMeterHistory.empty() && now - m_LevelMeterHistory.front().first > peakHoldTime)
+        {
+            if(m_LevelMeterHistory.front().second >= m_OutputPeakLevelDb)
+            {
+                recalculate = true;
+            }
+            m_LevelMeterHistory.pop_front();
+        }
+        if(recalculate)
+        {
+            float newpeak = - std::numeric_limits<float>::infinity();
+            for(const auto &[t, level]: m_LevelMeterHistory)
+            {
+                newpeak = std::max(newpeak, level);
+            }
+            m_OutputPeakLevelDb = newpeak;
+        }
+    }
 
     void Processor::ProcessMessagesInRealtimeThread(jack_nframes_t nframes)
     {
@@ -261,6 +295,51 @@ namespace realtimethread
             data.ReverbInstance()->Run(nframes);
         }
     }
+    void Processor::ProcessOutputLevel(jack_nframes_t nframes)
+    {
+        if(!m_DataInRtThread) return;
+        const auto &data = *m_DataInRtThread;
+        std::array<float*, 2> mixedAudioPorts = {
+            data.OutputAudioPorts()[0]? (float*)jack_port_get_buffer(data.OutputAudioPorts()[0], nframes) : nullptr,
+            data.OutputAudioPorts()[1]? (float*)jack_port_get_buffer(data.OutputAudioPorts()[1], nframes) : nullptr
+        };
+        bool hasoutputaudio = mixedAudioPorts[0] && mixedAudioPorts[1];
+        if(hasoutputaudio)
+        {
+            float y = m_LevelMeterOutputBuf[0];
+            float a = data.LevelMeterTimeConstant();
+            float b = 1.0f - a;
+            size_t index = 0;
+            for(size_t i = 0; i < nframes / 8; ++i)
+            {
+                std::array<float, 8> sumsqaured;
+                for(size_t j = 0; j < 8; ++j)
+                {
+                    float sum = mixedAudioPorts[0][index] + mixedAudioPorts[1][index];
+                    sumsqaured[j] = sum * sum;
+                    index++;
+                }
+                for(size_t j = 0; j < 8; ++j)
+                {
+                    float newy = b * sumsqaured[j] + a * y;
+                    y = newy;
+                }
+            }
+            m_LevelMeterOutputBuf[0] = y;
+        }
+        else
+        {
+            m_LevelMeterOutputBuf[0] = 0.0f;
+        }
+        m_LevelMeterOutputSampleCounter += nframes;
+        int update_hz = 2;
+        if(m_LevelMeterOutputSampleCounter >= 48000/update_hz)
+        {
+            m_LevelMeterOutputSampleCounter = 0;
+            RingBufFromRtThread().Write(OutputLevelUpdateMessage(m_LevelMeterOutputBuf[0]));            
+        }
+    }
+
     void Processor::AddReverb(jack_nframes_t nframes)
     {
         if(!m_DataInRtThread) return;
@@ -349,7 +428,8 @@ namespace realtimethread
         for(const auto &midiport: data.MidiPorts())
         {
             auto pluginindex = midiport.PluginIndex();
-            auto buf = jack_port_get_buffer(&midiport.Port(), nframes);
+            auto jackport = &midiport.Port();
+            auto buf = jack_port_get_buffer(jackport, nframes);
             auto evtcount = jack_midi_get_event_count(buf);
             for (uint32_t i = 0; i < evtcount; ++i) 
             {

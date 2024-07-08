@@ -1,8 +1,13 @@
 cmake_minimum_required(VERSION 3.28)
+set(CMAKE_CXX_STANDARD 23)
+#set(CMAKE_CXX_COMPILER "clang++")
+#set(CMAKE_C_COMPILER "clang")
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
+#set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -stdlib=libc++ -lc++abi")
+#set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fuse-ld=lld")
+
 project(jnlive)
 
-set(CMAKE_CXX_EXTENSIONS OFF)
-set(CMAKE_CXX_STANDARD 23)
 
 add_executable (jnlive 
     source/main.cpp
@@ -61,7 +66,8 @@ target_link_libraries(jnlive
     ${GTKMM_LIBRARIES}
 
 #    ${X11_LIBRARIES}
-
+#    c++abi
+#    c++
 )
 
 target_include_directories(jnlive PRIVATE
@@ -89,4 +95,4 @@ target_link_options(jnlive PRIVATE
 )
 
 # enable AVX2 optimizations:
-target_compile_options(jnlive PRIVATE -mavx2 -Wno-terminate)
+target_compile_options(jnlive PRIVATE -mavx2)

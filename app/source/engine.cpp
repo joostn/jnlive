@@ -296,7 +296,9 @@ namespace engine
 
         auto reverbinstance = m_ReverbInstance? &m_ReverbInstance->Instance() : nullptr;
         auto reverblevel = Project().Reverb().MixLevel();
-        return realtimethread::Data(std::move(plugins), std::move(midiPorts), std::move(auxInPorts), std::move(auxOutPorts), std::move(outputAudioPorts), reverbinstance, reverblevel, vocoderInPort);
+        float levelmeter_flowpass = 10.0f; // hz
+        float levelMeterTimeConstant = std::exp(-2.0f * 3.14159265358979323846f * levelmeter_flowpass / 48000.0f);
+        return realtimethread::Data(std::move(plugins), std::move(midiPorts), std::move(auxInPorts), std::move(auxOutPorts), std::move(outputAudioPorts), reverbinstance, reverblevel, vocoderInPort, levelMeterTimeConstant);
     }
 
     void Engine::OnMidiFromPlugin(PluginInstanceForPart *sender, const midi::TMidiOrSysexEvent &evt)
@@ -818,13 +820,6 @@ namespace engine
                 throw std::runtime_error("jack_set_buffer_size failed");
             }
         }
-        {
-            auto errcode = jack_activate(jackutils::Client::Static().get());
-            if(errcode)
-            {
-                throw std::runtime_error("jack_activate failed");
-            }
-        }
         m_AudioOutPorts.push_back(std::make_unique<jackutils::Port>("out_l", jackutils::Port::Kind::Audio, jackutils::Port::Direction::Output));
         m_AudioOutPorts.push_back(std::make_unique<jackutils::Port>("out_r", jackutils::Port::Kind::Audio, jackutils::Port::Direction::Output));
         if(!std::filesystem::exists(m_ProjectDir))
@@ -833,6 +828,18 @@ namespace engine
         }
         m_VocoderInPort = std::make_unique<jackutils::Port>("vocoder_in", jackutils::Port::Kind::Audio, jackutils::Port::Direction::Input);
         LoadProject();
+        LoadJackConnections();
+        SyncPlugins();
+        ApplyJackConnections(true);
+
+        {
+            auto errcode = jack_activate(jackutils::Client::Static().get());
+            if(errcode)
+            {
+                throw std::runtime_error("jack_activate failed");
+            }
+        }
+
         auto presetsdir = PresetsDir();
         if(!std::filesystem::exists(presetsdir))
         {
@@ -851,6 +858,22 @@ namespace engine
         });
         LoadFirstHammondPreset();
     }
+    void Engine::LoadJackConnections()
+    {
+        std::string jackconnectionfile = ProjectDir() + "/jackconnection.json";
+        if(!std::filesystem::exists(jackconnectionfile))
+        {
+            std::array<std::vector<std::string>, 2> m_AudioOutputs;
+            std::vector<std::vector<std::string>> midiInputs {};
+            std::vector<std::pair<std::string, std::vector<std::string>>> controllermidiports;
+            std::vector<std::string> vocoderinput;
+            project::TJackConnections jackconn(std::move(m_AudioOutputs), std::move(midiInputs), std::move(controllermidiports), std::move(vocoderinput));
+            JackConnectionsToFile(jackconn, jackconnectionfile);
+        }
+        {
+            m_JackConnections = project::JackConnectionsFromFile(jackconnectionfile);
+        }
+    }      
     void Engine::LoadFirstHammondPreset()
     {
         for(const auto &preset: Project().Presets())
@@ -1172,11 +1195,6 @@ namespace engine
         //         SetProject(Project().ChangeReverb(std::move(reverb)));
         //     }
         // }
-    }
-    void Engine::SetJackConnections(project::TJackConnections &&con)
-    {
-        m_JackConnections = std::move(con);
-        ApplyJackConnections(true);
     }
     void Engine::SyncRtData()
     {
