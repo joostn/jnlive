@@ -296,7 +296,7 @@ namespace engine
 
         auto reverbinstance = m_ReverbInstance? &m_ReverbInstance->Instance() : nullptr;
         auto reverblevel = Project().Reverb().MixLevel();
-        float levelmeter_flowpass = 10.0f; // hz
+        float levelmeter_flowpass = 50.0f; // hz
         float levelMeterTimeConstant = std::exp(-2.0f * 3.14159265358979323846f * levelmeter_flowpass / 48000.0f);
         return realtimethread::Data(std::move(plugins), std::move(midiPorts), std::move(auxInPorts), std::move(auxOutPorts), std::move(outputAudioPorts), reverbinstance, reverblevel, vocoderInPort, levelMeterTimeConstant);
     }
