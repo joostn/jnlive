@@ -618,7 +618,6 @@ namespace komplete
             auto peaklevel = m_Engine.RtProcessor().OutputPeakLevelDb();
             if(GuiState().m_OutputPeakLevel != peaklevel)
             {
-                auto newguistate = GuiState();
                 newguistate.m_OutputPeakLevel = peaklevel;
                 guistatechanged = true;
             }
@@ -661,7 +660,21 @@ namespace komplete
                 // todo: find dirty regions
                 PaintWindow(display, *window, dirtyregion);
                 m_PrevWindow = std::move(window);
-                display.SendPixels(0, 0, Display::sWidth, Display::sHeight);
+                //display.SendPixels(0, 0, Display::sWidth, Display::sHeight);
+                for(size_t i = 0; i < dirtyregion.get_num_rectangles(); i++)
+                {
+                    auto rect = dirtyregion.get_rectangle(i);
+                    auto left = rect.x;
+                    auto top = rect.y;
+                    auto right = rect.x + rect.width;
+                    auto bottom = rect.y + rect.height;
+                    top = std::max(0,top);
+                    left = std::max(0,left);
+                    right = std::min(Display::sWidth, right);
+                    bottom = std::min(Display::sHeight, bottom);
+                    display.SendPixels(left, top, right-left, bottom-top);
+                }
+
                 auto endtime = std::chrono::steady_clock::now();
                 [[maybe_unused]] auto elapsed = endtime - starttime;
                 // std::cout << "Painting took " << std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count() << "ms" << std::endl;
@@ -687,6 +700,7 @@ namespace komplete
         cr->paint();
         Cairo::Context *context = cr.operator->();
         window.Paint(*context);
+        /*
         // draw dirty regions:
         auto randomcolor = simplegui::Rgba((double)rand() / RAND_MAX, (double)rand() / RAND_MAX, (double)rand() / RAND_MAX);
         for(size_t i = 0; i < dirtyregion.get_num_rectangles(); i++)
@@ -698,6 +712,7 @@ namespace komplete
             cr->rectangle(rect.x, rect.y, rect.width, rect.height);
             cr->stroke();                    
         }
+        */
 
     }
     void Gui::OnDataChanged()
