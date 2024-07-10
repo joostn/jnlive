@@ -322,6 +322,11 @@ namespace komplete
         }
     }
     void Display::SendPixels(int x, int y, int width, int height)
+    {   
+        SendPixels2(x,y,width,height);
+    }
+
+    void Display::SendPixels2(int x, int y, int width, int height)
     {        
         // https://github.com/GoaSkin/qKontrol/blob/b478fd9818c1b01c695722762e6d55a9b2e0228e/source/qkontrol.cpp#L150
         if(Connected())
@@ -335,11 +340,15 @@ namespace komplete
                 uint32_t c3 = 0;
                 uint16_t x;
                 uint16_t y;
-                uint16_t width;
-                uint16_t height;
-                uint16_t c4 = 0x2;    // 02 00
-                uint16_t c5 = 0;
-                uint32_t datasizediv4;  
+                uint16_t hstride;
+                uint16_t unknown1;
+            };
+            struct __attribute((packed)) LineHeader
+            {
+                uint16_t c1 = 0x02;    // 02 00
+                uint16_t offset = 0;
+                uint16_t c2 = 0;
+                uint16_t numwords = 0;
             };
             struct __attribute((packed)) Footer
             {
@@ -365,26 +374,31 @@ namespace komplete
                 int disp_right = std::min(displayright, right);
 
                 int disp_width = disp_right - disp_x;
-                long long datasizediv4 = ((long long)height * disp_width * sBytesPerPixel + 3) / 4;
-                if(datasizediv4 > 0)
+
+                if( (disp_width > 0) && (height > 0))
                 {
-                    size_t bufsize = sizeof(Header) + sizeof(Footer) + datasizediv4 * 4;
+                    size_t bufsize = sizeof(Header) + sizeof(Footer) + height * (sizeof(LineHeader) + disp_width*2);
                     std::vector<unsigned char> buf(bufsize);
                     Header& header = *((Header*)buf.data());
                     header = Header();
-                    std::span<unsigned char> data(buf.data() + sizeof(Header), datasizediv4 * 4);
-                    Footer& footer = *((Footer*)(buf.data() + sizeof(Header) + datasizediv4 * 4));
+                    Footer& footer = *((Footer*)(buf.data() + sizeof(Header) + height * (sizeof(LineHeader) + disp_width*2)));
                     footer = Footer();
                     header.screenindex = (uint8_t)displayindex;
                     header.x = std::byteswap((uint16_t)(disp_x- displayleft));
                     header.y = std::byteswap((uint16_t)y);
-                    header.width = std::byteswap((uint16_t)disp_width);
-                    header.height = std::byteswap((uint16_t)height);
-                    header.datasizediv4 = std::byteswap((uint32_t)datasizediv4);
+                    header.hstride = std::byteswap((uint16_t)480);
+                    header.unknown1 = std::byteswap((uint16_t)1);
                     for(int yInBuf = 0; yInBuf < height; ++yInBuf)
                     {
                         const unsigned char *srcscanline = m_DisplayBuffer.data() + (y + yInBuf) * sDisplayBufferStride + disp_x * sBytesPerPixel;
-                        unsigned char *destscanline = data.data() + yInBuf * disp_width * sBytesPerPixel;
+                        LineHeader& lineheader = *((LineHeader*)(buf.data() + sizeof(Header) + yInBuf * (sizeof(LineHeader) + disp_width*2)));
+                        lineheader = LineHeader();
+                        lineheader.numwords = std::byteswap((uint16_t)(disp_width / 2));
+                        if(yInBuf > 0)
+                        {
+                            lineheader.offset = std::byteswap((uint16_t)((480-disp_width)/2));
+                        }
+                        unsigned char *destscanline = buf.data() + sizeof(Header) + yInBuf * (sizeof(LineHeader) + disp_width*2) + sizeof(LineHeader);
                         for(int xInBuf = 0; xInBuf < disp_width; ++xInBuf)
                         {
                             destscanline[xInBuf * sBytesPerPixel + 0] = srcscanline[xInBuf * sBytesPerPixel + 1];

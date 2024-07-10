@@ -641,6 +641,7 @@ namespace komplete
         Display display(vidPid);
         while(true)
         {
+            std::this_thread::sleep_for(2ms);
             std::unique_ptr<simplegui::Window> window;
             {
                 std::unique_lock<std::mutex> lock(m_Mutex);
@@ -657,11 +658,13 @@ namespace komplete
                 auto &dirtyregion = *(dirtyregion_ptr.operator->());
                 
                 window->GetUpdateRegion(m_PrevWindow.get(), dirtyregion, 0, 0);
-                // todo: find dirty regions
                 PaintWindow(display, *window, dirtyregion);
                 m_PrevWindow = std::move(window);
-                //display.SendPixels(0, 0, Display::sWidth, Display::sHeight);
+                // display.SendPixels(0, 0, Display::sWidth, Display::sHeight);
+
+                dirtyregion.intersect(Cairo::RectangleInt(0, 0, Display::sWidth, Display::sHeight));
                 for(size_t i = 0; i < dirtyregion.get_num_rectangles(); i++)
+                //while(!dirtyregion.empty())
                 {
                     auto rect = dirtyregion.get_rectangle(i);
                     auto left = rect.x;
@@ -670,17 +673,19 @@ namespace komplete
                     auto bottom = rect.y + rect.height;
                     top = std::max(0,top);
                     left = std::max(0,left);
+                    left = 0;
                     right = std::min(Display::sWidth, right);
                     bottom = std::min(Display::sHeight, bottom);
                     display.SendPixels(left, top, right-left, bottom-top);
+                    //Cairo::RectangleInt rectint(left, top, right-left, bottom-top);
+                    //dirtyregion.subtract(rectint);
                 }
-
                 auto endtime = std::chrono::steady_clock::now();
                 [[maybe_unused]] auto elapsed = endtime - starttime;
                 // std::cout << "Painting took " << std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count() << "ms" << std::endl;
             }
             display.Run();
-            std::this_thread::sleep_for(100ms);
+            //std::this_thread::sleep_for(100ms);
         }
     }
 

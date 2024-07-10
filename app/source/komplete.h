@@ -153,6 +153,7 @@ namespace komplete
         void Connect();
         void Disconnect();
         void SendPixels(int x, int y, int width, int height);
+        void SendPixels2(int x, int y, int width, int height);
         ~Display();
         void TryConnectSometimes();
         void PingSometimes();
