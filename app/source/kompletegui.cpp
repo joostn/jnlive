@@ -806,7 +806,7 @@ namespace komplete
                     }
                     auto boxcolor = GuiState().m_Shift? utils::TFloatColor(0.8, 0.8, 0.8): partcolor;
                     auto quickPresetBox = quickPresetsBar->AddChild<simplegui::PlainWindow>(utils::TIntRect::FromTopLeftAndSize({(int)quickPresetOffset * 120 + quickPresetHorzPadding, 0}, {120 - 2*quickPresetHorzPadding, quickPresetsBoxHeight}), boxcolor);
-                    quickPresetBox->AddChild<simplegui::TextWindow>(quickPresetBox->Rectangle().SymmetricalExpand({-1}), presetName, utils::TFloatColor(0, 0, 0), sFontSize, simplegui::TextWindow::THalign::Left);
+                    quickPresetBox->AddChild<simplegui::TextWindow>(utils::TIntRect::FromSize(quickPresetBox->Rectangle().Size()).SymmetricalExpand({-1}), presetName, utils::TFloatColor(0, 0, 0), sFontSize, simplegui::TextWindow::THalign::Left);
                 }
             }
         }
@@ -911,19 +911,19 @@ namespace komplete
                     auto outerwindow = window.AddChild<simplegui::PlainWindow>(boxrect, partcolor);
                     if(presetOverridden)
                     {
-                        boxwindow = outerwindow->AddChild<simplegui::Window>(outerwindow->Rectangle().SymmetricalExpand({-1}));
+                        boxwindow = outerwindow->AddChild<simplegui::Window>(utils::TIntRect::FromSize(outerwindow->Rectangle().Size()).SymmetricalExpand({-1}));
                         textcolor = utils::TFloatColor(0, 0, 0);
                     }
                     else
                     {
-                        boxwindow = outerwindow->AddChild<simplegui::PlainWindow>(outerwindow->Rectangle().SymmetricalExpand({-1}), utils::TFloatColor(0, 0, 0));
+                        boxwindow = outerwindow->AddChild<simplegui::PlainWindow>(utils::TIntRect::FromSize(outerwindow->Rectangle().Size()).SymmetricalExpand({-1}), utils::TFloatColor(0, 0, 0));
                     }
                 }
                 else
                 {
                     boxwindow = window.AddChild<simplegui::Window>(boxrect.SymmetricalExpand({-1}));
                 }
-                boxwindow->AddChild<simplegui::TextWindow>(boxwindow->Rectangle().SymmetricalExpand({-2, 0}), label, textcolor, fontsize, simplegui::TextWindow::THalign::Left);
+                boxwindow->AddChild<simplegui::TextWindow>(utils::TIntRect::FromSize(boxwindow->Rectangle().Size()).SymmetricalExpand({-2, 0}), label, textcolor, fontsize, simplegui::TextWindow::THalign::Left);
             }
         }
 
@@ -992,7 +992,7 @@ namespace komplete
                 bool value = buttonindex == 0? hammonddata.Percussion() : (buttonindex == 1? hammonddata.PercussionSoft() : (buttonindex == 2? hammonddata.PercussionFast(): hammonddata.Percussion2ndHarmonic()));
                 std::string label = buttonindex == 0? "Percussion" : (buttonindex == 1? "Soft" : (buttonindex == 2? "Fast": "2nd"));
                 auto menubox = window.AddChild<simplegui::PlainWindow>(utils::TIntRect::FromTopLeftAndSize({(int)buttonindex * 120 + menuhorzpadding, 0}, {120 - 2*menuhorzpadding, menuboxheight}), value? partcolor:black);
-                menubox->AddChild<simplegui::TextWindow>(menubox->Rectangle().SymmetricalExpand({-1}), label, value? black:partcolor, sFontSize, simplegui::TextWindow::THalign::Center);
+                menubox->AddChild<simplegui::TextWindow>(utils::TIntRect::FromSize(menubox->Rectangle().Size()).SymmetricalExpand({-1}), label, value? black:partcolor, sFontSize, simplegui::TextWindow::THalign::Center);
             }
         }
     }
