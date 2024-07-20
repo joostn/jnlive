@@ -19,9 +19,9 @@ public:
     ~Application() noexcept override = default;
     Application(int argc, char** argv) : m_Engine(cMaxBlockSize, argc, argv, GetProjectDir(), m_MainEventLoop), Gtk::Application("nl.newhouse.jnlive")
     {
-        // auto mainwindow = std::make_unique<simplegui::PlainWindow>(nullptr, Gdk::Rectangle(20, 10, 200, 150), utils::TFloatColor(1, 0, 0));
-        // mainwindow->AddChild<simplegui::PlainWindow>(Gdk::Rectangle(2, 2, 196, 146), utils::TFloatColor(0.2, 0.2, 0.2));
-        // mainwindow->AddChild<simplegui::TextWindow>(Gdk::Rectangle(2, 2, 192, 146), "Hello, world!", utils::TFloatColor(1, 1, 1), 15);
+        // auto mainwindow = std::make_unique<simplegui::PlainWindow>(nullptr, utils::TIntRect(20, 10, 200, 150), utils::TFloatColor(1, 0, 0));
+        // mainwindow->AddChild<simplegui::PlainWindow>(utils::TIntRect(2, 2, 196, 146), utils::TFloatColor(0.2, 0.2, 0.2));
+        // mainwindow->AddChild<simplegui::TextWindow>(utils::TIntRect(2, 2, 192, 146), "Hello, world!", utils::TFloatColor(1, 1, 1), 15);
         // m_KompleteGui.SetWindow(std::move(mainwindow));
     }
     void on_activate() override {

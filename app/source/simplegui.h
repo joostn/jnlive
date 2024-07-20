@@ -10,7 +10,7 @@ namespace simplegui
     class Window
     {
     public:
-        Window(Window *m_Parent, const Gdk::Rectangle &rect) : m_Parent(m_Parent), m_Rectangle(rect)
+        Window(Window *m_Parent, const utils::TIntRect &rect) : m_Parent(m_Parent), m_Rectangle(rect)
         {
         }
         void Paint(Cairo::Context &cr) const;
@@ -22,23 +22,19 @@ namespace simplegui
             m_Children.push_back(std::move(child));
             return result;
         }
-        const Gdk::Rectangle &Rectangle() const
+        const utils::TIntRect &Rectangle() const
         {
             return m_Rectangle;
         }
-        int Width() const
+        auto Size() const
         {
-            return m_Rectangle.get_width();
-        }
-        int Height() const
-        {
-            return m_Rectangle.get_height();
+            return Rectangle().Size();
         }
         bool Equals(const Window *other) const
         {
             return DoGetEquals(other);
         }
-        void GetUpdateRegion(const Window *other, Cairo::Region &region, int x_offset, int y_offset) const;
+        void GetUpdateRegion(const Window *other, utils::TIntRegion &region, const utils::TIntPoint &offset) const;
         const std::vector<std::unique_ptr<Window>> &Children() const
         {
             return m_Children;
@@ -52,15 +48,12 @@ namespace simplegui
         virtual bool DoGetEquals(const Window *other) const
         {
             // any descendant class should override this, but also call the parent class
-            if(m_Rectangle.get_x() != other->m_Rectangle.get_x()) return false;
-            if(m_Rectangle.get_y() != other->m_Rectangle.get_y()) return false;
-            if(m_Rectangle.get_width() != other->m_Rectangle.get_width()) return false;
-            if(m_Rectangle.get_height() != other->m_Rectangle.get_height()) return false;
+            if(Rectangle() != other->Rectangle()) return false;
             return true;
         }
 
     private:
-        Gdk::Rectangle m_Rectangle;
+        utils::TIntRect m_Rectangle;
         std::vector<std::unique_ptr<Window>> m_Children;
         Window *m_Parent = nullptr;
     };
@@ -68,7 +61,7 @@ namespace simplegui
     class PlainWindow : public Window
     {
     public:
-        PlainWindow(Window *parent, const Gdk::Rectangle &rect, const utils::TFloatColor &color) : Window(parent, rect), m_Color(color)
+        PlainWindow(Window *parent, const utils::TIntRect &rect, const utils::TFloatColor &color) : Window(parent, rect), m_Color(color)
         {
         }
 
@@ -100,7 +93,7 @@ namespace simplegui
     {
     public:
         enum class THalign { Left, Center, Right };
-        TextWindow(Window *parent, const Gdk::Rectangle &rect, std::string_view text, const utils::TFloatColor &color, int fontsize, THalign halign) : Window(parent, rect), m_Text(text), m_Color(color), m_FontSize(fontsize), m_Halign(halign)
+        TextWindow(Window *parent, const utils::TIntRect &rect, std::string_view text, const utils::TFloatColor &color, int fontsize, THalign halign) : Window(parent, rect), m_Text(text), m_Color(color), m_FontSize(fontsize), m_Halign(halign)
         {
         }
 
@@ -130,7 +123,7 @@ namespace simplegui
     class TSlider : public PlainWindow
     {
     public:
-        TSlider(Window *parent, const Gdk::Rectangle &rect, std::string_view text, double value, const utils::TFloatColor &color);
+        TSlider(Window *parent, const utils::TIntRect &rect, std::string_view text, double value, const utils::TFloatColor &color);
     protected:
         virtual bool DoGetEquals(const Window *other) const override
         {
@@ -145,7 +138,7 @@ namespace simplegui
     class TListBox : public PlainWindow
     {
     public:
-        TListBox(Window *parent, const Gdk::Rectangle &rect, const utils::TFloatColor &color, int rowheight, size_t numitems, std::optional<size_t> selecteditem, size_t centereditem, const std::function<std::string(size_t)> &itemtextgetter);
+        TListBox(Window *parent, const utils::TIntRect &rect, const utils::TFloatColor &color, int rowheight, size_t numitems, std::optional<size_t> selecteditem, size_t centereditem, const std::function<std::string(size_t)> &itemtextgetter);
 
     protected:
         virtual bool DoGetEquals(const Window *other) const override
@@ -162,7 +155,7 @@ namespace simplegui
     {
     public:
         enum class TDirection {Up, Down, Left, Right};
-        TTriangle(Window *parent, const Gdk::Rectangle &rect, const utils::TFloatColor &color, TDirection direction) : Window(parent, rect), m_Direction(direction), m_Color(color)
+        TTriangle(Window *parent, const utils::TIntRect &rect, const utils::TFloatColor &color, TDirection direction) : Window(parent, rect), m_Direction(direction), m_Color(color)
         {
         }
         void DoPaint(Cairo::Context &cr) const override;

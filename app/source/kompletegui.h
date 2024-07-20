@@ -85,7 +85,7 @@ namespace komplete
 
     private:
         void SetWindow(std::unique_ptr<simplegui::Window> window);
-        void PaintWindow(Display &display, const simplegui::Window &window, Cairo::Region &dirtyregion);
+        void PaintWindow(Display &display, const simplegui::Window &window, const utils::TIntRegion &dirtyregion);
         void RunGuiThread(std::pair<int, int> vidPid);
         void OnButton(Hid::TButtonIndex button, int delta);
         void OnDataChanged();

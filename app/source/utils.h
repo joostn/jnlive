@@ -8,8 +8,18 @@
 #include <condition_variable>
 #include <regex>
 
+#define nhAssert(_Expression) 							\
+     (static_cast <bool> (_Expression)						\
+      ? void (0)							\
+      : utils::Assert (#_Expression, __FILE__, __LINE__))
+
 namespace utils
 {
+    [[noreturn]] inline void Assert(const char * Message, const char *File, unsigned Line)
+    {
+        throw std::runtime_error(std::string("Assertion failed: ") + Message + " at " + File + ":" + std::to_string(Line));
+    }
+
     class finally
     {
     public:

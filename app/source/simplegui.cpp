@@ -2,39 +2,27 @@
 
 namespace simplegui
 {
-    Cairo::RectangleInt gdkRect2CairoRect(const Gdk::Rectangle &rect)
+    Cairo::RectangleInt toCairoRect(const utils::TIntRect &rect)
     {
-        return Cairo::RectangleInt(rect.get_x(), rect.get_y(), rect.get_width(), rect.get_height());
+        return Cairo::RectangleInt(rect.Left(), rect.Top(), rect.Width(), rect.Height());
     }
 
-    void Window::GetUpdateRegion(const Window *other, Cairo::Region &region, int x_offset, int y_offset) const
+    void Window::GetUpdateRegion(const Window *other, utils::TIntRegion &region, const utils::TIntPoint &offset) const
     {
+        auto thisrect = Rectangle() + offset;
         if( (!other) || (!Equals(other)) )
         {
             {
-                Cairo::RectangleInt rect {
-                    .x = x_offset + Rectangle().get_x(),
-                    .y = y_offset + Rectangle().get_y(),
-                    .width = Rectangle().get_width(),
-                    .height = Rectangle().get_height()
-                };
-                region.do_union(rect);
+                region = region.Union(thisrect);
             }
             if(other)
             {
-                Cairo::RectangleInt otherrect {
-                    .x = x_offset + other->Rectangle().get_x(),
-                    .y = y_offset + other->Rectangle().get_y(),
-                    .width = other->Rectangle().get_width(),
-                    .height = other->Rectangle().get_height()
-                };
-                region.do_union(otherrect);
+                region = region.Union(other->Rectangle() + offset);
             }
         }
         else
         {
-            int child_x_offset = x_offset + Rectangle().get_x();
-            int child_y_offset = y_offset + Rectangle().get_y();
+            auto childoffset = offset + Rectangle().TopLeft();
             std::vector<Window*> ourchildren;
             std::vector<Window*> otherchildren;
             for(auto &child : Children())
@@ -55,7 +43,7 @@ namespace simplegui
                 {
                 foundmatch:
                     // add the child's update region:
-                    (*ourit)->GetUpdateRegion(*otherit, region, child_x_offset, child_y_offset);
+                    (*ourit)->GetUpdateRegion(*otherit, region, childoffset);
                     *ourit = nullptr;  // exclude the pair from further checks
                     *otherit = nullptr;
                     ourit++;
@@ -100,7 +88,7 @@ namespace simplegui
                 {
                     if(win)
                     {
-                        win->GetUpdateRegion(nullptr, region, child_x_offset, child_y_offset);
+                        win->GetUpdateRegion(nullptr, region, childoffset);
                     }
 
                 }
@@ -114,10 +102,10 @@ namespace simplegui
         // translate and clip to m_Rectangle:
         cr.save();
         // create clipping path:
-        cr.rectangle(m_Rectangle.get_x(), m_Rectangle.get_y(), m_Rectangle.get_width(), m_Rectangle.get_height());
+        cr.rectangle(m_Rectangle.Left(), m_Rectangle.Top(), m_Rectangle.Width(), m_Rectangle.Height());
         cr.clip();
         // translate to m_Rectangle:
-        cr.translate(m_Rectangle.get_x(), m_Rectangle.get_y());
+        cr.translate(m_Rectangle.Left(), m_Rectangle.Top());
         DoPaint(cr);
         for(auto it = m_Children.begin(); it != m_Children.end(); ++it)
         {
@@ -151,36 +139,37 @@ namespace simplegui
         double text_x = 0;
         if(m_Halign == THalign::Right)
         {
-            text_x = std::floor(0.0 + Rectangle().get_width() - textwidth);
+            text_x = std::floor(0.0 + Rectangle().Width() - textwidth);
         }
         else if(m_Halign == THalign::Center)
         {
-            text_x = std::round(0.0 + (Rectangle().get_width() - textwidth) / 2);
+            text_x = std::round(0.0 + (Rectangle().Width() - textwidth) / 2);
         }
 
-        double text_y = std::round(0.0+ (Rectangle().get_height() / 2) + (textheight / 2.0) - fe.descent); // Vertically centered
+        double text_y = std::round(0.0+ (Rectangle().Height() / 2) + (textheight / 2.0) - fe.descent); // Vertically centered
 
         cr.move_to(text_x, text_y);
         cr.show_text(m_Text);
     }
 
-    TSlider::TSlider(Window *parent, const Gdk::Rectangle &rect, std::string_view text, double value, const utils::TFloatColor &color) : PlainWindow(parent, rect, color)
+    TSlider::TSlider(Window *parent, const utils::TIntRect &rect, std::string_view text, double value, const utils::TFloatColor &color) : PlainWindow(parent, rect, color)
     {
         auto black = utils::TFloatColor(0,0,0);
-        auto inner = AddChild<PlainWindow>(Gdk::Rectangle(1,1,rect.get_width()-2, rect.get_height()-2), black);
-        auto fontsize = std::max(10, inner->Rectangle().get_height() - 4);
-        inner->AddChild<TextWindow>(Gdk::Rectangle(1,1,inner->Rectangle().get_width()-2, inner->Rectangle().get_height()-2), text, color, fontsize, TextWindow::THalign::Left);
-        int sliderwidth = (int)std::lround(std::clamp(value, 0.0, 1.0) * inner->Rectangle().get_width());
-        auto slider = AddChild<PlainWindow>(Gdk::Rectangle(1,1,sliderwidth, rect.get_height()-2), color);
-        slider->AddChild<TextWindow>(Gdk::Rectangle(1,1,sliderwidth-1, inner->Rectangle().get_height()-2), text, black, fontsize, TextWindow::THalign::Left);
+        auto inner = AddChild<PlainWindow>(utils::TIntRect::FromSize(rect.Size()).SymmetricalExpand({-1}), black);
+        auto fontsize = std::max(10, inner->Rectangle().Height() - 4);
+        ;
+        inner->AddChild<TextWindow>(utils::TIntRect::FromSize(inner->Rectangle().Size()).SymmetricalExpand({-1}), text, color, fontsize, TextWindow::THalign::Left);
+        int sliderwidth = (int)std::lround(std::clamp(value, 0.0, 1.0) * inner->Rectangle().Width());
+        auto slider = AddChild<PlainWindow>(utils::TIntRect::FromTopLeftAndSize({1,1}, {sliderwidth, rect.Height()-2}), color);
+        slider->AddChild<TextWindow>(utils::TIntRect::FromTopLeftAndSize({1,1}, {sliderwidth-1, inner->Rectangle().Height()-2}), text, black, fontsize, TextWindow::THalign::Left);
     }
 
-    TListBox::TListBox(Window *parent, const Gdk::Rectangle &rect, const utils::TFloatColor &color, int rowheight, size_t numitems, std::optional<size_t> selecteditem, size_t centereditem, const std::function<std::string(size_t)> &itemtextgetter) : PlainWindow(parent, rect, color)
+    TListBox::TListBox(Window *parent, const utils::TIntRect &rect, const utils::TFloatColor &color, int rowheight, size_t numitems, std::optional<size_t> selecteditem, size_t centereditem, const std::function<std::string(size_t)> &itemtextgetter) : PlainWindow(parent, rect, color)
     {
         int fontsize = rowheight - 6;
         auto black = utils::TFloatColor(0,0,0);
-        auto backgroundbox = AddChild<PlainWindow>(Gdk::Rectangle(1,1,rect.get_width()-2, rect.get_height()-2), black);
-        int innerheight = backgroundbox->Rectangle().get_height();
+        auto backgroundbox = AddChild<PlainWindow>(utils::TIntRect::FromSize(rect.Size()).SymmetricalExpand(-1), black);
+        int innerheight = backgroundbox->Rectangle().Height();
         if(numitems > 0)
         {
             centereditem = std::clamp(centereditem, size_t(0), numitems-1);
@@ -205,7 +194,7 @@ namespace simplegui
                 bool selected = selecteditem == itemindex;
                 auto label = itemtextgetter(itemindex);
                 auto top = firstitemtop + rowheight * int(itemindex);
-                Gdk::Rectangle rowrect(0, top, backgroundbox->Rectangle().get_width(), rowheight);
+                auto rowrect = utils::TIntRect::FromTopLeftAndSize({0, top}, {backgroundbox->Rectangle().Width(), rowheight});
                 Window *p = nullptr;
                 if(selected)
                 {
@@ -215,7 +204,7 @@ namespace simplegui
                 {
                     p = backgroundbox->AddChild<Window>(rowrect);
                 }
-                p->AddChild<TextWindow>(Gdk::Rectangle(2,0,p->Rectangle().get_width()-2, p->Rectangle().get_height()), itemtextgetter(itemindex), selected? black : color, fontsize, TextWindow::THalign::Left);
+                p->AddChild<TextWindow>(utils::TIntRect::FromTopLeftAndSize({2,0}, {p->Rectangle().Width()-2, p->Rectangle().Height()}), itemtextgetter(itemindex), selected? black : color, fontsize, TextWindow::THalign::Left);
             }
         }
     }
@@ -224,8 +213,8 @@ namespace simplegui
     {
         Window::DoPaint(cr);
         cr.set_source_rgba(m_Color.Red(), m_Color.Green(), m_Color.Blue(), m_Color.Alpha());
-        int width = Rectangle().get_width();
-        int height = Rectangle().get_height();
+        int width = Rectangle().Width();
+        int height = Rectangle().Height();
         if(m_Direction == TDirection::Up)
         {
             cr.move_to(width/2, 0);
