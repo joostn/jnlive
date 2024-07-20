@@ -1,45 +1,12 @@
 #pragma once
 
-#include "simplegui.h"
+#include "utils.h"
 #include <gdkmm.h>
 #include <memory>
 #include <cairomm/cairomm.h>
 
 namespace simplegui
 {
-    class Rgba
-    {
-    private:
-        double m_Red = 0.0;
-        double m_Green = 0.0;
-        double m_Blue = 0.0;
-        double m_Alpha = 1.0;
-    public:
-        Rgba() = default;
-        Rgba(double red, double green, double blue, double alpha = 1.0) : m_Red(red), m_Green(green), m_Blue(blue), m_Alpha(alpha)
-        {
-        }
-        double Red() const
-        {
-            return m_Red;
-        }
-        double Green() const
-        {
-            return m_Green;
-        }
-        double Blue() const
-        {
-            return m_Blue;
-        }
-        double Alpha() const
-        {
-            return m_Alpha;
-        }
-        bool operator==(const Rgba &other) const 
-        {
-            return m_Red == other.m_Red && m_Green == other.m_Green && m_Blue == other.m_Blue && m_Alpha == other.m_Alpha;
-        }
-    };
     class Window
     {
     public:
@@ -101,7 +68,7 @@ namespace simplegui
     class PlainWindow : public Window
     {
     public:
-        PlainWindow(Window *parent, const Gdk::Rectangle &rect, const Rgba &color) : Window(parent, rect), m_Color(color)
+        PlainWindow(Window *parent, const Gdk::Rectangle &rect, const utils::TFloatColor &color) : Window(parent, rect), m_Color(color)
         {
         }
 
@@ -126,14 +93,14 @@ namespace simplegui
         void DoPaint(Cairo::Context &cr) const override;
 
     private:
-        Rgba m_Color;
+        utils::TFloatColor m_Color;
     };
 
     class TextWindow : public Window
     {
     public:
         enum class THalign { Left, Center, Right };
-        TextWindow(Window *parent, const Gdk::Rectangle &rect, std::string_view text, const Rgba &color, int fontsize, THalign halign) : Window(parent, rect), m_Text(text), m_Color(color), m_FontSize(fontsize), m_Halign(halign)
+        TextWindow(Window *parent, const Gdk::Rectangle &rect, std::string_view text, const utils::TFloatColor &color, int fontsize, THalign halign) : Window(parent, rect), m_Text(text), m_Color(color), m_FontSize(fontsize), m_Halign(halign)
         {
         }
 
@@ -155,7 +122,7 @@ namespace simplegui
 
     private:
         std::string m_Text;
-        Rgba m_Color;
+        utils::TFloatColor m_Color;
         int m_FontSize;
         THalign m_Halign;
     };
@@ -163,7 +130,7 @@ namespace simplegui
     class TSlider : public PlainWindow
     {
     public:
-        TSlider(Window *parent, const Gdk::Rectangle &rect, std::string_view text, double value, const Rgba &color);
+        TSlider(Window *parent, const Gdk::Rectangle &rect, std::string_view text, double value, const utils::TFloatColor &color);
     protected:
         virtual bool DoGetEquals(const Window *other) const override
         {
@@ -178,7 +145,7 @@ namespace simplegui
     class TListBox : public PlainWindow
     {
     public:
-        TListBox(Window *parent, const Gdk::Rectangle &rect, const Rgba &color, int rowheight, size_t numitems, std::optional<size_t> selecteditem, size_t centereditem, const std::function<std::string(size_t)> &itemtextgetter);
+        TListBox(Window *parent, const Gdk::Rectangle &rect, const utils::TFloatColor &color, int rowheight, size_t numitems, std::optional<size_t> selecteditem, size_t centereditem, const std::function<std::string(size_t)> &itemtextgetter);
 
     protected:
         virtual bool DoGetEquals(const Window *other) const override
@@ -195,7 +162,7 @@ namespace simplegui
     {
     public:
         enum class TDirection {Up, Down, Left, Right};
-        TTriangle(Window *parent, const Gdk::Rectangle &rect, const Rgba &color, TDirection direction) : Window(parent, rect), m_Direction(direction), m_Color(color)
+        TTriangle(Window *parent, const Gdk::Rectangle &rect, const utils::TFloatColor &color, TDirection direction) : Window(parent, rect), m_Direction(direction), m_Color(color)
         {
         }
         void DoPaint(Cairo::Context &cr) const override;
@@ -212,6 +179,6 @@ namespace simplegui
         }
     private:
         TDirection m_Direction;
-        Rgba m_Color;
+        utils::TFloatColor m_Color;
     };
 }

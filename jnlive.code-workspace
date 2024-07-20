@@ -102,7 +102,14 @@
 			"execution": "cpp",
 			"semaphore": "cpp",
 			"stop_token": "cpp",
-			"shared_mutex": "cpp"
+			"shared_mutex": "cpp",
+			"codecvt": "cpp",
+			"coroutine": "cpp",
+			"regex": "cpp",
+			"source_location": "cpp",
+			"future": "cpp",
+			"stdfloat": "cpp",
+			"cfenv": "cpp"
 		}
 	}
 }

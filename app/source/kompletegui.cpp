@@ -58,9 +58,9 @@ namespace komplete
         return pow(10, db / 20);
     }
 
-    simplegui::Rgba colorForPart(size_t partindex)
+    utils::TFloatColor colorForPart(size_t partindex)
     {
-        return (partindex == 0)? simplegui::Rgba(1, 0.3, 0.3): simplegui::Rgba(0.3, 1, 0.3);
+        return (partindex == 0)? utils::TFloatColor(1, 0.3, 0.3): utils::TFloatColor(0.3, 1, 0.3);
     }
 
     std::string dbToText(double db)
@@ -82,7 +82,7 @@ namespace komplete
     class TDrawbarKnob : public simplegui::Window
     {
     public:
-        TDrawbarKnob(Window *parent, const Gdk::Rectangle &rect, const simplegui::Rgba &color) : m_Color(color), Window(parent, rect)
+        TDrawbarKnob(Window *parent, const Gdk::Rectangle &rect, const utils::TFloatColor &color) : m_Color(color), Window(parent, rect)
         {        
         }
         void DoPaint(Cairo::Context &cr) const override
@@ -126,13 +126,13 @@ namespace komplete
         }
 
     private:
-        simplegui::Rgba m_Color;
+        utils::TFloatColor m_Color;
     };
 
     class TDrawbarWindow : public simplegui::Window
     {
     public:
-        TDrawbarWindow(Window *parent, const Gdk::Rectangle &rect, const simplegui::Rgba &color, int position) : Window(parent, rect)
+        TDrawbarWindow(Window *parent, const Gdk::Rectangle &rect, const utils::TFloatColor &color, int position) : Window(parent, rect)
         {
             position = std::clamp(position, 0, 8);
             int buttonheight = rect.get_height() / 3;
@@ -141,13 +141,13 @@ namespace komplete
             int fontsize = buttontop_full / 10;
             int whitewidth = 9 * rect.get_width() / 10;
             int blackwidth = rect.get_width() / 3;
-            auto whitebox = AddChild<simplegui::PlainWindow>(Gdk::Rectangle(rect.get_width() / 2 - whitewidth / 2, 0, whitewidth, buttontop), simplegui::Rgba(1, 1, 1, 1));
-            auto blackbox = whitebox->AddChild<simplegui::PlainWindow>(Gdk::Rectangle(whitebox->Rectangle().get_width() / 2 - blackwidth / 2, 0, blackwidth, whitebox->Rectangle().get_height()), simplegui::Rgba(0, 0, 0, 1));
+            auto whitebox = AddChild<simplegui::PlainWindow>(Gdk::Rectangle(rect.get_width() / 2 - whitewidth / 2, 0, whitewidth, buttontop), utils::TFloatColor(1, 1, 1, 1));
+            auto blackbox = whitebox->AddChild<simplegui::PlainWindow>(Gdk::Rectangle(whitebox->Rectangle().get_width() / 2 - blackwidth / 2, 0, blackwidth, whitebox->Rectangle().get_height()), utils::TFloatColor(0, 0, 0, 1));
             for(int p = 1; p <= position; p++)
             {
                 int boxtop = (position - p) * buttontop_full / 8;
                 int boxbottom = (position - p + 1) * buttontop_full / 8;
-                blackbox->AddChild<simplegui::TextWindow>(Gdk::Rectangle(0, boxtop, blackwidth, boxbottom - boxtop), std::to_string(p), simplegui::Rgba(1, 1, 1, 1), fontsize, simplegui::TextWindow::THalign::Center);
+                blackbox->AddChild<simplegui::TextWindow>(Gdk::Rectangle(0, boxtop, blackwidth, boxbottom - boxtop), std::to_string(p), utils::TFloatColor(1, 1, 1, 1), fontsize, simplegui::TextWindow::THalign::Center);
             }
             AddChild<TDrawbarKnob>(Gdk::Rectangle(0, buttontop, rect.get_width(), buttonheight), color);
         }
@@ -707,7 +707,7 @@ namespace komplete
         window.Paint(*context);
         /*
         // draw dirty regions:
-        auto randomcolor = simplegui::Rgba((double)rand() / RAND_MAX, (double)rand() / RAND_MAX, (double)rand() / RAND_MAX);
+        auto randomcolor = utils::TFloatColor((double)rand() / RAND_MAX, (double)rand() / RAND_MAX, (double)rand() / RAND_MAX);
         for(size_t i = 0; i < dirtyregion.get_num_rectangles(); i++)
         {
             auto rect = dirtyregion.get_rectangle(i);
@@ -748,11 +748,11 @@ namespace komplete
             }
         }
         int presetboxheight = 2*lineheight + sLineSpacing + 2;
-        auto presetnamebox = window.AddChild<simplegui::PlainWindow>(Gdk::Rectangle(0, 272-presetboxheight, 120, presetboxheight), simplegui::Rgba(0.2, 0.2, 0.2));
+        auto presetnamebox = window.AddChild<simplegui::PlainWindow>(Gdk::Rectangle(0, 272-presetboxheight, 120, presetboxheight), utils::TFloatColor(0.2, 0.2, 0.2));
 
-        presetnamebox->AddChild<simplegui::TextWindow>(Gdk::Rectangle(1, 1, presetnamebox->Width() - 2, lineheight), std::to_string(GuiState().m_SelectedPreset), simplegui::Rgba(1, 1, 1), sFontSize, simplegui::TextWindow::THalign::Left);
+        presetnamebox->AddChild<simplegui::TextWindow>(Gdk::Rectangle(1, 1, presetnamebox->Width() - 2, lineheight), std::to_string(GuiState().m_SelectedPreset), utils::TFloatColor(1, 1, 1), sFontSize, simplegui::TextWindow::THalign::Left);
 
-        presetnamebox->AddChild<simplegui::TextWindow>(Gdk::Rectangle(1, 1 + lineheight + sLineSpacing, presetnamebox->Width() - 2, lineheight), presetname, simplegui::Rgba(1, 1, 1), sFontSize, simplegui::TextWindow::THalign::Left);
+        presetnamebox->AddChild<simplegui::TextWindow>(Gdk::Rectangle(1, 1 + lineheight + sLineSpacing, presetnamebox->Width() - 2, lineheight), presetname, utils::TFloatColor(1, 1, 1), sFontSize, simplegui::TextWindow::THalign::Left);
 */
         {
             // output level:
@@ -763,7 +763,7 @@ namespace komplete
 
             auto text = dbToText(GuiState().m_OutputPeakLevel);
             auto slidervalue = dbToSliderValue(GuiState().m_OutputLevel);
-            window.AddChild<simplegui::TSlider>(Gdk::Rectangle(levelmeterleft, levelmetertop, levelmeterwidth, levelmeterheight), text, slidervalue, simplegui::Rgba(0.8, 0.8, 0.8));
+            window.AddChild<simplegui::TSlider>(Gdk::Rectangle(levelmeterleft, levelmetertop, levelmeterwidth, levelmeterheight), text, slidervalue, utils::TFloatColor(0.8, 0.8, 0.8));
         }
         {
             // Pager:
@@ -773,7 +773,7 @@ namespace komplete
             int pagerx1 = pagerx0 + 2 * pagerheight / 3;
             int pagerx2 = pagerx1 + 2 * pagerheight;
             int pagerx3 = pagerx2 + 2 * pagerheight / 3;
-            auto pagercolor = simplegui::Rgba(1, 1, 1);
+            auto pagercolor = utils::TFloatColor(1, 1, 1);
             if(GuiState().m_QuickPresetPage > 0)
             {
                 window.AddChild<simplegui::TTriangle>(Gdk::Rectangle(pagerx0, pagertop, pagerx1 - pagerx0, pagerheight), pagercolor, simplegui::TTriangle::TDirection::Left);
@@ -821,9 +821,9 @@ namespace komplete
                     {
                         presetName = "(empty)";
                     }
-                    auto boxcolor = GuiState().m_Shift? simplegui::Rgba(0.8, 0.8, 0.8): partcolor;
+                    auto boxcolor = GuiState().m_Shift? utils::TFloatColor(0.8, 0.8, 0.8): partcolor;
                     auto quickPresetBox = quickPresetsBar->AddChild<simplegui::PlainWindow>(Gdk::Rectangle(quickPresetOffset * 120 + quickPresetHorzPadding, 0, 120 - 2*quickPresetHorzPadding, quickPresetsBoxHeight), boxcolor);
-                    quickPresetBox->AddChild<simplegui::TextWindow>(Gdk::Rectangle(1, 1, quickPresetBox->Width() - 2, quickPresetBox->Height() - 2), presetName, simplegui::Rgba(0, 0, 0), sFontSize, simplegui::TextWindow::THalign::Left);
+                    quickPresetBox->AddChild<simplegui::TextWindow>(Gdk::Rectangle(1, 1, quickPresetBox->Width() - 2, quickPresetBox->Height() - 2), presetName, utils::TFloatColor(0, 0, 0), sFontSize, simplegui::TextWindow::THalign::Left);
                 }
             }
         }
@@ -832,7 +832,7 @@ namespace komplete
         {
             // Volume controls:
             bool hasfocusedslider = false;
-            simplegui::Rgba focusedslidercolor;
+            utils::TFloatColor focusedslidercolor;
             double focusedslidervalue = 0;
             std::string focusedslidertext;
             int sliderbottom = 272;
@@ -847,7 +847,7 @@ namespace komplete
                 int sliderleft = rotaryindex * 120 + 5;
                 int sliderright = sliderleft + 120 - 10;
                 double multiplier;
-                simplegui::Rgba slidercolor = simplegui::Rgba(0.7, 0.7, 0.7);
+                utils::TFloatColor slidercolor = utils::TFloatColor(0.7, 0.7, 0.7);
                 std::string label;
                 if(sliderindex < 0)
                 {
@@ -922,18 +922,18 @@ namespace komplete
                 }
                 simplegui::Window *boxwindow = nullptr;
                 Gdk::Rectangle boxrect(boxleft, top + presetlineheight * (partindex - partrange.first), boxwidth, presetlineheight);
-                simplegui::Rgba textcolor = partcolor;
+                utils::TFloatColor textcolor = partcolor;
                 if(partindex == GuiState().m_FocusedPart)
                 {
                     auto outerwindow = window.AddChild<simplegui::PlainWindow>(boxrect, partcolor);
                     if(presetOverridden)
                     {
                         boxwindow = outerwindow->AddChild<simplegui::Window>(Gdk::Rectangle(1, 1, outerwindow->Rectangle().get_width()-2, outerwindow->Rectangle().get_height()-2));
-                        textcolor = simplegui::Rgba(0, 0, 0);
+                        textcolor = utils::TFloatColor(0, 0, 0);
                     }
                     else
                     {
-                        boxwindow = outerwindow->AddChild<simplegui::PlainWindow>(Gdk::Rectangle(1, 1, outerwindow->Rectangle().get_width()-2, outerwindow->Rectangle().get_height()-2), simplegui::Rgba(0, 0, 0));
+                        boxwindow = outerwindow->AddChild<simplegui::PlainWindow>(Gdk::Rectangle(1, 1, outerwindow->Rectangle().get_width()-2, outerwindow->Rectangle().get_height()-2), utils::TFloatColor(0, 0, 0));
                     }
                 }
                 else
@@ -947,7 +947,7 @@ namespace komplete
         if( (GuiState().m_TouchingRotary[8]) && (!project.Presets().empty()) )
         {
             // Big preset popup selector:
-            window.AddChild<simplegui::TListBox>(Gdk::Rectangle(490, 272/2 - 100, 400, 272/2+100), simplegui::Rgba(1,1,1), 25, project.Presets().size(), GuiState().GetSelectedPresetIndex(), GuiState().GetSelectedPresetIndex().value_or(0), [this, &project](size_t index) -> std::string {
+            window.AddChild<simplegui::TListBox>(Gdk::Rectangle(490, 272/2 - 100, 400, 272/2+100), utils::TFloatColor(1,1,1), 25, project.Presets().size(), GuiState().GetSelectedPresetIndex(), GuiState().GetSelectedPresetIndex().value_or(0), [this, &project](size_t index) -> std::string {
                 auto result = std::to_string(index) + ": ";
                 if(index < project.Presets().size())
                 {
@@ -966,11 +966,11 @@ namespace komplete
         int lineheight = sFontSize + 2;
         const auto &project = GuiState().EngineData().Project();
         int presetboxheight = 2*lineheight + sLineSpacing + 2;
-        auto presetnamebox = window.AddChild<simplegui::PlainWindow>(Gdk::Rectangle(0, 272-presetboxheight, 120, presetboxheight), simplegui::Rgba(0.2, 0.2, 0.2));
+        auto presetnamebox = window.AddChild<simplegui::PlainWindow>(Gdk::Rectangle(0, 272-presetboxheight, 120, presetboxheight), utils::TFloatColor(0.2, 0.2, 0.2));
 
-        presetnamebox->AddChild<simplegui::TextWindow>(Gdk::Rectangle(1, 1, presetnamebox->Width() - 2, lineheight), "Program", simplegui::Rgba(1, 1, 1), sFontSize, simplegui::TextWindow::THalign::Left);
+        presetnamebox->AddChild<simplegui::TextWindow>(Gdk::Rectangle(1, 1, presetnamebox->Width() - 2, lineheight), "Program", utils::TFloatColor(1, 1, 1), sFontSize, simplegui::TextWindow::THalign::Left);
 
-        presetnamebox->AddChild<simplegui::TextWindow>(Gdk::Rectangle(1, 1 + lineheight + sLineSpacing, presetnamebox->Width() - 2, lineheight), std::to_string(GuiState().m_ProgramChange), simplegui::Rgba(1, 1, 1), sFontSize, simplegui::TextWindow::THalign::Left);            
+        presetnamebox->AddChild<simplegui::TextWindow>(Gdk::Rectangle(1, 1 + lineheight + sLineSpacing, presetnamebox->Width() - 2, lineheight), std::to_string(GuiState().m_ProgramChange), utils::TFloatColor(1, 1, 1), sFontSize, simplegui::TextWindow::THalign::Left);            
     }
     void Gui::PaintHammondControllerWindow(simplegui::Window &window, size_t part) const
     {
@@ -979,9 +979,9 @@ namespace komplete
         const auto &hammondpart = hammonddata.Part(part);
         int drawbartop = 50;
         int drawbarbottom = 250;
-        simplegui::Rgba brown(143/255.0, 69/255.0, 0.0, 1.0);
-        simplegui::Rgba darkgrey(0.3, 0.3, 0.3, 1.0);
-        simplegui::Rgba lightgrey(0.7, 0.7, 0.7, 1.0);
+        utils::TFloatColor brown(143/255.0, 69/255.0, 0.0, 1.0);
+        utils::TFloatColor darkgrey(0.3, 0.3, 0.3, 1.0);
+        utils::TFloatColor lightgrey(0.7, 0.7, 0.7, 1.0);
         
         for(size_t drawbarindex = 0; drawbarindex < 9; drawbarindex++)
         {
@@ -1001,7 +1001,7 @@ namespace komplete
         int menuboxheight = sFontSize + 4;
         int menuhorzpadding = 1;
         auto partcolor = colorForPart(part);
-        simplegui::Rgba black(0, 0, 0);
+        utils::TFloatColor black(0, 0, 0);
         if(part == 0)
         {
             for(size_t buttonindex = 0; buttonindex < 4; buttonindex++)

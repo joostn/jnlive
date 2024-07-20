@@ -164,9 +164,9 @@ namespace simplegui
         cr.show_text(m_Text);
     }
 
-    TSlider::TSlider(Window *parent, const Gdk::Rectangle &rect, std::string_view text, double value, const Rgba &color) : PlainWindow(parent, rect, color)
+    TSlider::TSlider(Window *parent, const Gdk::Rectangle &rect, std::string_view text, double value, const utils::TFloatColor &color) : PlainWindow(parent, rect, color)
     {
-        auto black = Rgba(0,0,0);
+        auto black = utils::TFloatColor(0,0,0);
         auto inner = AddChild<PlainWindow>(Gdk::Rectangle(1,1,rect.get_width()-2, rect.get_height()-2), black);
         auto fontsize = std::max(10, inner->Rectangle().get_height() - 4);
         inner->AddChild<TextWindow>(Gdk::Rectangle(1,1,inner->Rectangle().get_width()-2, inner->Rectangle().get_height()-2), text, color, fontsize, TextWindow::THalign::Left);
@@ -175,10 +175,10 @@ namespace simplegui
         slider->AddChild<TextWindow>(Gdk::Rectangle(1,1,sliderwidth-1, inner->Rectangle().get_height()-2), text, black, fontsize, TextWindow::THalign::Left);
     }
 
-    TListBox::TListBox(Window *parent, const Gdk::Rectangle &rect, const Rgba &color, int rowheight, size_t numitems, std::optional<size_t> selecteditem, size_t centereditem, const std::function<std::string(size_t)> &itemtextgetter) : PlainWindow(parent, rect, color)
+    TListBox::TListBox(Window *parent, const Gdk::Rectangle &rect, const utils::TFloatColor &color, int rowheight, size_t numitems, std::optional<size_t> selecteditem, size_t centereditem, const std::function<std::string(size_t)> &itemtextgetter) : PlainWindow(parent, rect, color)
     {
         int fontsize = rowheight - 6;
-        auto black = Rgba(0,0,0);
+        auto black = utils::TFloatColor(0,0,0);
         auto backgroundbox = AddChild<PlainWindow>(Gdk::Rectangle(1,1,rect.get_width()-2, rect.get_height()-2), black);
         int innerheight = backgroundbox->Rectangle().get_height();
         if(numitems > 0)
