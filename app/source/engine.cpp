@@ -376,11 +376,11 @@ namespace engine
             {
                 auto &instrumentindex2ownedpluginindex = partindex2instrumentindex2ownedpluginindex[partindex];
                 std::optional<size_t> owningpart;
-                if(!instrument.Shared())
+                if(!instrument.IsHammond())
                 {
                     owningpart = partindex;
                 }
-                if(instrument.Shared() && (partindex > 0))
+                if(instrument.IsHammond() && (partindex > 0))
                 {
                     instrumentindex2ownedpluginindex.push_back(sharedpluginindex);
                 }
@@ -1147,7 +1147,7 @@ namespace engine
     again:
         for(auto it = m_Plugin2LoadQueue.begin(); it != m_Plugin2LoadQueue.end(); it++)
         {
-            const auto &plugin = it->first;
+            auto plugin = it->first;
             if(!IsPluginLoading(plugin))
             {
                 auto presetdir = it->second;

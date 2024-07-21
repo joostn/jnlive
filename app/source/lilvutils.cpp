@@ -612,10 +612,7 @@ namespace lilvutils
             {
                 *size = sizeof(float);
                 *type = World::Static().AtomForge().Float;
-
-        std::cout << "GetPortValueBySymbol: " << port_symbol << " = " << controlconnection->ValueInMainThread() << std::endl;
-
-
+                // std::cout << "GetPortValueBySymbol: " << port_symbol << " = " << controlconnection->ValueInMainThread() << std::endl;
                 return const_cast<void*>((const void*)&controlconnection->ValueInMainThread());
             }
         }
@@ -739,7 +736,7 @@ namespace lilvutils
                 }
                 if(!evt.IsSysex() && (evt.GetSimpleEvent().type() == midi::SimpleEvent::Type::ControlChange))
                 {
-                    // std::cout << evt.ToDebugString() << std::endl;
+                    std::cout << evt.ToDebugString() << std::endl;
                 }
             }
         }

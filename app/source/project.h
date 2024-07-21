@@ -128,7 +128,7 @@ namespace project
             std::string m_Label;
         };
     public:
-        TInstrument(std::string &&lv2Uri, bool shared, std::string &&name, std::vector<TParameter> &&parameters, bool hasVocoderInput) : m_Lv2Uri(std::move(lv2Uri)), m_Shared(shared), m_Name(std::move(name)), m_HasVocoderInput(hasVocoderInput)
+        TInstrument(std::string &&lv2Uri, bool ishammond, std::string &&name, std::vector<TParameter> &&parameters, bool hasVocoderInput) : m_Lv2Uri(std::move(lv2Uri)), m_IsHammond(ishammond), m_Name(std::move(name)), m_HasVocoderInput(hasVocoderInput)
         {
         }
         const std::string& Lv2Uri() const
@@ -137,11 +137,7 @@ namespace project
         }
         bool IsHammond() const
         {
-            return m_Lv2Uri == "http://gareus.org/oss/lv2/b_synth";
-        }
-        bool Shared() const
-        {
-            return m_Shared;
+            return m_IsHammond;
         }
         const std::string& Name() const
         {
@@ -153,7 +149,7 @@ namespace project
         }
         auto Tuple() const
         {
-            return std::tie(m_Lv2Uri, m_Name, m_Shared, m_Parameters, m_HasVocoderInput);
+            return std::tie(m_Lv2Uri, m_Name, m_IsHammond, m_Parameters, m_HasVocoderInput);
         }
         bool HasVocoderInput() const
         {
@@ -167,7 +163,7 @@ namespace project
     private:
         std::string m_Lv2Uri;
         std::string m_Name;
-        bool m_Shared = false;  // for hammond organ, etc: 2 keyboards per instrument
+        bool m_IsHammond = false;  // for hammond organ, etc: 2 keyboards per instrument
         std::vector<TParameter> m_Parameters;
         bool m_HasVocoderInput = false;
     };

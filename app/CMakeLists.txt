@@ -95,4 +95,14 @@ target_link_options(jnlive PRIVATE
 )
 
 # enable AVX2 optimizations:
-target_compile_options(jnlive PRIVATE -mavx2)
+target_compile_options(jnlive PRIVATE -mavx2 )
+
+# if compiler is clang:
+if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
+    target_link_options(jnlive PRIVATE -fuse-ld=lld)
+    target_compile_options(jnlive PRIVATE -fno-omit-frame-pointer)
+
+    # uncomment to enable address sanitizer:
+    # target_compile_options(jnlive PRIVATE -fsanitize=address)
+    # target_link_options(jnlive PRIVATE -fsanitize=address)
+endif()

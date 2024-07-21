@@ -8,6 +8,7 @@
 #include "realtimethread.h"
 #include "engine.h"
 #include "midi.h"
+#include "utils.h"
 #include <chrono>
 #include <iostream>
 

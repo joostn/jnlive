@@ -20,7 +20,7 @@ namespace jackutils
         });
         m_Port = jackport;
         jackport = nullptr;
-        std::cout << "Port " << m_Name << " created\n";
+        // std::cout << "Port " << m_Name << " created\n";
     }
     Port::~Port()
     {
@@ -50,7 +50,7 @@ namespace jackutils
         }, this);
 
         jack_set_port_registration_callback(jackclient, [] (jack_port_id_t port, int reg, void *arg){
-            std::cout << "port registration: "  << reg << "\n";
+            // std::cout << "port registration: "  << reg << "\n";
         }, this);
 
         // jack_on_shutdown(jackclient, [](void* arg){
@@ -149,7 +149,7 @@ namespace jackutils
             }
             if(result == 0)
             {
-                std::cout << "- Connected to " << portname << "\n";
+                // std::cout << "- Connected to " << portname << "\n";
             }
             if( (result == 0) || (result == EEXIST) )
             {

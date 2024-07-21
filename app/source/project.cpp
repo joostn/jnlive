@@ -31,7 +31,7 @@ namespace project
     {
         Json::Value result;
         result["lv2uri"] = instrument.Lv2Uri();
-        result["shared"] = instrument.Shared();
+        result["ishammond"] = instrument.IsHammond();
         result["name"] = instrument.Name();
         result["parameters"] = Json::Value(Json::arrayValue);
         for (const auto &parameter : instrument.Parameters())
@@ -48,7 +48,7 @@ namespace project
         {
             parameters.push_back(InstrumentParameterFromJson(parameter));
         }
-        return TInstrument(v["lv2uri"].asString(), v["shared"].asBool(), v["name"].asString(), std::move(parameters), v["hasvocoder"].asBool());
+        return TInstrument(v["lv2uri"].asString(), v["ishammond"].asBool(), v["name"].asString(), std::move(parameters), v["hasvocoder"].asBool());
     }
     Json::Value ToJson(const TPart &part)
     {
