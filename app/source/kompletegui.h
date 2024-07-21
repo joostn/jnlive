@@ -77,7 +77,7 @@ namespace komplete
     public:
         static constexpr int sFontSize = 15;
         static constexpr int sLineSpacing = 2;
-        Gui(std::pair<int, int> vidPid, engine::Engine &engine);
+        Gui(std::pair<int, int> vidPid, std::string_view serial, engine::Engine &engine);
         ~Gui();
         void Run();
         const TGuiState& GuiState() const {return m_GuiState1;}
@@ -86,7 +86,7 @@ namespace komplete
     private:
         void SetWindow(std::unique_ptr<simplegui::Window> window);
         void PaintWindow(Display &display, const simplegui::Window &window, const utils::TIntRegion &dirtyregion);
-        void RunGuiThread(std::pair<int, int> vidPid);
+        void RunGuiThread(std::pair<int, int> vidPid, std::string_view serial);
         void OnButton(Hid::TButtonIndex button, int delta);
         void OnDataChanged();
         void RefreshLcd();
@@ -101,10 +101,14 @@ namespace komplete
         Hid m_Hid;
         std::thread m_GuiThread;
         std::mutex m_Mutex;
+        
         // protected by mutex:
+        bool m_DisplayConnected = false;
+        std::condition_variable m_WakeGuiThreadCondition;
         std::unique_ptr<simplegui::Window> m_NewWindow;
         std::unique_ptr<simplegui::Window> m_PrevWindow;
         bool m_AbortRequested = false;
+
         engine::Engine &m_Engine;
         utils::NotifySink m_OnProjectChanged;
         TGuiState m_GuiState1;

@@ -332,7 +332,7 @@ namespace realtimethread
             m_LevelMeterOutputBuf[0] = 0.0f;
         }
         m_LevelMeterOutputSampleCounter += nframes;
-        int update_hz = 10;
+        int update_hz = 30;
         if(m_LevelMeterOutputSampleCounter >= 48000/update_hz)
         {
             m_LevelMeterOutputSampleCounter = 0;

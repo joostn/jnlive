@@ -930,7 +930,7 @@ region1.forEach([&](const TIntRect &r}{
 template <typename T>
 class TTypedRegion
 {
-private:
+public:
   class THorizontalRange
   {
   public:
@@ -1135,6 +1135,7 @@ public:
     });
     return result;
   }
+  const std::vector<TVerticalRange> &VertRanges() const {return m_VertRanges;}
 
 private:
   template <class Function>

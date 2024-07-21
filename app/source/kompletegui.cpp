@@ -281,10 +281,11 @@ namespace komplete
         }
     }
 
-    Gui::Gui(std::pair<int, int> vidPid, engine::Engine &engine) : m_Engine(engine), m_Hid(vidPid, [this](Hid::TButtonIndex button, int delta) { OnButton(button, delta); }), m_OnProjectChanged {m_Engine.OnDataChanged(), [this](){OnDataChanged();}}, m_OnOutputLevelUpdate(m_Engine.RtProcessor().OnOutputLevelChange(), [this](){OnOutputLevelChanged();})
+    Gui::Gui(std::pair<int, int> vidPid, std::string_view serial, engine::Engine &engine) : m_Engine(engine), m_Hid(vidPid, serial, [this](Hid::TButtonIndex button, int delta) { OnButton(button, delta); }), m_OnProjectChanged {m_Engine.OnDataChanged(), [this](){OnDataChanged();}}, m_OnOutputLevelUpdate(m_Engine.RtProcessor().OnOutputLevelChange(), [this](){OnOutputLevelChanged();})
     {
-        m_GuiThread = std::thread([vidPid, this]() {
-            RunGuiThread(vidPid);
+        m_DisplayConnected = true;
+        m_GuiThread = std::thread([vidPid, serial, this]() {
+            RunGuiThread(vidPid, serial);
         });
         auto guistate = GuiState();
         guistate.SetEngineData(m_Engine.Data());
@@ -590,6 +591,7 @@ namespace komplete
             std::unique_lock<std::mutex> lock(m_Mutex);
             m_AbortRequested = true;
         }
+        m_WakeGuiThreadCondition.notify_one();
         m_GuiThread.join();
     }
 
@@ -636,18 +638,19 @@ namespace komplete
         }
     }
 
-    void Gui::RunGuiThread(std::pair<int, int> vidPid)
+    void Gui::RunGuiThread(std::pair<int, int> vidPid, std::string_view serial)
     {
-        Display display(vidPid);
+        Display display(vidPid, serial);
         while(true)
         {
-            std::this_thread::sleep_for(2ms);
             std::unique_ptr<simplegui::Window> window;
             {
                 std::unique_lock<std::mutex> lock(m_Mutex);
-                if(m_AbortRequested)
+                m_WakeGuiThreadCondition.wait_for(lock, 10ms);
+                if(m_AbortRequested || (!display.Connected()))
                 {
-                    return;
+                    m_DisplayConnected = false;
+                    break;
                 }
                 window = std::move(m_NewWindow);
             }
@@ -660,22 +663,22 @@ namespace komplete
                 m_PrevWindow = std::move(window);
                 // display.SendPixels(0, 0, Display::sWidth, Display::sHeight);
                 dirtyregion = dirtyregion.Intersection(utils::TIntRect::FromSize({Display::sWidth, Display::sHeight}));
-                dirtyregion.ForEach([&](const utils::TIntRect &rect) {
-                    display.SendPixels(rect.Left(), rect.Top(), rect.Width(), rect.Height());
-                });
+                display.SendPixels(dirtyregion);
                 auto endtime = std::chrono::steady_clock::now();
                 [[maybe_unused]] auto elapsed = endtime - starttime;
                 // std::cout << "Painting took " << std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count() << "ms" << std::endl;
             }
-            display.Run();
-            //std::this_thread::sleep_for(100ms);
+            display.PingSometimes();
         }
     }
 
     void Gui::SetWindow(std::unique_ptr<simplegui::Window> window)
     {
-        std::unique_lock<std::mutex> lock(m_Mutex);
-        m_NewWindow = std::move(window);
+        {
+            std::unique_lock<std::mutex> lock(m_Mutex);
+            m_NewWindow = std::move(window);
+        }
+        m_WakeGuiThreadCondition.notify_one();
     }
 
     void Gui::PaintWindow(Display &display, const simplegui::Window &window, const utils::TIntRegion &dirtyregion)

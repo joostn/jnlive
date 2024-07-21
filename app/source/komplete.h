@@ -5,6 +5,7 @@
 #include <cstring>
 #include <chrono>
 #include <functional>
+#include "utils.h"
 
 #define LED_BRIGHT          0x7e
 #define LED_ON              0x7c
@@ -107,11 +108,8 @@ namespace komplete
         Hid& operator=(const Hid&) = delete;
         Hid(Hid&&) = delete;
         Hid& operator=(Hid&&) = delete;
-        Hid(std::pair<int, int> vidPid, TOnButton &&onButton);
-        void Connect();
-        void TryConnectSometimes();
-        void Disconnect();
-        void Run();
+        Hid(std::pair<int, int> vidPid, std::string_view serial, TOnButton &&onButton);
+        void Run();  // may cause Connected() to switch to false
         ~Hid();
         bool Connected() const
         {
@@ -127,6 +125,7 @@ namespace komplete
         int GetButtonState(TButtonIndex index) const;
 
     private:
+        void Disconnect();
         void UpdateButtonState(std::vector<int> &&buttonstate);
         void SendButtonDelta(TButtonIndex button, int delta);
         void UpdateLedState();
@@ -134,7 +133,6 @@ namespace komplete
     private:
         hid_device* m_Device = nullptr;
         std::chrono::time_point<std::chrono::system_clock> m_LastConnectTime = std::chrono::system_clock::now();
-        std::pair<int, int> m_VidPid;
         std::vector<int> m_PrevButtonState;
         TOnButton m_OnButton;
         std::array<uint8_t, 69> m_LedState;
@@ -149,23 +147,21 @@ namespace komplete
         static constexpr int sHeight = 272;
         static constexpr int sBytesPerPixel = 2;
         static constexpr int sDisplayBufferStride = sBytesPerPixel * sWidth;
-        Display(std::pair<int, int> vidPid);
-        void Connect();
-        void Disconnect();
-        void SendPixels(int x, int y, int width, int height);
-        void SendPixels2(int x, int y, int width, int height);
+        Display(std::pair<int, int> vidPid, std::string_view serial);
         ~Display();
-        void TryConnectSometimes();
-        void PingSometimes();
+        void SendPixels(const utils::TIntRegion &region);  // may cause Connected() to switch to false
+        void PingSometimes();  // may cause Connected() to switch to false
         bool Connected() const
         {
             return m_Device != nullptr;
         }
-        void Run();
         uint16_t* DisplayBuffer(int x = 0, int y = 0) const
         {
             return (uint16_t*)(m_DisplayBuffer.data() + y * sDisplayBufferStride + x * sBytesPerPixel);
         }
+
+    private:
+        void Disconnect();
 
     private:
         std::vector<unsigned char> m_DisplayBuffer = std::vector<unsigned char>((size_t)sHeight*sDisplayBufferStride);
@@ -174,6 +170,5 @@ namespace komplete
         libusb_device_handle* m_Device = nullptr;
         std::chrono::time_point<std::chrono::system_clock> m_LastConnectTime = std::chrono::system_clock::now();
         std::chrono::time_point<std::chrono::system_clock> m_LastPing = std::chrono::system_clock::now();
-        std::pair<int, int> m_VidPid;
     };
 }

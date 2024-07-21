@@ -7,13 +7,44 @@
 
 namespace komplete
 {
-    Hid::Hid(std::pair<int, int> vidPid, TOnButton &&onButton) : m_VidPid(vidPid), m_OnButton(std::move(onButton))
+    Hid::Hid(std::pair<int, int> vidPid, std::string_view serial, TOnButton &&onButton) : m_OnButton(std::move(onButton))
     {
         auto err = hid_init();
         if(err)
         {
             throw std::runtime_error("Failed to init hidapi");
         }
+        std::vector<wchar_t> serialbuf(serial.size() + 1);
+        std::copy(serial.begin(), serial.end(), serialbuf.begin());
+        serialbuf[serial.size()] = 0;
+        auto device = hid_open(vidPid.first, vidPid.second, serialbuf.data());
+        utils::finally finally([&](){
+            if(device) hid_close(device);
+            device = nullptr;
+        });
+        if(!device)
+        {
+            throw std::runtime_error("Failed to open device");
+        }
+        auto r = hid_set_nonblocking( device, 0 );
+        if(r < 0)
+        {
+            throw std::runtime_error("Failed to set nonblocking mode");
+        }
+        unsigned char hid_init[] = { 0xa0, 0, 0 };
+        r = hid_write( device,  hid_init, 3 );
+        if(r != 3)
+        {
+            throw std::runtime_error("Failed to write to device");
+        }
+        r = hid_set_nonblocking( device, 1 );
+        if(r < 0)
+        {
+            throw std::runtime_error("Failed to set nonblocking mode");
+        }
+        m_Device = device;
+        device = nullptr;
+        m_LedStateChanged = true;
         std::fill(std::begin(m_LedState), std::end(m_LedState), 0);
         m_LedMap.resize(72, -1);
         m_LedMap[(size_t)TButtonIndex::Mute] = 0;
@@ -61,6 +92,15 @@ namespace komplete
         // 42, 43 = octave?
         // 44..68 = touch strip
     }
+    void Hid::Disconnect()
+    {
+        if(m_Device)
+        {
+            hid_close(m_Device);
+            m_Device = nullptr;
+            UpdateButtonState({});  // send button up events
+        }
+    }
     void Hid::ClearAllLeds()
     {
         std::fill(std::begin(m_LedState), std::end(m_LedState), 0);
@@ -90,21 +130,6 @@ namespace komplete
             }
         }
     }
-    void Hid::Connect()
-    {
-        if(!m_Device)
-        {
-            m_Device = hid_open(m_VidPid.first, m_VidPid.second, nullptr);
-            if(m_Device)
-            {
-                hid_set_nonblocking( m_Device, 0 );
-                unsigned char hid_init[] = { 0xa0, 0, 0 };
-                hid_write( m_Device,  hid_init, 3 );
-                hid_set_nonblocking( m_Device, 1 );
-                m_LedStateChanged = true;
-            }
-        }
-    }
     void Hid::UpdateLedState()
     {
         if(Connected())
@@ -121,31 +146,8 @@ namespace komplete
             }
         }
     }
-    void Hid::TryConnectSometimes()
-    {
-        if(!Connected())
-        {
-            auto now = std::chrono::system_clock::now();
-            int delay_ms = 1000;
-            if(std::chrono::duration_cast<std::chrono::milliseconds>(now - m_LastConnectTime).count() > delay_ms)
-            {
-                m_LastConnectTime = now;
-                Connect();
-            }
-        }
-    }
-    void Hid::Disconnect()
-    {
-        if(m_Device)
-        {
-            hid_close(m_Device);
-            m_Device = nullptr;
-            UpdateButtonState({});  // send button up events
-        }
-    }
     void Hid::Run()
     {
-        TryConnectSometimes();
         if(Connected())
         {
             std::vector<unsigned char> buf(1000);;
@@ -278,39 +280,80 @@ namespace komplete
     {
         Disconnect();
     }
+
     /////////////
-    Display::Display(std::pair<int, int> vidPid) : m_VidPid(vidPid)
+    Display::~Display()
     {
-        std::fill(m_DisplayBuffer.begin(), m_DisplayBuffer.end(), 0xff);
-        auto errcode = libusb_init_context(&m_Context, nullptr, 0);
+        Disconnect();
+    }
+    Display::Display(std::pair<int, int> vidPid, std::string_view serial) 
+    {
+     	libusb_context *context = nullptr;
+        libusb_device_handle* device = nullptr;
+        libusb_device **devs = nullptr;
+        utils::finally finally([&](){
+            if(devs) libusb_free_device_list(devs, 1);
+            devs = nullptr;
+            if(device) libusb_close(device);
+            device = nullptr;
+            if(context) libusb_exit(context);
+            context = nullptr;
+        });
+        auto errcode = libusb_init_context(&context, nullptr, 0);
         if(errcode)
         {
             throw std::runtime_error("Failed to init libusb");
         }
-    }
-    void Display::Connect()
-    {
-        if(!Connected())
+        // Get the list of USB devices
+        auto count = libusb_get_device_list(context, &devs);
+        if (count < 0) 
         {
-            try
+            throw std::runtime_error("libusb_get_device_list failed");
+        }
+        for (size_t i = 0; i < (size_t)count; i++) 
+        {
+            auto trydevice = devs[i];
+            struct libusb_device_descriptor desc;
+            auto r = libusb_get_device_descriptor(trydevice, &desc);
+            if (r == LIBUSB_SUCCESS)
             {
-                m_Device = libusb_open_device_with_vid_pid(m_Context, m_VidPid.first, m_VidPid.second);
-                if(m_Device)
+                if (desc.idVendor == vidPid.first && desc.idProduct == vidPid.second) 
                 {
-                    auto errcode = libusb_claim_interface(m_Device, sInterfaceNumber);
-                    if(errcode)
+                    // Open the device
+                    r = libusb_open(trydevice, &device);
+                    if (r == LIBUSB_SUCCESS)
                     {
-                        throw std::runtime_error("Failed to claim interface");
+                        std::vector<char> serialbuf(1024);
+                        auto buflen = libusb_get_string_descriptor_ascii(device, desc.iSerialNumber, (unsigned char*)serialbuf.data(), serialbuf.size());
+                        if(buflen > 0)
+                        {
+                            std::string thisserial(serialbuf.data(), serialbuf.data() + buflen);
+                            if(thisserial == serial)
+                            {
+                                // found it, and opened successfully:
+                                goto success;
+                            }
+                        }
                     }
+                    if(device) libusb_close(device);
+                    device = nullptr;
                 }
             }
-            catch(...)
-            {
-                libusb_close(m_Device);
-                m_Device = nullptr;
-            }
-            SendPixels(0, 0, sWidth, sHeight);
+        } // for device
+        throw std::runtime_error("Failed to find device");
+
+    success:
+        auto errcode = libusb_claim_interface(device, sInterfaceNumber);
+        if(errcode)
+        {
+            throw std::runtime_error("Failed to claim interface");
         }
+        m_Context = context;
+        context = nullptr;
+        m_Device = device;
+        device = nullptr;
+        std::fill(m_DisplayBuffer.begin(), m_DisplayBuffer.end(), 0x00);
+        // SendPixels(utils::TIntRect::FromSize({sWidth, sHeight}));
     }
     void Display::Disconnect()
     {
@@ -320,14 +363,11 @@ namespace komplete
             libusb_close(m_Device);
             m_Device = nullptr;
         }
+        if(m_Context) libusb_exit(m_Context);
+        m_Context = nullptr;
     }
-    void Display::SendPixels(int x, int y, int width, int height)
-    {   
-        SendPixels2(x,y,width,height);
-    }
-
-    void Display::SendPixels2(int x, int y, int width, int height)
-    {        
+    void Display::SendPixels(const utils::TIntRegion &region)
+    {
         // https://github.com/GoaSkin/qKontrol/blob/b478fd9818c1b01c695722762e6d55a9b2e0228e/source/qkontrol.cpp#L150
         if(Connected())
         {
@@ -338,8 +378,8 @@ namespace komplete
                 uint8_t screenindex;
                 uint8_t c2 = 0x60;
                 uint32_t c3 = 0;
-                uint16_t x;
-                uint16_t y;
+                uint16_t x = 0;
+                uint16_t y = 0;
                 uint16_t hstride;
                 uint16_t unknown1;
             };
@@ -356,55 +396,60 @@ namespace komplete
                 uint32_t c2 = 3;    // 03 00 00 00
                 uint32_t c3 = 0x40; // 40 00 00 00
             };
-            
-            int bottom = y + height;
-            int right = x + width;
-            x = x & (~1);
-            y = y & (~1);
-            right = (right + 1) & (~1);
-            bottom = (bottom + 1) & (~1);
-            y = std::max(0, y);
-            bottom = std::min(sHeight, bottom);
-            height = bottom - y;
-            for(int displayindex: {0,1})
+            for(size_t displayindex: {0,1})
             {
-                int displayleft = displayindex * sWidth / 2;
-                int displayright = (displayindex + 1) * sWidth / 2;
-                int disp_x = std::max(displayleft, x);
-                int disp_right = std::min(displayright, right);
-
-                int disp_width = disp_right - disp_x;
-
-                if( (disp_width > 0) && (height > 0))
+                auto displayrect = utils::TIntRect::FromTopLeftAndSize({(int)displayindex * sWidth / 2, 0}, {sWidth / 2, sHeight});
+                auto regionfordisplay = region.Intersection(displayrect);
+                size_t pixeloffset_int = 0; // offset in 4 byte dwords in device's pixel buffer
+                // each pixel occupies 16 bits, so 2 pixels per uint32_t
+                if(!regionfordisplay.empty())
                 {
-                    size_t bufsize = sizeof(Header) + sizeof(Footer) + height * (sizeof(LineHeader) + disp_width*2);
-                    std::vector<unsigned char> buf(bufsize);
-                    Header& header = *((Header*)buf.data());
-                    header = Header();
-                    Footer& footer = *((Footer*)(buf.data() + sizeof(Header) + height * (sizeof(LineHeader) + disp_width*2)));
-                    footer = Footer();
+                    std::vector<unsigned char> buf;
+                    Header header;
                     header.screenindex = (uint8_t)displayindex;
-                    header.x = std::byteswap((uint16_t)(disp_x- displayleft));
-                    header.y = std::byteswap((uint16_t)y);
                     header.hstride = std::byteswap((uint16_t)480);
                     header.unknown1 = std::byteswap((uint16_t)1);
-                    for(int yInBuf = 0; yInBuf < height; ++yInBuf)
+                    std::copy((unsigned char*)&header, (unsigned char*)&header + sizeof(header), std::back_inserter(buf));
+                    for(const auto &vrange: regionfordisplay.VertRanges())
                     {
-                        const unsigned char *srcscanline = m_DisplayBuffer.data() + (y + yInBuf) * sDisplayBufferStride + disp_x * sBytesPerPixel;
-                        LineHeader& lineheader = *((LineHeader*)(buf.data() + sizeof(Header) + yInBuf * (sizeof(LineHeader) + disp_width*2)));
-                        lineheader = LineHeader();
-                        lineheader.numwords = std::byteswap((uint16_t)(disp_width / 2));
-                        if(yInBuf > 0)
+                        // we can only start and end at even pixel coordinates:
+                        nhAssert(vrange.Top() >= 0);
+                        nhAssert(vrange.Bottom() <= sHeight);
+                        utils::TIntRegion::TVerticalRange modifiedverticalrange(vrange.Top(), vrange.Bottom());
+                        for(const auto &hrange: vrange.HorzRanges())
                         {
-                            lineheader.offset = std::byteswap((uint16_t)((480-disp_width)/2));
+                            int left = hrange.Left() & (~1);
+                            int right = (hrange.Right() + 1) & (~1);
+                            nhAssert(left >= displayrect.Left());
+                            nhAssert(right <= displayrect.Left() + sWidth / 2);
+                            modifiedverticalrange.AppendHorzRange({left, right});
                         }
-                        unsigned char *destscanline = buf.data() + sizeof(Header) + yInBuf * (sizeof(LineHeader) + disp_width*2) + sizeof(LineHeader);
-                        for(int xInBuf = 0; xInBuf < disp_width; ++xInBuf)
+                        for(int y = modifiedverticalrange.Top(); y < modifiedverticalrange.Bottom(); y++)
                         {
-                            destscanline[xInBuf * sBytesPerPixel + 0] = srcscanline[xInBuf * sBytesPerPixel + 1];
-                            destscanline[xInBuf * sBytesPerPixel + 1] = srcscanline[xInBuf * sBytesPerPixel + 0];
+                            for(const auto &hrange: modifiedverticalrange.HorzRanges())
+                            {
+                                size_t numwords = (size_t)(hrange.Right() - hrange.Left()) / 2;
+                                size_t startwordindex = (y * sWidth / 2 + hrange.Left() - displayrect.Left()) / 2;
+                                nhAssert(startwordindex >= pixeloffset_int);
+                                auto skipwords = startwordindex - pixeloffset_int;
+                                nhAssert(skipwords <= std::numeric_limits<uint16_t>::max());
+                                nhAssert(numwords <= std::numeric_limits<uint16_t>::max());
+                                LineHeader lineheader;
+                                lineheader.numwords = std::byteswap((uint16_t)numwords);
+                                lineheader.offset = std::byteswap((uint16_t)skipwords);
+                                pixeloffset_int += numwords + skipwords;
+                                std::copy((unsigned char*)&lineheader, (unsigned char*)&lineheader + sizeof(lineheader), std::back_inserter(buf));
+                                const unsigned char *srcscanline = m_DisplayBuffer.data() + y * sDisplayBufferStride;
+                                for(int xInBuf = hrange.Left(); xInBuf < hrange.Right(); ++xInBuf)
+                                {
+                                    buf.push_back(srcscanline[xInBuf * sBytesPerPixel + 1]);
+                                    buf.push_back(srcscanline[xInBuf * sBytesPerPixel + 0]);
+                                }
+                            }
                         }
-                    }
+                    } // for vrange
+                    Footer footer;
+                    std::copy((unsigned char*)&footer, (unsigned char*)&footer + sizeof(footer), std::back_inserter(buf));
                     m_LastPing = std::chrono::system_clock::now();
                     auto errcode = libusb_bulk_transfer(m_Device, 0x03, buf.data(), (int)buf.size(), nullptr, 0);
                     if(errcode == LIBUSB_ERROR_NO_DEVICE )
@@ -412,30 +457,8 @@ namespace komplete
                         Disconnect();
                         return;
                     }
-                }
-            }
-        }
-    }
-    Display::~Display()
-    {
-        Disconnect();
-        if(m_Context)
-        {
-            libusb_exit(m_Context);
-            m_Context = nullptr;
-        }
-    }
-    void Display::TryConnectSometimes()
-    {
-        if(!Connected())
-        {
-            auto now = std::chrono::system_clock::now();
-            int delay_ms = 1000;
-            if(std::chrono::duration_cast<std::chrono::milliseconds>(now - m_LastConnectTime).count() > delay_ms)
-            {
-                m_LastConnectTime = now;
-                Connect();
-            }
+                } // if (!empty)
+            } // for displayindex
         }
     }
     void Display::PingSometimes()
@@ -446,17 +469,12 @@ namespace komplete
         auto now = std::chrono::system_clock::now();
         if(Connected())
         {
-            int delay_ms = 1000;
+            int delay_ms = 100;
             if(std::chrono::duration_cast<std::chrono::milliseconds>(now - m_LastPing).count() > delay_ms)
             {
-                SendPixels(0, 0, 16, 16);
+                SendPixels(utils::TIntRect::FromSize({2}));
             }
         }
-    }
-    void Display::Run()
-    {
-        TryConnectSometimes();
-        PingSometimes();
     }
 
 }
