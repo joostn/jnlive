@@ -204,8 +204,9 @@ namespace engine
             TData ChangeProject(project::TProject &&project) const
             {
                 TData ret = *this;
+                auto oldproject = std::move(m_Project);
                 ret.m_Project = std::move(project);
-                ret.FixFocusedPart();
+                ret.Fix(oldproject);
                 return ret;
             }
             TData ChangeHammondData(project::THammondData &&hammonddata) const
@@ -218,7 +219,7 @@ namespace engine
             {
                 TData ret = *this;
                 ret.m_GuiFocusedPart = guiFocusedPart;
-                ret.FixFocusedPart();
+                ret.Fix(m_Project);
                 return ret;
             }
             TData ChangeShowUi(bool showUi) const
@@ -242,7 +243,7 @@ namespace engine
                 return Tuple() == other.Tuple();
             }
         private:
-            void FixFocusedPart()
+            void Fix(const project::TProject &prevProject)
             {
                 if(m_Project.Parts().empty())
                 {
@@ -262,6 +263,34 @@ namespace engine
                         m_GuiFocusedPart = 0;
                     }
                 }
+                m_Part2ControllerValues.resize(m_Project.Parts().size());
+                for(size_t partindex = 0; partindex < m_Project.Parts().size(); partindex++)
+                {
+                    auto &controllervalues = m_Part2ControllerValues[partindex];
+                    if( (partindex >= prevProject.Parts().size())
+                    || (prevProject.Parts()[partindex].ActiveInstrumentIndex() != m_Project.Parts()[partindex].ActiveInstrumentIndex())
+                    || ((prevProject.Parts()[partindex].ActivePresetIndex() != m_Project.Parts()[partindex].ActivePresetIndex()) && m_Project.Parts()[partindex].ActivePresetIndex())
+                    || (!m_Project.Parts()[partindex].ActiveInstrumentIndex())
+                    )
+                    {
+                        controllervalues.clear();
+                    }
+                    if(m_Project.Parts()[partindex].ActiveInstrumentIndex())
+                    {
+                        auto &instrument = m_Project.Instruments()[*m_Project.Parts()[partindex].ActiveInstrumentIndex()];
+                        if(instrument.Parameters().size() != controllervalues.size())
+                        {
+                            controllervalues.clear();
+                        }
+                        for(size_t i = 0; i < instrument.Parameters().size(); i++)
+                        {
+                            if(i >= controllervalues.size())
+                            {
+                                controllervalues.push_back(instrument.Parameters()[i].InitialValue());
+                            }
+                        }
+                    }
+                }
             }
         private:
             project::TProject m_Project;
@@ -269,6 +298,7 @@ namespace engine
             std::optional<size_t> m_GuiFocusedPart;
             bool m_ShowUi = false;
             bool m_ShowReverbUi = false;
+            std::vector<std::vector<int>> m_Part2ControllerValues;
         };
         class Part
         {

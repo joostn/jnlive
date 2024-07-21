@@ -128,7 +128,7 @@ namespace project
             std::string m_Label;
         };
     public:
-        TInstrument(std::string &&lv2Uri, bool ishammond, std::string &&name, std::vector<TParameter> &&parameters, bool hasVocoderInput) : m_Lv2Uri(std::move(lv2Uri)), m_IsHammond(ishammond), m_Name(std::move(name)), m_HasVocoderInput(hasVocoderInput)
+        TInstrument(std::string &&lv2Uri, bool ishammond, std::string &&name, std::vector<TParameter> &&parameters, bool hasVocoderInput) : m_Lv2Uri(std::move(lv2Uri)), m_IsHammond(ishammond), m_Name(std::move(name)), m_HasVocoderInput(hasVocoderInput), m_Parameters(std::move(parameters))
         {
         }
         const std::string& Lv2Uri() const
