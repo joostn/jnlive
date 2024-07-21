@@ -1566,5 +1566,9 @@ public:
   }
 };
 
-
+    // convert between wstring and string
+    // wstring is assumed to be utf16 (even if sizeof(wchar_t) == 4)
+    // string is utf8
+    std::string wu8(std::wstring_view utf16_str);
+    std::wstring u8w(std::string_view utf8_str);
 }

@@ -5,6 +5,37 @@
 #include <span>
 #include <bit>
 
+namespace {
+    std::string get_string_descriptor_utf8(libusb_device_handle *dev,
+	uint8_t desc_index)
+    {
+        std::vector<unsigned char> tbuf(255);
+        int  si, di;
+        /* Get all language ids. */
+        auto r = libusb_get_string_descriptor(dev, 0, 0, tbuf.data(), tbuf.size());
+        if (r < 4)
+        {
+            throw std::runtime_error("Failed to get language ids");
+        }
+        // get first language id:
+        int langid = tbuf[2] | (tbuf[3] << 8);
+        r = libusb_get_string_descriptor(dev, desc_index, langid, tbuf.data(), tbuf.size());
+        if( (r < 0) || (tbuf[1] != LIBUSB_DT_STRING) || (tbuf[0] > r) || (tbuf[0] < 2) || (r >= tbuf.size()) )
+        {
+            throw std::runtime_error("Failed to get string descriptor");
+        }
+        auto len = (size_t)(tbuf[0] - 2)/2;
+        std::wstring wresult;
+        wresult.reserve(len);
+        for(size_t i=0; i < len; i++)
+        {
+            wchar_t c = tbuf[2*i+2] | ((wchar_t)tbuf[2*i+3] << 8);
+            wresult.push_back(c);
+        }
+        return utils::wu8(wresult);
+    }
+
+}
 namespace komplete
 {
     Hid::Hid(std::pair<int, int> vidPid, std::string_view serial, TOnButton &&onButton) : m_OnButton(std::move(onButton))
@@ -14,10 +45,8 @@ namespace komplete
         {
             throw std::runtime_error("Failed to init hidapi");
         }
-        std::vector<wchar_t> serialbuf(serial.size() + 1);
-        std::copy(serial.begin(), serial.end(), serialbuf.begin());
-        serialbuf[serial.size()] = 0;
-        auto device = hid_open(vidPid.first, vidPid.second, serialbuf.data());
+        auto wserial = utils::u8w(serial);
+        auto device = hid_open(vidPid.first, vidPid.second, wserial.c_str());
         utils::finally finally([&](){
             if(device) hid_close(device);
             device = nullptr;
@@ -286,6 +315,7 @@ namespace komplete
     {
         Disconnect();
     }
+    
     Display::Display(std::pair<int, int> vidPid, std::string_view serial) 
     {
      	libusb_context *context = nullptr;
@@ -299,7 +329,7 @@ namespace komplete
             if(context) libusb_exit(context);
             context = nullptr;
         });
-        auto errcode = libusb_init_context(&context, nullptr, 0);
+        int errcode = libusb_init_context(&context, nullptr, 0);
         if(errcode)
         {
             throw std::runtime_error("Failed to init libusb");
@@ -323,16 +353,11 @@ namespace komplete
                     r = libusb_open(trydevice, &device);
                     if (r == LIBUSB_SUCCESS)
                     {
-                        std::vector<char> serialbuf(1024);
-                        auto buflen = libusb_get_string_descriptor_ascii(device, desc.iSerialNumber, (unsigned char*)serialbuf.data(), serialbuf.size());
-                        if(buflen > 0)
+                        auto thisserial = get_string_descriptor_utf8(device, desc.iSerialNumber);
+                        if(thisserial == serial)
                         {
-                            std::string thisserial(serialbuf.data(), serialbuf.data() + buflen);
-                            if(thisserial == serial)
-                            {
-                                // found it, and opened successfully:
-                                goto success;
-                            }
+                            // found it, and opened successfully:
+                            goto success;
                         }
                     }
                     if(device) libusb_close(device);
@@ -343,7 +368,7 @@ namespace komplete
         throw std::runtime_error("Failed to find device");
 
     success:
-        auto errcode = libusb_claim_interface(device, sInterfaceNumber);
+        errcode = libusb_claim_interface(device, sInterfaceNumber);
         if(errcode)
         {
             throw std::runtime_error("Failed to claim interface");

@@ -2,6 +2,7 @@
 #include <thread>
 #include "kompletegui.h"
 #include "simplegui.h"
+#include <hidapi.h>
 
 using std::chrono_literals::operator""ms;
 
@@ -281,17 +282,25 @@ namespace komplete
         }
     }
 
-    Gui::Gui(std::pair<int, int> vidPid, std::string_view serial, engine::Engine &engine) : m_Engine(engine), m_Hid(vidPid, serial, [this](Hid::TButtonIndex button, int delta) { OnButton(button, delta); }), m_OnProjectChanged {m_Engine.OnDataChanged(), [this](){OnDataChanged();}}, m_OnOutputLevelUpdate(m_Engine.RtProcessor().OnOutputLevelChange(), [this](){OnOutputLevelChanged();})
+    Gui::Gui(const TDeviceParams &deviceParams, engine::Engine &engine) : m_DeviceParams(deviceParams), m_Engine(engine), m_Hid(DeviceParams().VidPid(), DeviceParams().Serial(), [this](Hid::TButtonIndex button, int delta) { OnButton(button, delta); }), m_OnProjectChanged {m_Engine.OnDataChanged(), [this](){OnDataChanged();}}, m_OnOutputLevelUpdate(m_Engine.RtProcessor().OnOutputLevelChange(), [this](){OnOutputLevelChanged();})
     {
         m_DisplayConnected = true;
-        m_GuiThread = std::thread([vidPid, serial, this]() {
-            RunGuiThread(vidPid, serial);
+        m_GuiThread = std::thread([this]() {
+            RunGuiThread(DeviceParams().VidPid(), DeviceParams().Serial());
         });
         auto guistate = GuiState();
         guistate.SetEngineData(m_Engine.Data());
         SetGuiState(std::move(guistate));
     }
 
+    bool Gui::Connected() const
+    {
+        {
+            std::unique_lock<std::mutex> lck(m_Mutex);
+            if(!m_DisplayConnected) return false;
+        }
+        return m_Hid.Connected();
+    }
     void Gui::OnButton(Hid::TButtonIndex button, int delta)
     {
         if( ((button >= Hid::TButtonIndex::TouchLcdRotary0) && (button <= Hid::TButtonIndex::TouchLcdRotary7)) || (button == Hid::TButtonIndex::TouchRotary))
@@ -1135,4 +1144,71 @@ namespace komplete
             }
         }
     }
+
+    TGuiPool::TGuiPool(engine::Engine &engine) : m_Engine(engine)
+    {
+        auto err = hid_init();
+        if(err)
+        {
+            throw std::runtime_error("Failed to init hidapi");
+        }
+    }
+
+    void TGuiPool::Run()
+    {
+        DiscoverDevices();
+    again:
+        for(auto it = m_Device2Gui.begin(); it != m_Device2Gui.end(); it++)
+        {
+            it->second->Run();
+            if(!it->second->Connected())
+            {
+                m_Device2Gui.erase(it);
+                goto again;
+            }
+        }
+    }
+    
+    void TGuiPool::DiscoverDevices()
+    {
+        auto now = std::chrono::steady_clock::now();
+        auto interval = 100ms;
+        if(now - m_LastDeviceDiscovery < interval)
+        {
+            return;
+        }
+        m_LastDeviceDiscovery = now;
+        unsigned short vid = 0x17cc;  // native instruments
+        auto devinfo = hid_enumerate(vid, 0);
+        if(devinfo)
+        {
+            utils::finally finally([devinfo](){
+                hid_free_enumeration(devinfo);
+            });
+            std::vector<unsigned short> validPids {
+                0x1610,  // komplete kontrol s49 mk2
+                0x1620,  // komplete kontrol s61 mk2
+                0x1630,  // komplete kontrol s88 mk2
+            };
+            for(auto cur = devinfo; cur; cur = cur->next)
+            {
+                auto wserial = std::wstring(cur->serial_number);
+                if(std::find(validPids.begin(), validPids.end(), cur->product_id) != validPids.end())
+                {
+                    // it's a supported device
+                    try
+                    {
+                        TDeviceParams deviceParams({(int)vid, (int)cur->product_id}, utils::wu8(wserial));
+                        auto it = m_Device2Gui.find(deviceParams);
+                        if(it == m_Device2Gui.end())
+                        {
+                            auto gui = std::make_unique<Gui>(deviceParams, m_Engine);
+                            m_Device2Gui.emplace(deviceParams, std::move(gui));
+                        }
+                    }
+                    catch(...) {}  // non fatal
+                }
+            }
+        }
+    }	
 }

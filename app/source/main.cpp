@@ -39,8 +39,7 @@ public:
     void ProcessEvents() {
         // called every 1 ms:
         m_Engine.ProcessMessages();
-        m_KompleteGui1.Run();
-        m_KompleteGui2.Run();
+        m_KompleteGuiPool.Run();
     }
     static std::string GetProjectDir()
     {
@@ -53,8 +52,7 @@ private:
     utils::TGtkAppEventLoop m_MainEventLoop;
     engine::Engine m_Engine;
     conspiracy::Controller m_ConspiracyController { m_Engine };
-    komplete::Gui m_KompleteGui1 {{0x17cc, 0x1620}, m_Engine}; // 61mk2
-    komplete::Gui m_KompleteGui2 {{0x17cc, 0x1630}, m_Engine}; // 88mk2
+    komplete::TGuiPool m_KompleteGuiPool { m_Engine };
 };
 
 int main(int argc, char** argv)

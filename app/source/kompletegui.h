@@ -72,16 +72,32 @@ namespace komplete
         }
 
     };
+
+    class TDeviceParams
+    {
+    public:
+        TDeviceParams(std::pair<int, int> &&vidPid, std::string &&serial) : m_Serial(std::move(serial)), m_VidPid(std::move(vidPid)) {}
+        const std::pair<int, int>& VidPid() const { return m_VidPid; }
+        const std::string& Serial() const { return m_Serial; }
+        auto operator<=>(const TDeviceParams &) const = default;
+        
+    private:
+        std::pair<int, int> m_VidPid;
+        std::string m_Serial;
+    };
+
     class Gui
     {
     public:
         static constexpr int sFontSize = 15;
         static constexpr int sLineSpacing = 2;
-        Gui(std::pair<int, int> vidPid, std::string_view serial, engine::Engine &engine);
+        Gui(const TDeviceParams &deviceParams, engine::Engine &engine);
         ~Gui();
-        void Run();
+        void Run(); // may cause Connected() to switch to false
         const TGuiState& GuiState() const {return m_GuiState1;}
         void SetGuiState(TGuiState &&state);
+        bool Connected() const;
+        const TDeviceParams DeviceParams() const {return m_DeviceParams;}
 
     private:
         void SetWindow(std::unique_ptr<simplegui::Window> window);
@@ -98,10 +114,11 @@ namespace komplete
         void OnOutputLevelChanged();
 
     private:
+        TDeviceParams m_DeviceParams;
         Hid m_Hid;
         std::thread m_GuiThread;
-        std::mutex m_Mutex;
-        
+        mutable std::mutex m_Mutex;
+
         // protected by mutex:
         bool m_DisplayConnected = false;
         std::condition_variable m_WakeGuiThreadCondition;
@@ -141,5 +158,20 @@ namespace komplete
         std::optional<std::chrono::steady_clock::time_point> m_NextScheduledLcdRefresh;
         std::chrono::steady_clock::time_point m_LastPeakLevelUpdate;
 
+    };
+
+    class TGuiPool
+    {
+    public:
+        TGuiPool(engine::Engine &engine);
+        void Run();
+
+    private:
+        void DiscoverDevices();
+
+    private:
+        std::map<TDeviceParams, std::unique_ptr<Gui>> m_Device2Gui;
+        std::chrono::steady_clock::time_point m_LastDeviceDiscovery;
+        engine::Engine &m_Engine;
     };
 }
