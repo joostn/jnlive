@@ -35,12 +35,42 @@ namespace engine
         return presetDir;
     }
 
+    void Engine::SendControllersForPart(size_t partindex, std::optional<size_t> controllerindexOrNull)
+    {
+        if(partindex < m_Data.Part2ControllerValues().size())
+        {
+            const auto& controllervalues = m_Data.Part2ControllerValues()[partindex];
+            const auto &part = m_Data.Project().Parts().at(partindex);
+            if(part.ActiveInstrumentIndex())
+            {
+                const auto &instrument = m_Data.Project().Instruments().at(*part.ActiveInstrumentIndex());
+                size_t paramstart = 0;
+                size_t paramend = instrument.Parameters().size();
+                if(controllerindexOrNull)
+                {
+                    paramstart = std::max(paramstart, *controllerindexOrNull);
+                    paramend = std::min(paramend, *controllerindexOrNull + 1);
+                }
+                paramend = std::min(paramend, controllervalues.size());
+                for(size_t paramindex = paramstart; paramindex < paramend; ++paramindex)
+                {
+                    auto &param = instrument.Parameters().at(paramindex);
+                    if(controllervalues[paramindex])
+                    {
+                        SendMidiToPart(midi::SimpleEvent::ControlChange(0, param.ControllerNumber(), *controllervalues[paramindex]), partindex);
+                    }
+                }
+            }
+        }
+    }
+
     void Engine::SetData(TData &&data)
     {
         auto olddata = std::move(m_Data);
         m_Data = std::move(data);
         for(size_t partindex = 0; partindex < m_Data.Project().Parts().size(); ++partindex)
         {
+            bool sendControllers = false;
             if(m_Data.Project().Parts()[partindex].ActivePresetIndex())
             {
                 bool doload = false;
@@ -57,6 +87,7 @@ namespace engine
                 }
                 if(doload)
                 {
+                    sendControllers = true;
                     SyncPlugins();
                     LoadPresetForPart(partindex);
                 }
@@ -69,8 +100,35 @@ namespace engine
             auto newInstrumentIndex = m_Data.Project().Parts()[partindex].ActiveInstrumentIndex();
             if(newInstrumentIndex && (prevInstrumentIndex != newInstrumentIndex))
             {
+                sendControllers = true;
                 SendMidiToPartInstrument(midi::SimpleEvent::AllNotesOff(0), partindex, *newInstrumentIndex);
                 SendMidiToPartInstrument(midi::SimpleEvent::ControlChange(0, midi::ccSustainPedal, 0), partindex, *newInstrumentIndex);
+            }
+            if(sendControllers)
+            {
+                SendControllersForPart(partindex, std::nullopt);
+            }
+            else
+            {
+                if(partindex < m_Data.Part2ControllerValues().size())
+                {
+                    const auto& controllervalues = m_Data.Part2ControllerValues()[partindex];
+                    for(size_t i =0; i < controllervalues.size(); i++)
+                    {
+                        std::optional<int> oldvalue;
+                        if(partindex < olddata.Part2ControllerValues().size())
+                        {
+                            if(i < olddata.Part2ControllerValues()[partindex].size())
+                            {
+                                oldvalue = olddata.Part2ControllerValues()[partindex][i];
+                            }
+                        }
+                        if(controllervalues[i] && (controllervalues[i] != oldvalue))
+                        {
+                            SendControllersForPart(partindex, i);
+                        }
+                    }
+                }
             }
         }
         if(olddata.Project() != m_Data.Project())

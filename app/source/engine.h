@@ -236,8 +236,9 @@ namespace engine
             }
             auto Tuple() const
             {
-                return std::tie(m_Project, m_HammondData, m_GuiFocusedPart, m_ShowUi, m_ShowReverbUi);
+                return std::tie(m_Project, m_HammondData, m_GuiFocusedPart, m_ShowUi, m_ShowReverbUi, m_Part2ControllerValues);
             }
+            const std::vector<std::vector<std::optional<int>>>& Part2ControllerValues() const { return m_Part2ControllerValues; }
             bool operator==(const TData &other) const
             {
                 return Tuple() == other.Tuple();
@@ -298,7 +299,7 @@ namespace engine
             std::optional<size_t> m_GuiFocusedPart;
             bool m_ShowUi = false;
             bool m_ShowReverbUi = false;
-            std::vector<std::vector<int>> m_Part2ControllerValues;
+            std::vector<std::vector<std::optional<int>>> m_Part2ControllerValues;
         };
         class Part
         {
@@ -350,6 +351,7 @@ namespace engine
         void PresetLoaderFinished(TPresetLoader *loader);
         bool IsPluginLoading(PluginInstanceForPart *plugin) const;
         int BufferSize() const { return m_BufferSize; }
+        void SendControllersForPart(size_t partindex, std::optional<size_t> controllerindexOrNull);
 
     private:
         void LoadPresetForPart(size_t partindex);

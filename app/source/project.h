@@ -99,14 +99,14 @@ namespace project
         class TParameter
         {
         public:
-            TParameter(int controllerNumber, int initialValue, std::string &&label) : m_ControllerNumber(controllerNumber), m_InitialValue(initialValue), m_Label(std::move(label))
+            TParameter(int controllerNumber, std::optional<int> initialValue, std::string &&label) : m_ControllerNumber(controllerNumber), m_InitialValue(initialValue), m_Label(std::move(label))
             {
             }
             int ControllerNumber() const
             {
                 return m_ControllerNumber;
             }
-            int InitialValue() const
+            std::optional<int> InitialValue() const
             {
                 return m_InitialValue;
             }
@@ -124,7 +124,7 @@ namespace project
             }
         private:
             int m_ControllerNumber;
-            int m_InitialValue;
+            std::optional<int> m_InitialValue;
             std::string m_Label;
         };
     public:

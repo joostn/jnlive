@@ -17,14 +17,26 @@ namespace project
     {
         Json::Value result;
         result["label"] = parameter.Label();
-        result["initialvalue"] = parameter.InitialValue();
+        if(parameter.InitialValue())
+        {
+            result["initialvalue"] = *parameter.InitialValue();
+        }
+        else
+        {
+            result["initialvalue"] = Json::Value::null;
+        }
         result["ccnum"] = parameter.ControllerNumber();
         return result;
     }
 
     TInstrument::TParameter InstrumentParameterFromJson(const Json::Value &v)
     {
-        return TInstrument::TParameter(v["ccnum"].asInt(), v["initialvalue"].asInt(), v["label"].asString());
+        std::optional<int> initialvalue;
+        if(!v["initialvalue"].isNull())
+        {
+            initialvalue = v["initialvalue"].asInt();
+        }
+        return TInstrument::TParameter(v["ccnum"].asInt(), initialvalue, v["label"].asString());
     }
 
     Json::Value ToJson(const TInstrument &instrument)
