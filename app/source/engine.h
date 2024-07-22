@@ -282,19 +282,16 @@ namespace engine
                     {
                         controllervalues.clear();
                     }
-                    if(m_Project.Parts()[partindex].ActiveInstrumentIndex())
+                    auto parameters = m_Project.ParametersForPart(partindex);
+                    if(parameters.size() != controllervalues.size())
                     {
-                        auto &instrument = m_Project.Instruments()[*m_Project.Parts()[partindex].ActiveInstrumentIndex()];
-                        if(instrument.Parameters().size() != controllervalues.size())
+                        controllervalues.clear();
+                    }
+                    for(size_t i = 0; i < parameters.size(); i++)
+                    {
+                        if(i >= controllervalues.size())
                         {
-                            controllervalues.clear();
-                        }
-                        for(size_t i = 0; i < instrument.Parameters().size(); i++)
-                        {
-                            if(i >= controllervalues.size())
-                            {
-                                controllervalues.push_back(instrument.Parameters()[i].InitialValue());
-                            }
+                            controllervalues.push_back(parameters[i].InitialValue());
                         }
                     }
                 }

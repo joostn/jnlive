@@ -130,11 +130,27 @@ namespace project
         result["instrumentindex"] = preset.InstrumentIndex();
         result["name"] = preset.Name();
         result["subdir"] = preset.PresetSubDir();
+        if(preset.OverrideParameters())
+        {
+            for(const auto &param: *preset.OverrideParameters())
+            {
+                result["overrideparameters"].append(ToJson(param))
+            }
+        }
         return result;
     }
     TPreset PresetFromJson(const Json::Value &v)
     {
-        return TPreset(v["instrumentindex"].asInt(), v["name"].asString(), v["subdir"].asString());
+        std::optional<std::vector<TInstrument::TParameter>> overrideParameters;
+        if(v["overrideparameters"].isArray())
+        {
+            overrideParameters = std::vector<TInstrument::TParameter>();
+            for(const auto &p: v["overrideparameters"])
+            {
+                overrideParameters->push_back(InstrumentParameterFromJson(p));
+            }
+        }
+        return TPreset(v["instrumentindex"].asInt(), v["name"].asString(), v["subdir"].asString(), std::move(overrideParameters));
     }
     Json::Value ToJson(const TProject &project)
     {

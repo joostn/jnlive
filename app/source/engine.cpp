@@ -850,7 +850,7 @@ namespace engine
                             oldpresetdir = presets[presetindex]->PresetSubDir();
                         }
                     }
-                    presets[presetindex] = project::TPreset(instrindex, std::string(name), std::move(relativePresetDir));
+                    presets[presetindex] = project::TPreset(instrindex, std::string(name), std::move(relativePresetDir), std::nullopt);
                     newproject.SetPresets(std::move(presets));
                     auto newpart = newproject.Parts().at(partindex).ChangeActivePresetIndex(presetindex).ChangeActiveInstrumentIndex(instrindex);
                     newproject = newproject.ChangePart(partindex, std::move(newpart));

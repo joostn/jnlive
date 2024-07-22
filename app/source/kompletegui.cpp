@@ -427,38 +427,34 @@ namespace komplete
             {
                 if(GuiState().m_FocusedPart)
                 {
-                    auto activeinstrumentindexOrNull = GuiState().EngineData().Project().Parts().at(*GuiState().m_FocusedPart).ActiveInstrumentIndex();
-                    if(activeinstrumentindexOrNull)
+                    auto parameters = GuiState().EngineData().Project().ParametersForPart(*GuiState().m_FocusedPart);
+                    const auto &controllervalues = GuiState().EngineData().Part2ControllerValues().at(*GuiState().m_FocusedPart);
+                    auto numcontrollers = std::min({controllervalues.size(), parameters.size(), (size_t)8});
+
+                    if((button >= Hid::TButtonIndex::LcdRotary0) && (button <= Hid::TButtonIndex::LcdRotary7))
                     {
-                        const auto &parameters = GuiState().EngineData().Project().Instruments().at(*activeinstrumentindexOrNull).Parameters();
-                        const auto &controllervalues = GuiState().EngineData().Part2ControllerValues().at(*GuiState().m_FocusedPart);
-                        auto numcontrollers = std::min({controllervalues.size(), parameters.size(), (size_t)8});
-
-                        if((button >= Hid::TButtonIndex::LcdRotary0) && (button <= Hid::TButtonIndex::LcdRotary7))
+                        size_t controllerindex = ((size_t)((int)button - (int)Hid::TButtonIndex::LcdRotary0));
+                        int v = m_ControllerHysteresis.at(controllerindex).Update(delta);
+                        if(v != 0)
                         {
-                            size_t controllerindex = ((size_t)((int)button - (int)Hid::TButtonIndex::LcdRotary0));
-                            int v = m_ControllerHysteresis.at(controllerindex).Update(delta);
-                            if(v != 0)
+                            if(controllerindex < numcontrollers)
                             {
-                                if(controllerindex < numcontrollers)
+                                int newcontrollervalue = 0;
+                                if(controllervalues.at(controllerindex))
                                 {
-                                    int newcontrollervalue = 0;
-                                    if(controllervalues.at(controllerindex))
-                                    {
-                                        newcontrollervalue = *controllervalues.at(controllerindex) + v;
-                                    }
-                                    newcontrollervalue = std::clamp(newcontrollervalue, 0, 127);
-                                    if(newcontrollervalue != controllervalues.at(controllerindex))
-                                    {
-                                        auto newpart2controllervalues = 
-                                        GuiState().EngineData().Part2ControllerValues();
-                                        newpart2controllervalues.at(*GuiState().m_FocusedPart).at(controllerindex) = newcontrollervalue;
-                                        auto newguistate = GuiState();
-                                        newguistate.SetEngineData(newguistate.EngineData().ChangePart2ControllerValues(std::move(newpart2controllervalues)));
-                                        SetGuiState(std::move(newguistate));
-                                    }
-
+                                    newcontrollervalue = *controllervalues.at(controllerindex) + v;
                                 }
+                                newcontrollervalue = std::clamp(newcontrollervalue, 0, 127);
+                                if(newcontrollervalue != controllervalues.at(controllerindex))
+                                {
+                                    auto newpart2controllervalues = 
+                                    GuiState().EngineData().Part2ControllerValues();
+                                    newpart2controllervalues.at(*GuiState().m_FocusedPart).at(controllerindex) = newcontrollervalue;
+                                    auto newguistate = GuiState();
+                                    newguistate.SetEngineData(newguistate.EngineData().ChangePart2ControllerValues(std::move(newpart2controllervalues)));
+                                    SetGuiState(std::move(newguistate));
+                                }
+
                             }
                         }
                     }
@@ -1042,31 +1038,27 @@ namespace komplete
         {
             if(GuiState().m_FocusedPart)
             {
-                auto activeinstrumentindexOrNull = GuiState().EngineData().Project().Parts().at(*GuiState().m_FocusedPart).ActiveInstrumentIndex();
-                if(activeinstrumentindexOrNull)
+                auto parameters = GuiState().EngineData().Project().ParametersForPart(*GuiState().m_FocusedPart);
+                const auto &controllervalues = GuiState().EngineData().Part2ControllerValues().at(*GuiState().m_FocusedPart);
+                auto numcontrollers = std::min({controllervalues.size(), parameters.size(), (size_t)8});
+                int lineheight = sFontSize + 2;
+                int sliderbottom = 272;
+                int sliderheight = 30;
+                int sliderlabeltop = sliderbottom - sliderheight - lineheight;
+                for(size_t controllerindex = 0; controllerindex < numcontrollers; controllerindex++)
                 {
-                    const auto &parameters = GuiState().EngineData().Project().Instruments().at(*activeinstrumentindexOrNull).Parameters();
-                    const auto &controllervalues = GuiState().EngineData().Part2ControllerValues().at(*GuiState().m_FocusedPart);
-                    auto numcontrollers = std::min({controllervalues.size(), parameters.size(), (size_t)8});
-                    int lineheight = sFontSize + 2;
-                    int sliderbottom = 272;
-                    int sliderheight = 30;
-                    int sliderlabeltop = sliderbottom - sliderheight - lineheight;
-                    for(size_t controllerindex = 0; controllerindex < numcontrollers; controllerindex++)
+                    int sliderleft = (int)controllerindex * 120 + 5;
+                    int sliderright = sliderleft + 120 - 10;
+                    auto slidercolor = utils::TFloatColor::White();
+                    auto label = parameters.at(controllerindex).Label();
+                    window.AddChild<simplegui::TextWindow>(utils::TIntRect::FromTopLeftAndSize({sliderleft, sliderlabeltop}, {sliderright - sliderleft, lineheight}), label, slidercolor, sFontSize, simplegui::TextWindow::THalign::Left);
+                    std::string slidertext = "-";
+                    if(controllervalues.at(controllerindex))
                     {
-                        int sliderleft = (int)controllerindex * 120 + 5;
-                        int sliderright = sliderleft + 120 - 10;
-                        auto slidercolor = utils::TFloatColor::White();
-                        auto label = parameters.at(controllerindex).Label();
-                        window.AddChild<simplegui::TextWindow>(utils::TIntRect::FromTopLeftAndSize({sliderleft, sliderlabeltop}, {sliderright - sliderleft, lineheight}), label, slidercolor, sFontSize, simplegui::TextWindow::THalign::Left);
-                        std::string slidertext = "-";
-                        if(controllervalues.at(controllerindex))
-                        {
-                            slidertext = std::to_string(*controllervalues.at(controllerindex));
-                        }
-                        double slidervalue = controllervalues.at(controllerindex).value_or(0.0) / 127.0;
-                        window.AddChild<simplegui::TSlider>(utils::TIntRect::FromTopLeftAndSize({sliderleft, sliderbottom - sliderheight}, {sliderright - sliderleft, sliderheight}), slidertext, slidervalue, slidercolor);
+                        slidertext = std::to_string(*controllervalues.at(controllerindex));
                     }
+                    double slidervalue = controllervalues.at(controllerindex).value_or(0.0) / 127.0;
+                    window.AddChild<simplegui::TSlider>(utils::TIntRect::FromTopLeftAndSize({sliderleft, sliderbottom - sliderheight}, {sliderright - sliderleft, sliderheight}), slidertext, slidervalue, slidercolor);
                 }
             }
         }

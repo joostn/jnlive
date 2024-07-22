@@ -233,7 +233,7 @@ namespace project
     class TPreset
     {
     public:
-        TPreset(size_t instrumentIndex, std::string &&name, std::string &&presetSubDir) : m_InstrumentIndex(instrumentIndex), m_PresetSubDir(presetSubDir), m_Name(std::move(name)) {}
+        TPreset(size_t instrumentIndex, std::string &&name, std::string &&presetSubDir, std::optional<std::vector<TInstrument::TParameter>> &&overrideParameters) : m_InstrumentIndex(instrumentIndex), m_PresetSubDir(presetSubDir), m_Name(std::move(name)), m_OverrideParameters(std::move(overrideParameters)) {}
         size_t InstrumentIndex() const { return m_InstrumentIndex; }
         const std::string &Name() const {return m_Name;}
         const std::string &PresetSubDir() const {return m_PresetSubDir;}
@@ -255,9 +255,16 @@ namespace project
             result.m_InstrumentIndex = instrumentIndex;
             return result;
         }
+        TPreset ChangeOverrideParameters(std::optional<std::vector<TInstrument::TParameter>> &&overrideParameters) const
+        {
+            auto result = *this;
+            result.m_OverrideParameters = std::move(overrideParameters);
+            return result;
+        }
+        const std::optional<std::vector<TInstrument::TParameter>>& OverrideParameters() const {return m_OverrideParameters;}
         auto Tuple() const
         {
-            return std::tie(m_InstrumentIndex, m_Name, m_PresetSubDir);
+            return std::tie(m_InstrumentIndex, m_Name, m_PresetSubDir, m_OverrideParameters);
         }
         bool operator==(const TPreset &other) const
         {
@@ -268,6 +275,7 @@ namespace project
         size_t m_InstrumentIndex = 0;
         std::string m_Name;
         std::string m_PresetSubDir;
+        std::optional<std::vector<TInstrument::TParameter>> m_OverrideParameters;
     };
     class TReverb
     {
@@ -385,6 +393,23 @@ namespace project
         bool operator==(const TProject &other) const
         {
             return Tuple() == other.Tuple();
+        }
+        std::vector<TInstrument::TParameter> ParametersForPart(size_t partindex) const
+        {
+            std::vector<TInstrument::TParameter> result;
+            const auto &part = Parts().at(partindex);
+            if(part.ActiveInstrumentIndex())
+            {
+                if(part.ActivePresetIndex() && Presets().at(*part.ActivePresetIndex()) && Presets().at(*part.ActivePresetIndex()).value().OverrideParameters())
+                {
+                    result = Presets().at(*part.ActivePresetIndex()).value().OverrideParameters().value();
+                }
+                else
+                {
+                    result = Instruments().at(part.ActiveInstrumentIndex().value()).Parameters();
+                }
+            }
+            return result;
         }
 
     private:
