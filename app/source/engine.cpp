@@ -363,7 +363,7 @@ namespace engine
     {
         if(sender->pluginInstance())
         {
-            if(Project().Instruments().at(sender->OwningInstrumentIndex()).IsHammond())
+            if( (sender->OwningInstrumentIndex() < Project().Instruments().size()) && (Project().Instruments().at(sender->OwningInstrumentIndex()).IsHammond()))
             {
                 if(m_ProcessingDataFromPlugin.count(sender->pluginInstance().get()) == 0)
                 {
@@ -866,7 +866,7 @@ namespace engine
         }
     }
 
-    Engine::Engine(uint32_t maxBlockSize, int argc, char** argv, std::string &&projectdir, utils::TEventLoop &eventLoop) : m_JackClient {"JN Live", [this](jack_nframes_t nframes){
+    Engine::Engine(uint32_t maxBlockSize, int argc, char** argv, std::string &&projectdir, utils::TEventLoop &eventLoop) : m_BufferSize(64),m_JackClient {"JN Live", [this](jack_nframes_t nframes){
         m_RtProcessor.Process(nframes);
     }}, m_LilvWorld(m_JackClient.SampleRate(), maxBlockSize, argc, argv), m_ProjectDir(std::move(projectdir)), m_EventLoop(eventLoop), m_CleanupPresetLoadersAction(m_EventLoop, [this](){CleanupPresetLoaders();})
     {
@@ -1064,7 +1064,9 @@ namespace engine
         }
 
         // this will deferredly delete the plugins and midi in ports that are no longer needed:
-        SetProject(project::TProject());
+        auto newdata = Data().ChangeShowUi(false).ChangeShowReverbUi(false);
+        SetData(std::move(newdata));
+        SetData(TData());
         for(auto &port: m_AudioOutPorts)
         {
             auto ptr = port.release();

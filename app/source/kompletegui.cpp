@@ -1239,7 +1239,7 @@ namespace komplete
             };
             for(auto cur = devinfo; cur; cur = cur->next)
             {
-                auto wserial = std::wstring(cur->serial_number);
+                auto wserial = cur->serial_number? std::wstring(cur->serial_number) : std::wstring();
                 if(std::find(validPids.begin(), validPids.end(), cur->product_id) != validPids.end())
                 {
                     // it's a supported device

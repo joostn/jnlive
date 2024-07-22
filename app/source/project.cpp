@@ -134,8 +134,12 @@ namespace project
         {
             for(const auto &param: *preset.OverrideParameters())
             {
-                result["overrideparameters"].append(ToJson(param))
+                result["overrideparameters"].append(ToJson(param));
             }
+        }
+        else
+        {
+            result["overrideparameters"] = Json::nullValue;
         }
         return result;
     }

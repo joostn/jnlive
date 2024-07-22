@@ -60,12 +60,43 @@ namespace komplete
         {
             throw std::runtime_error("Failed to set nonblocking mode");
         }
-        unsigned char hid_init[] = { 0xa0, 0, 0 };
-        r = hid_write( device,  hid_init, 3 );
-        if(r != 3)
+/*
         {
-            throw std::runtime_error("Failed to write to device");
+            unsigned char hid_init[] = { 0xa0, 0x93, 0 };
+            r = hid_write( device,  hid_init, 3 );
+            if(r != 3)
+            {
+                throw std::runtime_error("Failed to write to device");
+            }
         }
+
+        {
+            unsigned char hid_init[] = { 0xaf, 0, 2 };
+            r = hid_write( device,  hid_init, 3 );
+            if(r != 3)
+            {
+                throw std::runtime_error("Failed to write to device");
+            }
+        }
+        {
+            unsigned char hid_init[] = { 0xa0, 0, 0 };
+            r = hid_write( device,  hid_init, 3 );
+            if(r != 3)
+            {
+                throw std::runtime_error("Failed to write to device");
+            }
+        }
+*/
+
+        {
+            unsigned char hid_init[] = { 0xa0, 0x00, 0x10 };
+            r = hid_write( device,  hid_init, 3 );
+            if(r != 3)
+            {
+                throw std::runtime_error("Failed to write to device");
+            }
+        }
+
         r = hid_set_nonblocking( device, 1 );
         if(r < 0)
         {
@@ -217,6 +248,23 @@ namespace komplete
                         UpdateButtonState(std::move(buttonstate));
                     }
  
+                }
+                else if(reportid == 2)
+                {
+                    // touch strip:
+                    if(numbytes >= 9)
+                    {
+                        auto value = *((int*)&buf[5]);
+                        value -= 100000;
+                        if(value < 0)
+                        {
+                            std::cout << " End touch" << std::endl;
+                        }
+                        else
+                        {
+                            std::cout << " Touch: " << std::dec << value << std::endl;
+                        }
+                    }
                 }
                 else
                 {

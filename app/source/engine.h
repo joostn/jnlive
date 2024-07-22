@@ -411,7 +411,7 @@ namespace engine
         utils::TEventLoopAction m_CleanupPresetLoadersAction;
         std::vector<std::unique_ptr<TPresetLoader>> m_PresetLoaders;
         std::map<PluginInstanceForPart*, std::string> m_Plugin2LoadQueue;
-        int m_BufferSize = 128;
+        int m_BufferSize;
     };
 
     class TController
