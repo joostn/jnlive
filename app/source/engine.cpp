@@ -1177,6 +1177,17 @@ namespace engine
         {
             if(loader->Finished())
             {
+                if(loader->PluginInstance().OwningPart() && (Project().Parts().size() > *loader->PluginInstance().OwningPart()))
+                {
+                    if(loader->PluginInstance().OwningInstrumentIndex() && (loader->PluginInstance().OwningInstrumentIndex() == Project().Parts().at(*loader->PluginInstance().OwningPart()).ActiveInstrumentIndex()))
+                    {
+                        // we've finished loading the patch for the active instrument of a part
+                        // Send controller values:
+                        SendControllersForPart(*loader->PluginInstance().OwningPart(), std::nullopt);
+                    }
+                }
+
+
                 changed = true;
             }
             else

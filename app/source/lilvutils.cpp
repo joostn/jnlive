@@ -736,7 +736,7 @@ namespace lilvutils
                 }
                 if(!evt.IsSysex() && (evt.GetSimpleEvent().type() == midi::SimpleEvent::Type::ControlChange))
                 {
-                    std::cout << evt.ToDebugString() << std::endl;
+                    // std::cout << evt.ToDebugString() << std::endl;
                 }
             }
         }

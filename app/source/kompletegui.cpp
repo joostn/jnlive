@@ -423,6 +423,47 @@ namespace komplete
                     m_Engine.SetData(std::move(newenginedata));                    
                 }
             }
+            else
+            {
+                if(GuiState().m_FocusedPart)
+                {
+                    auto activeinstrumentindexOrNull = GuiState().EngineData().Project().Parts().at(*GuiState().m_FocusedPart).ActiveInstrumentIndex();
+                    if(activeinstrumentindexOrNull)
+                    {
+                        const auto &parameters = GuiState().EngineData().Project().Instruments().at(*activeinstrumentindexOrNull).Parameters();
+                        const auto &controllervalues = GuiState().EngineData().Part2ControllerValues().at(*GuiState().m_FocusedPart);
+                        auto numcontrollers = std::min({controllervalues.size(), parameters.size(), (size_t)8});
+
+                        if((button >= Hid::TButtonIndex::LcdRotary0) && (button <= Hid::TButtonIndex::LcdRotary7))
+                        {
+                            size_t controllerindex = ((size_t)((int)button - (int)Hid::TButtonIndex::LcdRotary0));
+                            int v = m_ControllerHysteresis.at(controllerindex).Update(delta);
+                            if(v != 0)
+                            {
+                                if(controllerindex < numcontrollers)
+                                {
+                                    int newcontrollervalue = 0;
+                                    if(controllervalues.at(controllerindex))
+                                    {
+                                        newcontrollervalue = *controllervalues.at(controllerindex) + v;
+                                    }
+                                    newcontrollervalue = std::clamp(newcontrollervalue, 0, 127);
+                                    if(newcontrollervalue != controllervalues.at(controllerindex))
+                                    {
+                                        auto newpart2controllervalues = 
+                                        GuiState().EngineData().Part2ControllerValues();
+                                        newpart2controllervalues.at(*GuiState().m_FocusedPart).at(controllerindex) = newcontrollervalue;
+                                        auto newguistate = GuiState();
+                                        newguistate.SetEngineData(newguistate.EngineData().ChangePart2ControllerValues(std::move(newpart2controllervalues)));
+                                        SetGuiState(std::move(newguistate));
+                                    }
+
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         if(GuiState().m_Mode == TGuiState::TMode::Performance)
@@ -731,24 +772,6 @@ namespace komplete
         const auto &project = GuiState().EngineData().Project();
 
         int lineheight = sFontSize + 2;
-
-        /*
-        std::string presetname;
-        if(GuiState().m_SelectedPreset < project.Presets().size())
-        {
-            const auto &presetOrNull = project.Presets()[GuiState().m_SelectedPreset];
-            if(presetOrNull)
-            {
-                presetname = presetOrNull->Name();
-            }
-        }
-        int presetboxheight = 2*lineheight + sLineSpacing + 2;
-        auto presetnamebox = window.AddChild<simplegui::PlainWindow>(utils::TIntRect::FromTopLeftAndSize(0, 272-presetboxheight, 120, presetboxheight), utils::TFloatColor(0.2, 0.2, 0.2));
-
-        presetnamebox->AddChild<simplegui::TextWindow>(utils::TIntRect::FromTopLeftAndSize(1, 1, presetnamebox->Width() - 2, lineheight), std::to_string(GuiState().m_SelectedPreset), utils::TFloatColor(1, 1, 1), sFontSize, simplegui::TextWindow::THalign::Left);
-
-        presetnamebox->AddChild<simplegui::TextWindow>(utils::TIntRect::FromTopLeftAndSize(1, 1 + lineheight + sLineSpacing, presetnamebox->Width() - 2, lineheight), presetname, utils::TFloatColor(1, 1, 1), sFontSize, simplegui::TextWindow::THalign::Left);
-*/
         {
             // output level:
             int levelmetertop = 80;
@@ -1014,6 +1037,38 @@ namespace komplete
         if(partOrNull)
         {
             PaintHammondControllerWindow(window, *partOrNull);            
+        }
+        else
+        {
+            if(GuiState().m_FocusedPart)
+            {
+                auto activeinstrumentindexOrNull = GuiState().EngineData().Project().Parts().at(*GuiState().m_FocusedPart).ActiveInstrumentIndex();
+                if(activeinstrumentindexOrNull)
+                {
+                    const auto &parameters = GuiState().EngineData().Project().Instruments().at(*activeinstrumentindexOrNull).Parameters();
+                    const auto &controllervalues = GuiState().EngineData().Part2ControllerValues().at(*GuiState().m_FocusedPart);
+                    auto numcontrollers = std::min({controllervalues.size(), parameters.size(), (size_t)8});
+                    int lineheight = sFontSize + 2;
+                    int sliderbottom = 272;
+                    int sliderheight = 30;
+                    int sliderlabeltop = sliderbottom - sliderheight - lineheight;
+                    for(size_t controllerindex = 0; controllerindex < numcontrollers; controllerindex++)
+                    {
+                        int sliderleft = (int)controllerindex * 120 + 5;
+                        int sliderright = sliderleft + 120 - 10;
+                        auto slidercolor = utils::TFloatColor::White();
+                        auto label = parameters.at(controllerindex).Label();
+                        window.AddChild<simplegui::TextWindow>(utils::TIntRect::FromTopLeftAndSize({sliderleft, sliderlabeltop}, {sliderright - sliderleft, lineheight}), label, slidercolor, sFontSize, simplegui::TextWindow::THalign::Left);
+                        std::string slidertext = "-";
+                        if(controllervalues.at(controllerindex))
+                        {
+                            slidertext = std::to_string(*controllervalues.at(controllerindex));
+                        }
+                        double slidervalue = controllervalues.at(controllerindex).value_or(0.0) / 127.0;
+                        window.AddChild<simplegui::TSlider>(utils::TIntRect::FromTopLeftAndSize({sliderleft, sliderbottom - sliderheight}, {sliderright - sliderleft, sliderheight}), slidertext, slidervalue, slidercolor);
+                    }
+                }
+            }
         }
     }
     void Gui::RefreshLcd()

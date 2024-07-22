@@ -238,6 +238,12 @@ namespace engine
             {
                 return std::tie(m_Project, m_HammondData, m_GuiFocusedPart, m_ShowUi, m_ShowReverbUi, m_Part2ControllerValues);
             }
+            TData ChangePart2ControllerValues(std::vector<std::vector<std::optional<int>>> &&part2ControllerValues) const
+            {
+                TData ret = *this;
+                ret.m_Part2ControllerValues = std::move(part2ControllerValues);
+                return ret;
+            }
             const std::vector<std::vector<std::optional<int>>>& Part2ControllerValues() const { return m_Part2ControllerValues; }
             bool operator==(const TData &other) const
             {

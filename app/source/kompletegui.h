@@ -155,6 +155,16 @@ namespace komplete
             utils::THysteresis(20, 40),
             utils::THysteresis(0,1)
         };
+        std::array<utils::THysteresis, 8> m_ControllerHysteresis {
+            utils::THysteresis(3, 8),
+            utils::THysteresis(3, 8),
+            utils::THysteresis(3, 8),
+            utils::THysteresis(3, 8),
+            utils::THysteresis(3, 8),
+            utils::THysteresis(3, 8),
+            utils::THysteresis(3, 8),
+            utils::THysteresis(3, 8)
+        };
         std::optional<std::chrono::steady_clock::time_point> m_NextScheduledLcdRefresh;
         std::chrono::steady_clock::time_point m_LastPeakLevelUpdate;
 
