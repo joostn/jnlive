@@ -98,11 +98,19 @@ namespace simplegui
 
     void Window::Paint(Cairo::Context &cr) const
     {
+        double clipleft, cliptop, clipright, clipbottom;
+        cr.get_clip_extents(clipleft, cliptop, clipright, clipbottom);
+        auto clipbounds = utils::TDoubleRect::FromTopLeftAndBottomRight({clipleft, cliptop}, {clipright, clipbottom}).ToRectOuterPixels();
+        if(!clipbounds.Intersects(Rectangle()))
+        {
+            return;
+        }
         // cr represents the original, unclipped cairo context.
         // translate and clip to m_Rectangle:
         cr.save();
         // create clipping path:
         cr.rectangle(m_Rectangle.Left(), m_Rectangle.Top(), m_Rectangle.Width(), m_Rectangle.Height());
+        cr.set_fill_rule(Cairo::FILL_RULE_WINDING); // default
         cr.clip();
         // translate to m_Rectangle:
         cr.translate(m_Rectangle.Left(), m_Rectangle.Top());

@@ -737,6 +737,16 @@ namespace komplete
         uint16_t* pixelbuf = display.DisplayBuffer(0, 0);
         auto surface = Cairo::ImageSurface::create((unsigned char*)pixelbuf, Cairo::Format::FORMAT_RGB16_565, Display::sWidth, Display::sHeight, Display::sDisplayBufferStride);
         auto cr = Cairo::Context::create(surface);
+
+        {
+            // draw clipping path:
+            dirtyregion.ForEach([&](const utils::TIntRect &rect){
+                cr->rectangle(rect.Left(), rect.Top(), rect.Width(), rect.Height());
+            });
+            cr->set_fill_rule(Cairo::FILL_RULE_WINDING); // default
+            cr->clip();
+        }
+
         // fill black:
         cr->set_source_rgb(0, 0, 0);
         cr->paint();
@@ -1043,6 +1053,7 @@ namespace komplete
         {
             if(GuiState().m_FocusedPart)
             {
+                auto partcolor = colorForPart(GuiState().m_FocusedPart.value());
                 auto parameters = GuiState().EngineData().Project().ParametersForPart(*GuiState().m_FocusedPart);
                 const auto &controllervalues = GuiState().EngineData().Part2ControllerValues().at(*GuiState().m_FocusedPart);
                 auto numcontrollers = std::min({controllervalues.size(), parameters.size(), (size_t)8});
@@ -1054,16 +1065,15 @@ namespace komplete
                 {
                     int sliderleft = (int)controllerindex * 120 + 5;
                     int sliderright = sliderleft + 120 - 10;
-                    auto slidercolor = utils::TFloatColor::White();
                     auto label = parameters.at(controllerindex).Label();
-                    window.AddChild<simplegui::TextWindow>(utils::TIntRect::FromTopLeftAndSize({sliderleft, sliderlabeltop}, {sliderright - sliderleft, lineheight}), label, slidercolor, sFontSize, simplegui::TextWindow::THalign::Left);
+                    window.AddChild<simplegui::TextWindow>(utils::TIntRect::FromTopLeftAndSize({sliderleft, sliderlabeltop}, {sliderright - sliderleft, lineheight}), label, partcolor, sFontSize, simplegui::TextWindow::THalign::Left);
                     std::string slidertext = "-";
                     if(controllervalues.at(controllerindex))
                     {
                         slidertext = std::to_string(*controllervalues.at(controllerindex));
                     }
                     double slidervalue = controllervalues.at(controllerindex).value_or(0.0) / 127.0;
-                    window.AddChild<simplegui::TSlider>(utils::TIntRect::FromTopLeftAndSize({sliderleft, sliderbottom - sliderheight}, {sliderright - sliderleft, sliderheight}), slidertext, slidervalue, slidercolor);
+                    window.AddChild<simplegui::TSlider>(utils::TIntRect::FromTopLeftAndSize({sliderleft, sliderbottom - sliderheight}, {sliderright - sliderleft, sliderheight}), slidertext, slidervalue, partcolor);
                 }
             }
         }
