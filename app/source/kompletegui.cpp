@@ -418,6 +418,10 @@ namespace komplete
                         {
                             hammonddata = hammonddata.ChangePercussion2ndHarmonic(!hammonddata.Percussion2ndHarmonic());
                         }
+                        if(button == Hid::TButtonIndex::Menu4)
+                        {
+                            hammonddata = hammonddata.ChangeOverDrive(!hammonddata.OverDrive());
+                        }
                     }
                     auto newenginedata = GuiState().EngineData().ChangeHammondData(std::move(hammonddata));
                     m_Engine.SetData(std::move(newenginedata));                    
@@ -713,6 +717,7 @@ namespace komplete
                 auto endtime = std::chrono::steady_clock::now();
                 [[maybe_unused]] auto elapsed = endtime - starttime;
                 // std::cout << "Painting took " << std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count() << "ms" << std::endl;
+                std::this_thread::sleep_for(2ms);  // limit update rate
             }
             display.PingSometimes();
         }
@@ -1018,10 +1023,10 @@ namespace komplete
         utils::TFloatColor black(0, 0, 0);
         if(part == 0)
         {
-            for(size_t buttonindex = 0; buttonindex < 4; buttonindex++)
+            for(size_t buttonindex = 0; buttonindex < 5; buttonindex++)
             {
-                bool value = buttonindex == 0? hammonddata.Percussion() : (buttonindex == 1? hammonddata.PercussionSoft() : (buttonindex == 2? hammonddata.PercussionFast(): hammonddata.Percussion2ndHarmonic()));
-                std::string label = buttonindex == 0? "Percussion" : (buttonindex == 1? "Soft" : (buttonindex == 2? "Fast": "2nd"));
+                bool value = buttonindex == 0? hammonddata.Percussion() : (buttonindex == 1? hammonddata.PercussionSoft() : (buttonindex == 2? hammonddata.PercussionFast(): (buttonindex == 3? hammonddata.Percussion2ndHarmonic() : hammonddata.OverDrive())));
+                std::string label = buttonindex == 0? "Percussion" : (buttonindex == 1? "Soft" : (buttonindex == 2? "Fast": (buttonindex == 3? "2nd" : "Overdrive")));
                 auto menubox = window.AddChild<simplegui::PlainWindow>(utils::TIntRect::FromTopLeftAndSize({(int)buttonindex * 120 + menuhorzpadding, 0}, {120 - 2*menuhorzpadding, menuboxheight}), value? partcolor:black);
                 menubox->AddChild<simplegui::TextWindow>(utils::TIntRect::FromSize(menubox->Rectangle().Size()).SymmetricalExpand({-1}), label, value? black:partcolor, sFontSize, simplegui::TextWindow::THalign::Center);
             }
@@ -1170,6 +1175,10 @@ namespace komplete
                         else if(btnIndex == 3)
                         {
                             isSelected = hammonddata.Percussion2ndHarmonic();
+                        }
+                        else if(btnIndex == 4)
+                        {
+                            isSelected = hammonddata.OverDrive();
                         }
                     }
                     if(isSelected)

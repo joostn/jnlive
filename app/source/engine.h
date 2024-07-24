@@ -354,7 +354,6 @@ namespace engine
         void PresetLoaderFinished(TPresetLoader *loader);
         bool IsPluginLoading(PluginInstanceForPart *plugin) const;
         int BufferSize() const { return m_BufferSize; }
-        void SendControllersForPart(size_t partindex, std::optional<size_t> controllerindexOrNull);
 
     private:
         void LoadPresetForPart(size_t partindex);
@@ -375,6 +374,8 @@ namespace engine
         void CleanupPresetLoaders();
         void StartLoading();
         void LoadJackConnections();
+        void SendControllerForPartIfNecessary();
+        bool IsPartLoading(size_t partindex) const;
 
     private:
         jackutils::Client m_JackClient;
@@ -412,6 +413,8 @@ namespace engine
         std::vector<std::unique_ptr<TPresetLoader>> m_PresetLoaders;
         std::map<PluginInstanceForPart*, std::string> m_Plugin2LoadQueue;
         int m_BufferSize;
+        std::vector<std::vector<std::optional<int>>> m_LastSentPart2ControllerValues;
+        std::chrono::steady_clock::time_point m_LastControllerSendTime;
     };
 
     class TController

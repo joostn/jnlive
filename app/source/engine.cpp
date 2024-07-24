@@ -35,29 +35,35 @@ namespace engine
         return presetDir;
     }
 
-    void Engine::SendControllersForPart(size_t partindex, std::optional<size_t> controllerindexOrNull)
+    void Engine::SendControllerForPartIfNecessary()
     {
-        if(partindex < m_Data.Part2ControllerValues().size())
+        auto now = std::chrono::steady_clock::now();
+        if(now - m_LastControllerSendTime < std::chrono::milliseconds(2))
         {
-            const auto& controllervalues = m_Data.Part2ControllerValues()[partindex];
-            const auto &part = m_Data.Project().Parts().at(partindex);
-            if(part.ActiveInstrumentIndex())
+            return;
+        }
+        for(size_t partindex = 0; partindex < m_Data.Project().Parts().size(); ++partindex)
+        {
+            if(!IsPartLoading(partindex))
             {
-                const auto &instrument = m_Data.Project().Instruments().at(*part.ActiveInstrumentIndex());
-                size_t paramstart = 0;
-                size_t paramend = instrument.Parameters().size();
-                if(controllerindexOrNull)
+                if(partindex < m_Data.Part2ControllerValues().size())
                 {
-                    paramstart = std::max(paramstart, *controllerindexOrNull);
-                    paramend = std::min(paramend, *controllerindexOrNull + 1);
-                }
-                paramend = std::min(paramend, controllervalues.size());
-                for(size_t paramindex = paramstart; paramindex < paramend; ++paramindex)
-                {
-                    auto &param = instrument.Parameters().at(paramindex);
-                    if(controllervalues[paramindex])
+                    const auto &part = m_Data.Project().Parts().at(partindex);
+                    if(part.ActiveInstrumentIndex())
                     {
-                        SendMidiToPart(midi::SimpleEvent::ControlChange(0, param.ControllerNumber(), *controllervalues[paramindex]), partindex);
+                        const auto &instrument = m_Data.Project().Instruments().at(*part.ActiveInstrumentIndex());
+                        const auto& controllervalues = m_Data.Part2ControllerValues()[partindex];
+                        for(size_t i =0; i < controllervalues.size(); i++)
+                        {
+                            auto &param = instrument.Parameters().at(i);
+                            auto oldvalue = m_LastSentPart2ControllerValues.at(partindex).at(i);
+                            if(controllervalues[i] && (controllervalues[i] != oldvalue))
+                            {
+                                SendMidiToPart(midi::SimpleEvent::ControlChange(0, param.ControllerNumber(), *controllervalues[i]), partindex);
+                                m_LastSentPart2ControllerValues.at(partindex).at(i) = controllervalues[i];
+                                m_LastControllerSendTime = now;
+                            }
+                        }
                     }
                 }
             }
@@ -68,9 +74,9 @@ namespace engine
     {
         auto olddata = std::move(m_Data);
         m_Data = std::move(data);
+        m_LastSentPart2ControllerValues.resize(m_Data.Project().Parts().size());
         for(size_t partindex = 0; partindex < m_Data.Project().Parts().size(); ++partindex)
         {
-            bool sendControllers = false;
             if(m_Data.Project().Parts()[partindex].ActivePresetIndex())
             {
                 bool doload = false;
@@ -87,7 +93,8 @@ namespace engine
                 }
                 if(doload)
                 {
-                    sendControllers = true;
+                    m_LastSentPart2ControllerValues.at(partindex).clear();
+                    m_LastSentPart2ControllerValues.at(partindex).resize(m_Data.Part2ControllerValues().at(partindex).size());
                     SyncPlugins();
                     LoadPresetForPart(partindex);
                 }
@@ -100,35 +107,10 @@ namespace engine
             auto newInstrumentIndex = m_Data.Project().Parts()[partindex].ActiveInstrumentIndex();
             if(newInstrumentIndex && (prevInstrumentIndex != newInstrumentIndex))
             {
-                sendControllers = true;
+                m_LastSentPart2ControllerValues.at(partindex).clear();
+                m_LastSentPart2ControllerValues.at(partindex).resize(m_Data.Part2ControllerValues().at(partindex).size());
                 SendMidiToPartInstrument(midi::SimpleEvent::AllNotesOff(0), partindex, *newInstrumentIndex);
                 SendMidiToPartInstrument(midi::SimpleEvent::ControlChange(0, midi::ccSustainPedal, 0), partindex, *newInstrumentIndex);
-            }
-            if(sendControllers)
-            {
-                SendControllersForPart(partindex, std::nullopt);
-            }
-            else
-            {
-                if(partindex < m_Data.Part2ControllerValues().size())
-                {
-                    const auto& controllervalues = m_Data.Part2ControllerValues()[partindex];
-                    for(size_t i =0; i < controllervalues.size(); i++)
-                    {
-                        std::optional<int> oldvalue;
-                        if(partindex < olddata.Part2ControllerValues().size())
-                        {
-                            if(i < olddata.Part2ControllerValues()[partindex].size())
-                            {
-                                oldvalue = olddata.Part2ControllerValues()[partindex][i];
-                            }
-                        }
-                        if(controllervalues[i] && (controllervalues[i] != oldvalue))
-                        {
-                            SendControllersForPart(partindex, i);
-                        }
-                    }
-                }
             }
         }
         if(olddata.Project() != m_Data.Project())
@@ -192,6 +174,10 @@ namespace engine
                     if(forceNow || (olddata.Percussion2ndHarmonic() != Data().HammondData().Percussion2ndHarmonic()))
                     {
                         SendMidi(midi::SimpleEvent::ControlChange(0, 83, Data().HammondData().Percussion2ndHarmonic()? 127 : 0), *ownedplugin->pluginInstance());
+                    }
+                    if(forceNow || (olddata.OverDrive() != Data().HammondData().OverDrive()))
+                    {
+                        SendMidi(midi::SimpleEvent::ControlChange(0, 65, Data().HammondData().OverDrive()? 127 : 0), *ownedplugin->pluginInstance());
                     }
                 }
             }
@@ -410,6 +396,10 @@ namespace engine
                                 else if(simpleevent.ControlNumber() == 83)
                                 {
                                     hammonddata = hammonddata.ChangePercussion2ndHarmonic(boolvalue);
+                                }
+                                else if(simpleevent.ControlNumber() == 65)
+                                {
+                                    hammonddata = hammonddata.ChangeOverDrive(boolvalue);
                                 }
                                 auto newdata = Data().ChangeHammondData(std::move(hammonddata));
                                 SetData(std::move(newdata));
@@ -653,6 +643,28 @@ namespace engine
         m_OwnedPlugins = std::move(ownedPlugins);
         m_Parts = std::move(newparts);
     }
+    bool Engine::IsPartLoading(size_t partindex) const
+    {
+        if( (partindex < Project().Parts().size()) && Project().Parts()[partindex].ActiveInstrumentIndex())
+        {
+            const auto &instrumentindex2ownedpluginindex = m_Parts[partindex].PluginIndices();
+            auto instrindex = *Project().Parts()[partindex].ActiveInstrumentIndex();
+            if( (instrindex >= 0) && (instrindex < instrumentindex2ownedpluginindex.size()) )
+            {
+                auto ownedpluginindex = instrumentindex2ownedpluginindex[instrindex];
+                const auto &ownedplugin = m_OwnedPlugins[ownedpluginindex];
+                if(ownedplugin)
+                {
+                    if(IsPluginLoading(ownedplugin.get()))
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+    
     void Engine::LoadPresetForPart(size_t partindex)
     {
         if(partindex <  Project().Parts().size())
@@ -1179,17 +1191,6 @@ namespace engine
         {
             if(loader->Finished())
             {
-                if(loader->PluginInstance().OwningPart() && (Project().Parts().size() > *loader->PluginInstance().OwningPart()))
-                {
-                    if(loader->PluginInstance().OwningInstrumentIndex() && (loader->PluginInstance().OwningInstrumentIndex() == Project().Parts().at(*loader->PluginInstance().OwningPart()).ActiveInstrumentIndex()))
-                    {
-                        // we've finished loading the patch for the active instrument of a part
-                        // Send controller values:
-                        SendControllersForPart(*loader->PluginInstance().OwningPart(), std::nullopt);
-                    }
-                }
-
-
                 changed = true;
             }
             else
@@ -1249,23 +1250,7 @@ namespace engine
         {
             m_ReverbInstance->Ui()->ui()->CallIdle();
         }
-        // if(m_NeedCloseUi)
-        // {
-        //     m_NeedCloseUi = false;
-        //     if(Project().ShowUi())
-        //     {
-        //         SetProject(Project().Change(Project().FocusedPart(), false));
-        //     }
-        // }
-        // if(m_NeedCloseReverbUi)
-        // {
-        //     m_NeedCloseReverbUi = false;
-        //     if(Project().Reverb().ShowGui())
-        //     {
-        //         auto reverb = Project().Reverb().ChangeShowGui(false);
-        //         SetProject(Project().ChangeReverb(std::move(reverb)));
-        //     }
-        // }
+        SendControllerForPartIfNecessary();
     }
     void Engine::SyncRtData()
     {

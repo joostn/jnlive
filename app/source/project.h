@@ -33,7 +33,7 @@ namespace project
         private:
             std::array<int, 9> m_Registers;
         };
-        THammondData() : m_Parts({TPart({8,8,8,0,0,0,0,0,0}), TPart({0,0,8,8,0,0,0,0,0})}), m_Percussion(true), m_PercussionSoft(false), m_PercussionFast(true), m_Percussion2ndHarmonic(true)
+        THammondData() : m_Parts({TPart({8,8,8,0,0,0,0,0,0}), TPart({0,0,8,8,0,0,0,0,0})}), m_Percussion(true), m_PercussionSoft(false), m_PercussionFast(true), m_Percussion2ndHarmonic(true), m_OverDrive(false)
         {
         }
         THammondData ChangePart(int partindex, const TPart &part) const
@@ -52,6 +52,7 @@ namespace project
         bool PercussionSoft() const { return m_PercussionSoft; }
         bool PercussionFast() const { return m_PercussionFast; }
         bool Percussion2ndHarmonic() const { return m_Percussion2ndHarmonic; }
+        bool OverDrive() const { return m_OverDrive; }
         THammondData ChangePercussion(bool percussion) const
         {
             auto result = *this;
@@ -76,9 +77,15 @@ namespace project
             result.m_Percussion2ndHarmonic = percussion2ndHarmonic;
             return result;
         }        
+        THammondData ChangeOverDrive(bool Overdrive) const
+        {
+            auto result = *this;
+            result.m_OverDrive = Overdrive;
+            return result;
+        }        
         inline auto Tuple() const
         {
-            return std::tie(m_Parts, m_Percussion, m_PercussionSoft, m_PercussionFast, m_Percussion2ndHarmonic);
+            return std::tie(m_Parts, m_Percussion, m_PercussionSoft, m_PercussionFast, m_Percussion2ndHarmonic, m_OverDrive);
         }
         auto operator==(const THammondData &other) const
         {
@@ -91,6 +98,7 @@ namespace project
         bool m_PercussionSoft = false;
         bool m_PercussionFast = false;
         bool m_Percussion2ndHarmonic = false;
+        bool m_OverDrive = false;
     };
         
     class TInstrument
