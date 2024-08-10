@@ -31,7 +31,8 @@ namespace komplete
         void SetSelectedPresetIndex(std::optional<size_t> index);
 
         bool m_ShowPresetList = false;
-        size_t m_QuickPresetPage = 0;
+        //size_t m_QuickPresetPage = 0;
+        std::vector<size_t> m_Part2QuickPresetPage;
         float m_OutputLevel = - std::numeric_limits<float>::infinity();
         float m_OutputPeakLevel = - std::numeric_limits<float>::infinity();
 

@@ -263,6 +263,7 @@ namespace komplete
         {
             m_SelectedPresetIndex = std::nullopt;
         }
+        m_Part2QuickPresetPage.resize(m_EngineData.Project().Parts().size());
     }
 
     void Gui::SetGuiState(TGuiState &&state)
@@ -470,20 +471,24 @@ namespace komplete
         {
             if( ((button == Hid::TButtonIndex::Left) || (button == Hid::TButtonIndex::Right)) && (delta > 0) )
             {
-                size_t newpresetPage = GuiState().m_QuickPresetPage;
-                if(button == Hid::TButtonIndex::Left)
+                if(GuiState().m_FocusedPart)
                 {
-                    if(newpresetPage > 0) newpresetPage--;
-                }
-                else if(button == Hid::TButtonIndex::Right)
-                {
-                    if(newpresetPage < (sNumPresetPages-1) ) newpresetPage++;
-                }
-                if(newpresetPage != GuiState().m_QuickPresetPage)
-                {
-                    auto newguistate = GuiState();
-                    newguistate.m_QuickPresetPage = newpresetPage;
-                    SetGuiState(std::move(newguistate));
+                    auto part2QuickPresetPage = GuiState().m_Part2QuickPresetPage;
+                    auto &presetPage = part2QuickPresetPage.at(*GuiState().m_FocusedPart);
+                    if(button == Hid::TButtonIndex::Left)
+                    {
+                        if(presetPage > 0) presetPage--;
+                    }
+                    else if(button == Hid::TButtonIndex::Right)
+                    {
+                        if(presetPage < (sNumPresetPages-1) ) presetPage++;
+                    }
+                    if(part2QuickPresetPage != GuiState().m_Part2QuickPresetPage)
+                    {
+                        auto newguistate = GuiState();
+                        newguistate.m_Part2QuickPresetPage = std::move(part2QuickPresetPage);
+                        SetGuiState(std::move(newguistate));
+                    }
                 }
             }
             if(button == Hid::TButtonIndex::BigRotary)
@@ -582,7 +587,7 @@ namespace komplete
                 {
                     auto focusedpartindex = GuiState().m_FocusedPart.value();
                     const auto &part = GuiState().EngineData().Project().Parts().at(focusedpartindex);
-                    size_t quickPresetIndex = GuiState().m_QuickPresetPage * 8 + buttonindex;
+                    size_t quickPresetIndex = GuiState().m_Part2QuickPresetPage.at(focusedpartindex) * 8 + buttonindex;
                     if(GuiState().m_Shift)
                     {
                         // change quick preset:
@@ -794,41 +799,45 @@ namespace komplete
             auto slidervalue = dbToSliderValue(GuiState().m_OutputLevel);
             window.AddChild<simplegui::TSlider>(utils::TIntRect::FromTopLeftAndSize({levelmeterleft, levelmetertop}, {levelmeterwidth, levelmeterheight}), text, slidervalue, utils::TFloatColor(0.8, 0.8, 0.8));
         }
-        {
-            // Pager:
-            int pagertop = 50;
-            int pagerheight = sFontSize + 4;
-            int pagerx0 = 0;
-            int pagerx1 = pagerx0 + 2 * pagerheight / 3;
-            int pagerx2 = pagerx1 + 2 * pagerheight;
-            int pagerx3 = pagerx2 + 2 * pagerheight / 3;
-            auto pagercolor = utils::TFloatColor(1, 1, 1);
-            if(GuiState().m_QuickPresetPage > 0)
-            {
-                window.AddChild<simplegui::TTriangle>(utils::TIntRect::FromTopLeftAndSize({pagerx0, pagertop}, {pagerx1 - pagerx0, pagerheight}), pagercolor, simplegui::TTriangle::TDirection::Left);
-            }
-            window.AddChild<simplegui::TextWindow>(utils::TIntRect::FromTopLeftAndSize({pagerx1, pagertop}, {pagerx2 - pagerx1, pagerheight}), std::to_string(GuiState().m_QuickPresetPage + 1), pagercolor, sFontSize, simplegui::TextWindow::THalign::Center);
-            if(GuiState().m_QuickPresetPage < (sNumPresetPages - 1))
-            {
-                window.AddChild<simplegui::TTriangle>(utils::TIntRect::FromTopLeftAndSize({pagerx2, pagertop}, {pagerx3 - pagerx2, pagerheight}), pagercolor, simplegui::TTriangle::TDirection::Right);
-            }
-        }
 
         if(GuiState().m_FocusedPart)
         {
+            auto focusedpartindex = GuiState().m_FocusedPart.value();
+            auto partcolor = colorForPart(focusedpartindex);
+            auto quickPresetPage = GuiState().m_Part2QuickPresetPage.at(focusedpartindex);
+
+            {
+                // Pager:
+                int pagertop = 50;
+                int pagerheight = sFontSize + 4;
+                int pagerx0 = 0;
+                int pagerx1 = pagerx0 + 2 * pagerheight / 3;
+                int pagerx2 = pagerx1 + 2 * pagerheight;
+                int pagerx3 = pagerx2 + 2 * pagerheight / 3;
+                auto pagercolor = utils::TFloatColor(1, 1, 1);
+                if(quickPresetPage > 0)
+                {
+                    window.AddChild<simplegui::TTriangle>(utils::TIntRect::FromTopLeftAndSize({pagerx0, pagertop}, {pagerx1 - pagerx0, pagerheight}), pagercolor, simplegui::TTriangle::TDirection::Left);
+                }
+                window.AddChild<simplegui::TextWindow>(utils::TIntRect::FromTopLeftAndSize({pagerx1, pagertop}, {pagerx2 - pagerx1, pagerheight}), std::to_string(quickPresetPage + 1), pagercolor, sFontSize, simplegui::TextWindow::THalign::Center);
+                if(quickPresetPage < (sNumPresetPages - 1))
+                {
+                    window.AddChild<simplegui::TTriangle>(utils::TIntRect::FromTopLeftAndSize({pagerx2, pagertop}, {pagerx3 - pagerx2, pagerheight}), pagercolor, simplegui::TTriangle::TDirection::Right);
+                }
+            }
+
             // Preset menu buttons:
-            auto partcolor = colorForPart(GuiState().m_FocusedPart.value());
             int quickPresetsBoxHeight = sFontSize + 4;
             int quickPresetHorzPadding = 1;
 
             auto quickPresetsBar = window.AddChild<simplegui::Window>(utils::TIntRect::FromTopLeftAndSize({0, 0}, {960, quickPresetsBoxHeight}));
             for(size_t quickPresetOffset = 0; quickPresetOffset < 8; quickPresetOffset++)
             {
-                size_t quickPresetIndex = GuiState().m_QuickPresetPage * 8 + quickPresetOffset;
+                size_t quickPresetIndex = quickPresetPage * 8 + quickPresetOffset;
                 std::optional<size_t> presetIndex;
-                if(quickPresetIndex < project.Parts().at(GuiState().m_FocusedPart.value()).QuickPresets().size())
+                if(quickPresetIndex < project.Parts().at(focusedpartindex).QuickPresets().size())
                 {
-                    presetIndex = project.Parts().at(GuiState().m_FocusedPart.value()).QuickPresets().at(quickPresetIndex);
+                    presetIndex = project.Parts().at(focusedpartindex).QuickPresets().at(quickPresetIndex);
                 }
                 if(presetIndex)
                 {
@@ -1110,8 +1119,17 @@ namespace komplete
         m_Hid.SetLed(Hid::TButtonIndex::Arp, GuiState().EngineData().ShowUi()? 4:2);
         m_Hid.SetLed(Hid::TButtonIndex::Plugin, GuiState().m_Mode == TGuiState::TMode::Controller? 4:2);
 
-        m_Hid.SetLed(Hid::TButtonIndex::Left, (GuiState().m_Mode == TGuiState::TMode::Performance) && (GuiState().m_QuickPresetPage > 0) ? 2:0);
-        m_Hid.SetLed(Hid::TButtonIndex::Right, (GuiState().m_Mode == TGuiState::TMode::Performance) && (GuiState().m_QuickPresetPage < (sNumPresetPages-1)) ? 2:0);
+        if( (GuiState().m_Mode == TGuiState::TMode::Performance) && (GuiState().m_FocusedPart) )
+        {
+            auto quickpresetpage = GuiState().m_Part2QuickPresetPage.at(GuiState().m_FocusedPart.value());
+            m_Hid.SetLed(Hid::TButtonIndex::Left, (quickpresetpage > 0) ? 2:0);
+            m_Hid.SetLed(Hid::TButtonIndex::Right, (quickpresetpage < (sNumPresetPages-1)) ? 2:0);
+        }
+        else
+        {
+            m_Hid.SetLed(Hid::TButtonIndex::Left, 0);
+            m_Hid.SetLed(Hid::TButtonIndex::Right, 0);
+        }
 
         if(GuiState().m_Mode == TGuiState::TMode::Midi)
         {
@@ -1124,10 +1142,10 @@ namespace komplete
         {
             for(size_t quickPresetOffset = 0; quickPresetOffset < 8; quickPresetOffset++)
             {
-                size_t quickPresetIndex = GuiState().m_QuickPresetPage * 8 + quickPresetOffset;
                 auto button = Hid::TButtonIndex(int(Hid::TButtonIndex::Menu0) + (int)quickPresetOffset);
                 if(GuiState().m_FocusedPart)
                 {
+                    size_t quickPresetIndex = GuiState().m_Part2QuickPresetPage.at(GuiState().m_FocusedPart.value()) * 8 + quickPresetOffset;
                     const auto &part = project.Parts().at(GuiState().m_FocusedPart.value());
                     auto ledcolor = (*GuiState().m_FocusedPart == 0)? Hid::TLedColor::Red : Hid::TLedColor::Green;
                     if(GuiState().m_Shift)
