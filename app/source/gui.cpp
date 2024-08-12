@@ -29,7 +29,7 @@ class PluginSelectorDialog : public Gtk::Dialog
 public:
     PluginSelectorDialog(PluginSelectorDialog &&other) = delete;
     PluginSelectorDialog(const PluginSelectorDialog &other) = delete;
-    PluginSelectorDialog(bool showSharedCheckbox)
+    PluginSelectorDialog()
     {
         set_title("Select Plugin");
         set_default_size(800, 400);
@@ -58,10 +58,6 @@ public:
         m_PluginList.set_model(m_ListStore);
         m_PluginList.append_column("Name", m_Columns.m_Name);
         m_PluginList.append_column("Class", m_Columns.m_Class);
-        if(showSharedCheckbox)
-        {
-            get_vbox()->pack_start(m_SharedCheckbox, Gtk::PACK_SHRINK);
-        }
         Populate();
         enableItems();
         show_all();
@@ -96,10 +92,6 @@ public:
         }
     }
     std::optional<std::string> SelectedPluginUri() const { return m_SelectedPluginUri; }
-    bool Shared() const
-    {
-        return m_SharedCheckbox.get_active();
-    }
 
 private:
     class Columns : public Gtk::TreeModel::ColumnRecord
@@ -121,7 +113,6 @@ private:
     Glib::RefPtr<Gtk::ListStore> m_ListStore {Gtk::ListStore::create(m_Columns)};
     Gtk::TreeView m_PluginList;
     Gtk::Button *m_OkButton = nullptr;
-    Gtk::CheckButton m_SharedCheckbox {"Add as shared instrument"};
 };
 
 class TEditParametersPanel : public Gtk::VBox {
@@ -133,14 +124,16 @@ public:
         : m_Parameters(std::move(params)), m_AddButton("Add Parameter") 
     {
         m_AddButton.signal_clicked().connect([this]() {
-            m_Parameters.emplace_back(0, std::optional<int>(), "New Parameter");
+            m_Parameters.emplace_back(1, std::optional<int>(), "New Parameter");
             data2grid();  // Sync grid with the updated parameters
         });
 
         // Add grid and button to the panel
         pack_start(m_Grid, Gtk::PACK_EXPAND_WIDGET);
         pack_start(m_AddButton, Gtk::PACK_SHRINK);
-
+        m_Grid.set_hexpand(true);
+        m_Grid.set_vexpand(true);
+ 
         data2grid();  // Initialize the grid with the initial data
     }
 
@@ -258,17 +251,6 @@ private:
     std::vector<std::unique_ptr<TRow>> m_Rows;
 };
 
-
-class EditInstrumentDialog : public Gtk::Dialog
-{
-public:
-    EditInstrumentDialog(const project::TInstrument &instrument)
-    {
-
-    }
-    
-    
-};
 
 class PresetSelectorDialog : public Gtk::Dialog
 {
@@ -494,7 +476,7 @@ public:
             });
             m_ChangePluginButton.signal_clicked().connect([this](){
                 DoAndShowException([this](){
-                    PluginSelectorDialog dialog(false);
+                    PluginSelectorDialog dialog;
                     int result = dialog.run();
                     if(result == Gtk::RESPONSE_OK)
                     {
@@ -548,6 +530,150 @@ public:
         Gtk::Button m_ReverbStorePresetButton {"Store Preset"};
         Gtk::Scale m_ReverbLevelScale;
         bool m_ChangingReverbLevel = false;
+    };
+
+    class TEditInstrumentDialog : public Gtk::Dialog {
+    public:
+        TEditInstrumentDialog(project::TInstrument &&instrument)
+            : m_Instrument(std::move(instrument)),
+            m_Lv2UriLabel("Plugin URI:"),
+            m_NameLabel("Name:"),
+            m_IsHammondCheckButton("Hammond organ mode"),
+            m_HasVocoderInputCheckButton("Has vocoder input"),
+            m_ParametersPanel(std::vector<project::TInstrument::TParameter>(m_Instrument.Parameters())),
+            m_Lv2UriEntry(),
+            m_NameEntry(),
+            m_ChooseLv2UriButton("Choose"),
+            m_OkButton("OK"),
+            m_CancelButton("Cancel") 
+        {
+            // Set up the dialog properties
+            set_title("Edit Instrument");
+            set_modal(true);
+            set_default_size(400, 300);
+
+            // Initialize the entries with the current instrument data
+            m_Lv2UriEntry.set_text(m_Instrument.Lv2Uri());
+            m_NameEntry.set_text(m_Instrument.Name());
+            m_IsHammondCheckButton.set_active(m_Instrument.IsHammond());
+            m_HasVocoderInputCheckButton.set_active(m_Instrument.HasVocoderInput());
+
+            // Set up the grid layout
+            m_Grid.attach(m_Lv2UriLabel, 0, 0, 1, 1);
+            m_Grid.attach(m_Lv2UriEntry, 1, 0, 1, 1);
+            m_Grid.attach(m_ChooseLv2UriButton, 2, 0, 1, 1);
+
+            m_Grid.attach(m_NameLabel, 0, 1, 1, 1);
+            m_Grid.attach(m_NameEntry, 1, 1, 2, 1);
+
+            m_Grid.attach(m_IsHammondCheckButton, 0, 2, 3, 1);
+            m_Grid.attach(m_HasVocoderInputCheckButton, 0, 3, 3, 1);
+
+            // Add the parameters panel to the grid
+            m_Grid.attach(m_ParametersPanel, 0, 4, 3, 1);
+            m_Grid.attach(m_ErrorLabel, 0, 5, 3, 1);
+            // make red:
+            m_ErrorLabel.override_color(Gdk::RGBA("red"));
+
+            // Add the grid to the dialog's content area
+            get_content_area()->add(m_Grid);
+
+            m_Grid.set_hexpand(true);
+            m_Grid.set_vexpand(true);
+
+            // Set up the buttons
+            add_action_widget(m_CancelButton, Gtk::RESPONSE_CANCEL);
+            add_action_widget(m_OkButton, Gtk::RESPONSE_OK);
+
+            // Connect the "Choose" button to open the plugin selector dialog
+            m_ChooseLv2UriButton.signal_clicked().connect([this]() {
+                PluginSelectorDialog dialog;
+                int result = dialog.run();
+                if (result == Gtk::RESPONSE_OK && dialog.SelectedPluginUri().has_value()) {
+                    m_Lv2UriEntry.set_text(dialog.SelectedPluginUri().value());
+                    Update();
+                }
+            });
+
+            m_Lv2UriEntry.signal_changed().connect([this]() {
+                Update();
+            });
+
+            m_NameEntry.signal_changed().connect([this]() {
+                Update();
+            });
+
+            m_Lv2UriEntry.signal_activate().connect([this](){
+                if(m_OkButton.get_sensitive())
+                {
+                    response(Gtk::RESPONSE_OK);
+                }
+            });
+
+            m_IsHammondCheckButton.signal_toggled().connect([this]() {
+                Update();
+            });
+
+            m_HasVocoderInputCheckButton.signal_toggled().connect([this]() {
+                Update();
+            });
+
+            // Show all widgets
+            show_all_children();
+            Update();
+        }
+
+        const project::TInstrument &Instrument() const {
+            return m_Instrument;
+        }
+
+        void Update()
+        {
+            m_Instrument = m_Instrument.ChangeHasVocoderInput(m_HasVocoderInputCheckButton.get_active()).ChangeIsHammond(m_IsHammondCheckButton.get_active()).ChangeLv2Uri(m_Lv2UriEntry.get_text()).ChangeName(utils::trim(m_NameEntry.get_text())).ChangeParameters(std::vector<project::TInstrument::TParameter>{m_ParametersPanel.Parameters()});
+            try
+            {
+                if(m_Instrument.Lv2Uri().empty())
+                {
+                    throw std::runtime_error("Select a plugin");
+                }
+                if(m_Instrument.Name().empty())
+                {
+                    throw std::runtime_error("Enter a name");
+                }
+                try
+                {
+                    lilvutils::Plugin plugin(lilvutils::Uri(std::string(m_Instrument.Lv2Uri())));
+                }
+                catch(const std::exception& e)
+                {
+                    throw std::runtime_error("Cannot instantiate plugin: "+std::string(e.what()));
+                }
+                m_ErrorLabel.set_text("");
+                m_ErrorLabel.set_visible(false);
+                m_OkButton.set_sensitive(true);
+            }
+            catch(std::exception &e)
+            {
+                m_ErrorLabel.set_text(e.what());
+                m_ErrorLabel.set_visible(true);
+                m_OkButton.set_sensitive(false);
+            }
+        }
+
+    private:
+        project::TInstrument m_Instrument;
+        Gtk::Grid m_Grid;
+        Gtk::Label m_Lv2UriLabel;
+        Gtk::Label m_NameLabel;
+        Gtk::Entry m_Lv2UriEntry;
+        Gtk::Entry m_NameEntry;
+        Gtk::Label m_ErrorLabel;
+        Gtk::CheckButton m_IsHammondCheckButton;
+        Gtk::CheckButton m_HasVocoderInputCheckButton;
+        Gtk::Button m_ChooseLv2UriButton;
+        Gtk::Button m_OkButton;
+        Gtk::Button m_CancelButton;
+        TEditParametersPanel m_ParametersPanel;
     };
 
     class PresetsPanel : public Gtk::Box
@@ -724,18 +850,42 @@ public:
             pack_start(m_MenuButtonBox, Gtk::PACK_SHRINK);
             m_MenuButtonBox.pack_start(m_MenuButton, Gtk::PACK_SHRINK);
             m_PopupMenu.append(m_AddInstrumentItem);
+            m_PopupMenu.append(m_EditInstrumentItem);
             m_PopupMenu.append(m_DeleteInstrumentItem);
             m_PopupMenu.show_all();
             m_MenuButton.set_popup(m_PopupMenu);
             add(m_InstrumentsFlowBox);
             m_AddInstrumentItem.signal_activate().connect([this](){
                 DoAndShowException([this](){
-                    PluginSelectorDialog dialog(true);
-                    int result = dialog.run();
+                    project::TInstrument instrument({}, false, {}, {}, false);
+                    TEditInstrumentDialog dlg(std::move(instrument));
+                    int result = dlg.run();
                     if(result == Gtk::RESPONSE_OK)
                     {
-                        auto instrumenturi = dialog.SelectedPluginUri().value();
-                        m_Engine.AddInstrument(std::move(instrumenturi), dialog.Shared());
+                        auto newinstrument = dlg.Instrument();
+                        auto newproject = m_Engine.Project().AddInstrument(std::move(newinstrument));
+                        m_Engine.SetProject(std::move(newproject));
+                    }
+                });
+            });
+            m_EditInstrumentItem.signal_activate().connect([this](){
+                DoAndShowException([this](){
+                    if(m_Engine.Data().GuiFocusedPart())
+                    {
+                        auto activeinstrumentindexOrNull = m_Engine.Project().Parts().at(m_Engine.Data().GuiFocusedPart().value()).ActiveInstrumentIndex();
+                        if(activeinstrumentindexOrNull)
+                        {
+                            auto instrumentindex = activeinstrumentindexOrNull.value();
+                            auto instrument = m_Engine.Project().Instruments().at(activeinstrumentindexOrNull.value());
+                            TEditInstrumentDialog dlg(std::move(instrument));
+                            int result = dlg.run();
+                            if(result == Gtk::RESPONSE_OK)
+                            {
+                                auto newinstrument = dlg.Instrument();
+                                auto newproject = m_Engine.Project().ChangeInstrument(instrumentindex, std::move(newinstrument));
+                                m_Engine.SetProject(std::move(newproject));
+                            }
+                        }
                     }
                 });
             });
@@ -761,16 +911,17 @@ public:
         }
         void enableItems()
         {
-            bool candelete = false;
+            bool hasselected = false;
             if(m_Engine.Data().GuiFocusedPart() && (*m_Engine.Data().GuiFocusedPart() < m_Engine.Project().Parts().size()))
             {
                 auto instrumentindex = m_Engine.Project().Parts().at(*m_Engine.Data().GuiFocusedPart()).ActiveInstrumentIndex();
                 if(instrumentindex && (*instrumentindex < m_Engine.Project().Instruments().size()))
                 {
-                    candelete = true;
+                    hasselected = true;
                 }
             }
-            m_DeleteInstrumentItem.set_sensitive(candelete);
+            m_DeleteInstrumentItem.set_sensitive(hasselected);
+            m_EditInstrumentItem.set_sensitive(hasselected);
         }
         void OnDataChanged()
         {
@@ -834,6 +985,7 @@ public:
         Gtk::Menu m_PopupMenu;
         Gtk::MenuItem m_AddInstrumentItem {"Add Instrument"};
         Gtk::MenuItem m_DeleteInstrumentItem {"Delete Instrument"};
+        Gtk::MenuItem m_EditInstrumentItem {"Edit Instrument"};
     };
     class TopBar : public Gtk::Box
     {

@@ -185,6 +185,36 @@ namespace project
         {
             return Tuple() == other.Tuple();
         }
+        TInstrument ChangeLv2Uri(std::string &&lv2Uri) const
+        {
+            auto result = *this;
+            result.m_Lv2Uri = std::move(lv2Uri);
+            return result;
+        }
+        TInstrument ChangeName(std::string &&name) const
+        {
+            auto result = *this;
+            result.m_Name = std::move(name);
+            return result;
+        }
+        TInstrument ChangeIsHammond(bool ishammond) const
+        {
+            auto result = *this;
+            result.m_IsHammond = ishammond;
+            return result;
+        }
+        TInstrument ChangeParameters(std::vector<TParameter> &&parameters) const
+        {
+            auto result = *this;
+            result.m_Parameters = std::move(parameters);
+            return result;
+        }
+        TInstrument ChangeHasVocoderInput(bool hasVocoderInput) const
+        {
+            auto result = *this;
+            result.m_HasVocoderInput = hasVocoderInput;
+            return result;
+        }
 
     private:
         std::string m_Lv2Uri;
@@ -410,6 +440,12 @@ namespace project
             auto result = *this;
             result.m_Instruments.push_back(std::move(inst));
             return result;
+        }
+        TProject ChangeInstrument(size_t index, TInstrument &&inst) const
+        {
+            auto result = *this;
+            result.m_Instruments.at(index) = std::move(inst);
+            return result;            
         }
         TProject DeleteInstrument(size_t index) const;
         auto Tuple() const
