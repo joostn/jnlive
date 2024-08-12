@@ -51,6 +51,7 @@ namespace simplegui
             if(Rectangle() != other->Rectangle()) return false;
             return true;
         }
+        virtual void DoGetUpdateRegionExcludingChildren(const Window &other, utils::TIntRegion &region, const utils::TIntPoint &offset) const;
 
     private:
         utils::TIntRect m_Rectangle;
@@ -81,6 +82,7 @@ namespace simplegui
                 return false;
             }
         }
+        virtual void DoGetUpdateRegionExcludingChildren(const Window &other, utils::TIntRegion &region, const utils::TIntPoint &offset) const override;
 
     private:
         void DoPaint(Cairo::Context &cr) const override;
@@ -93,9 +95,7 @@ namespace simplegui
     {
     public:
         enum class THalign { Left, Center, Right };
-        TextWindow(Window *parent, const utils::TIntRect &rect, std::string_view text, const utils::TFloatColor &color, int fontsize, THalign halign) : Window(parent, rect), m_Text(text), m_Color(color), m_FontSize(fontsize), m_Halign(halign)
-        {
-        }
+        TextWindow(Window *parent, const utils::TIntRect &rect, std::string_view text, const utils::TFloatColor &color, int fontsize, THalign halign);
 
     protected:
         virtual bool DoGetEquals(const Window *other) const override
@@ -109,15 +109,19 @@ namespace simplegui
             if(m_Text != otherOurs->m_Text) return false;
             return true;
         }
+        virtual void DoGetUpdateRegionExcludingChildren(const Window &other, utils::TIntRegion &region, const utils::TIntPoint &offset) const override;
 
     private:
         void DoPaint(Cairo::Context &cr) const override;
+        void SetFont(Cairo::Context &cr) const;
 
     private:
         std::string m_Text;
         utils::TFloatColor m_Color;
         int m_FontSize;
         THalign m_Halign;
+        utils::TDoublePoint m_TextDrawPos;
+        utils::TIntRect m_TextClipRect;
     };
 
     class TSlider : public PlainWindow

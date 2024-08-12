@@ -7,20 +7,30 @@ namespace simplegui
         return Cairo::RectangleInt(rect.Left(), rect.Top(), rect.Width(), rect.Height());
     }
 
+    void Window::DoGetUpdateRegionExcludingChildren(const Window &other, utils::TIntRegion &region, const utils::TIntPoint &offset) const
+    {
+        if(!Equals(&other))
+        {
+            region = region.Union(Rectangle() + offset);
+            region = region.Union(other.Rectangle() + offset);
+        }
+    }
+
     void Window::GetUpdateRegion(const Window *other, utils::TIntRegion &region, const utils::TIntPoint &offset) const
     {
-        auto thisrect = Rectangle() + offset;
         if( (!other) || (!Equals(other)) )
         {
-            {
-                region = region.Union(thisrect);
-            }
             if(other)
             {
-                region = region.Union(other->Rectangle() + offset);
+                DoGetUpdateRegionExcludingChildren(*other, region, offset);
+            }
+            else
+            {
+                region = region.Union(Rectangle() + offset);
+                return;
             }
         }
-        else
+
         {
             auto childoffset = offset + Rectangle().TopLeft();
             std::vector<Window*> ourchildren;
@@ -36,11 +46,15 @@ namespace simplegui
             // clear identical children:
             auto ourit = ourchildren.begin();
             auto otherit = otherchildren.begin();
+            bool samesize = ourchildren.size() == otherchildren.size();
         again1:
             if(ourit != ourchildren.end() && otherit != otherchildren.end())
             {
-                if((*ourit)->Equals(*otherit))
+                if(samesize || (*ourit)->Equals(*otherit))
                 {
+                    // if both lists of children have the same size, assume no insertions or deletions have taken place. We then match each child in order to find the update region. This allows less pessimistic update regions because same children are probably matched.
+                    // if the lists have different sizes, use 'Equals' to skip children that are not the same. This allows less pessimistic update regions when children are inserted or deleted by matching each child against its (equal) counterpart, leaving the inserted or deleted children for later.
+                    // If we have combinations of inserted and deleted children or updated children, we will probably get a pessimistic estimate but that is acceptable.
                 foundmatch:
                     // add the child's update region:
                     (*ourit)->GetUpdateRegion(*otherit, region, childoffset);
@@ -53,7 +67,6 @@ namespace simplegui
                 else
                 {
                     // try to match ourit with otherit+n:
-                    (*ourit)->Equals(*otherit);
                     auto otherit2 = otherit;
                     otherit2++;
                     while(otherit2 != otherchildren.end())
@@ -88,9 +101,8 @@ namespace simplegui
                 {
                     if(win)
                     {
-                        win->GetUpdateRegion(nullptr, region, childoffset);
+                        region = region.Union(win->Rectangle() + childoffset);
                     }
-
                 }
             }
         }
@@ -129,19 +141,35 @@ namespace simplegui
         // fill entire context:
         cr.paint();
     }
-    
-    void TextWindow::DoPaint(Cairo::Context &cr) const
+    void PlainWindow::DoGetUpdateRegionExcludingChildren(const Window &other, utils::TIntRegion &region, const utils::TIntPoint &offset) const
     {
-        Window::DoPaint(cr);
-        cr.set_source_rgba(m_Color.Red(), m_Color.Green(), m_Color.Blue(), m_Color.Alpha());
-        cr.select_font_face("Sans", Cairo::FONT_SLANT_NORMAL, Cairo::FONT_WEIGHT_BOLD);
-        cr.set_font_size(m_FontSize);
+        if(auto otherplainwindow = dynamic_cast<const PlainWindow*>(&other); otherplainwindow)
+        {
+            if(m_Color == otherplainwindow->m_Color)
+            {
+                // we only need to redraw the non-overlapping parts:
+                utils::TIntRegion r1(Rectangle() + offset);
+                utils::TIntRegion r2(otherplainwindow->Rectangle() + offset);
+                auto inverseintersection = r1.Union(r2).Subtract(r1.Intersection(r2));
+                region = region.Union(inverseintersection);
+                return;
+            }
+        }
+        // fallback:
+        Window::DoGetUpdateRegionExcludingChildren(other, region, offset);
+    }
+
+    TextWindow::TextWindow(Window *parent, const utils::TIntRect &rect, std::string_view text, const utils::TFloatColor &color, int fontsize, THalign halign) : Window(parent, rect), m_Text(text), m_Color(color), m_FontSize(fontsize), m_Halign(halign)
+    {
+        auto surface = Cairo::ImageSurface::create(Cairo::FORMAT_ARGB32, 0, 0);
+        auto cr = Cairo::Context::create(surface);
+        SetFont(*(cr.operator->()));
 
         // measure text
         Cairo::FontExtents fe;
-        cr.get_font_extents(fe);
+        cr->get_font_extents(fe);
         Cairo::TextExtents te;
-        cr.get_text_extents(m_Text, te);
+        cr->get_text_extents(m_Text, te);
         double textheight = fe.ascent + fe.descent;
         double textwidth = te.width;
         double text_x = 0;
@@ -155,9 +183,46 @@ namespace simplegui
         }
 
         double text_y = std::round(0.0+ (Rectangle().Height() / 2) + (textheight / 2.0) - fe.descent); // Vertically centered
+        auto textcliprect_d = utils::TDoubleRect::FromTopLeftAndSize({text_x, text_y - textheight/2}, {textwidth, textheight});
+        m_TextClipRect = textcliprect_d.ToRectOuterPixels().Intersection(Rectangle());
+        m_TextDrawPos = {text_x, text_y};
+    }
 
-        cr.move_to(text_x, text_y);
+    void TextWindow::SetFont(Cairo::Context &cr) const
+    {
+        cr.select_font_face("Sans", Cairo::FONT_SLANT_NORMAL, Cairo::FONT_WEIGHT_BOLD);
+        cr.set_font_size(m_FontSize);
+    }
+
+    void TextWindow::DoGetUpdateRegionExcludingChildren(const Window &other, utils::TIntRegion &region, const utils::TIntPoint &offset) const
+    {
+        if(auto othertextwindow = dynamic_cast<const TextWindow*>(&other); othertextwindow)
+        {
+            if(this->Equals(&other))
+            {
+                return;
+            }
+            // only the actual painted region is dirty:
+            region = region.Union(m_TextClipRect + offset);
+            region = region.Union(othertextwindow->m_TextClipRect + offset);
+            return;
+        }
+        // fallback:
+        Window::DoGetUpdateRegionExcludingChildren(other, region, offset);
+    }
+
+    void TextWindow::DoPaint(Cairo::Context &cr) const
+    {
+        Window::DoPaint(cr);
+        cr.set_source_rgba(m_Color.Red(), m_Color.Green(), m_Color.Blue(), m_Color.Alpha());
+        SetFont(cr);
+        // clip to m_TextClipRect. Not necessary if m_TextClipRect is correct, because it is based on the measured text size. But it will immediately show the problem if the measured text size is incorrect.
+        cr.save();
+        cr.rectangle(m_TextClipRect.Left(), m_TextClipRect.Top(), m_TextClipRect.Width(), m_TextClipRect.Height());
+        cr.clip();
+        cr.move_to(m_TextDrawPos.X(), m_TextDrawPos.Y());
         cr.show_text(m_Text);
+        cr.restore();
     }
 
     TSlider::TSlider(Window *parent, const utils::TIntRect &rect, std::string_view text, double value, const utils::TFloatColor &color) : PlainWindow(parent, rect, color)
