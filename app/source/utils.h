@@ -1566,6 +1566,11 @@ public:
   }
 };
 
+// Function to trim leading and trailing whitespace
+std::string trim(const std::string& str);
+int64_t to_int64(const std::string& str);
+std::optional<int64_t> to_optional_int64(const std::string& str);
+
     // convert between wstring and string
     // wstring is assumed to be utf16 (even if sizeof(wchar_t) == 4)
     // string is utf8

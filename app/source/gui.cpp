@@ -124,6 +124,152 @@ private:
     Gtk::CheckButton m_SharedCheckbox {"Add as shared instrument"};
 };
 
+class TEditParametersPanel : public Gtk::VBox {
+public:
+    TEditParametersPanel(TEditParametersPanel &&) = delete;
+    TEditParametersPanel(const TEditParametersPanel &) = delete;
+    
+    TEditParametersPanel(std::vector<project::TInstrument::TParameter> &&params)
+        : m_Parameters(std::move(params)), m_AddButton("Add Parameter") 
+    {
+        m_AddButton.signal_clicked().connect([this]() {
+            m_Parameters.emplace_back(0, std::optional<int>(), "New Parameter");
+            data2grid();  // Sync grid with the updated parameters
+        });
+
+        // Add grid and button to the panel
+        pack_start(m_Grid, Gtk::PACK_EXPAND_WIDGET);
+        pack_start(m_AddButton, Gtk::PACK_SHRINK);
+
+        data2grid();  // Initialize the grid with the initial data
+    }
+
+    const std::vector<project::TInstrument::TParameter>& Parameters() const {
+        return m_Parameters;
+    }
+
+private:
+    class TRow {
+    public:
+        TRow(size_t index, TEditParametersPanel* parent)
+            : m_Index(index),
+              m_RemoveButton("Remove"),
+              m_Parent(parent) 
+        {
+            m_ControllerEntry.signal_changed().connect([this]() {
+                try
+                {
+                    auto v = utils::to_int64(m_ControllerEntry.get_text());
+                    if( (v >= 1) && (v < 120) )
+                    {
+                        auto &param = m_Parent->m_Parameters.at(m_Index);
+                        param = param.ChangeControllerNumber((int)v);
+                    }
+                }
+                catch(...) {}
+            });
+
+            m_ValueEntry.signal_changed().connect([this]() {
+                try
+                {
+                    auto v = utils::to_optional_int64(m_ControllerEntry.get_text());
+                    if( (!v) || ((v.value() >= 0) && (v.value() <= 127)) )
+                    {
+                        auto &param = m_Parent->m_Parameters.at(m_Index);
+                        param = param.ChangeInitialValue(std::optional<int>(v));
+
+                    }
+                }
+                catch(...) {}
+            });
+
+            m_LabelEntry.signal_changed().connect([this]() {
+                auto v = m_LabelEntry.get_text();
+                v = utils::trim(v);
+                auto &param = m_Parent->m_Parameters.at(m_Index);
+                param = param.ChangeLabel(std::move(v));
+            });
+
+            m_RemoveButton.signal_clicked().connect([this]() {
+                m_Parent->on_remove_button_clicked(m_Index);
+            });
+
+            for(auto entry: {&m_ControllerEntry, &m_ValueEntry, &m_LabelEntry})
+            {
+                entry->signal_focus_out_event().connect([this](GdkEventFocus* event) {
+                    this->update();
+                    return false;  // Continue with the default handler
+                });
+            }
+
+        }
+
+        void update() {
+            auto& param = m_Parent->m_Parameters.at(m_Index);
+            m_ControllerEntry.set_text(std::to_string(param.ControllerNumber()));
+            m_ValueEntry.set_text(param.InitialValue() ? std::to_string(param.InitialValue().value()) : "");
+            m_LabelEntry.set_text(param.Label());
+        }
+
+        Gtk::Entry m_ControllerEntry;
+        Gtk::Entry m_ValueEntry;
+        Gtk::Entry m_LabelEntry;
+        Gtk::Button m_RemoveButton;
+
+    private:
+        size_t m_Index;
+        TEditParametersPanel* m_Parent;
+    };
+
+
+    void on_remove_button_clicked(size_t index) {
+        if (index < m_Parameters.size()) {
+            m_Parameters.erase(m_Parameters.begin() + index);
+            data2grid();  // Sync grid with the updated parameters
+        }
+    }
+
+    void data2grid() {
+        // Resize m_Rows to match the size of m_Parameters
+        while (m_Rows.size() < m_Parameters.size()) {
+            auto index = m_Rows.size();
+            auto row = std::make_unique<TRow>(index, this);
+            m_Grid.attach(row->m_ControllerEntry, 0, index, 1, 1);
+            m_Grid.attach(row->m_ValueEntry, 1, index, 1, 1);
+            m_Grid.attach(row->m_LabelEntry, 2, index, 1, 1);
+            m_Grid.attach(row->m_RemoveButton, 3, index, 1, 1);
+            m_Rows.push_back(std::move(row));
+        }
+        if (m_Rows.size() > m_Parameters.size()) {
+            m_Rows.resize(m_Parameters.size());
+        }
+
+        // Update each row's entries to reflect the current state of m_Parameters
+        for (size_t i = 0; i < m_Parameters.size(); ++i) {
+            m_Rows.at(i)->update();
+        }
+
+        m_Grid.show_all();  // Ensure all widgets are visible
+    }
+
+    std::vector<project::TInstrument::TParameter> m_Parameters;
+    Gtk::Grid m_Grid;
+    Gtk::Button m_AddButton;
+    std::vector<std::unique_ptr<TRow>> m_Rows;
+};
+
+
+class EditInstrumentDialog : public Gtk::Dialog
+{
+public:
+    EditInstrumentDialog(const project::TInstrument &instrument)
+    {
+
+    }
+    
+    
+};
+
 class PresetSelectorDialog : public Gtk::Dialog
 {
 public:

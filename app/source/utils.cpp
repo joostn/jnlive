@@ -419,5 +419,45 @@ namespace utils
         return result;
     }
 
+    std::string trim(const std::string& str) 
+    {
+        auto start = str.find_first_not_of(" \t\n\r\f\v");
+        if (start == std::string::npos) {
+            return ""; // string is empty or whitespace only
+        }
+        auto end = str.find_last_not_of(" \t\n\r\f\v");
+        return str.substr(start, end - start + 1);
+    }
+
+    // Function to convert a string to int64_t, throws exceptions on failure
+    int64_t to_int64(const std::string& str) {
+        char* endptr = nullptr;
+        long long value = std::strtoll(str.c_str(), &endptr, 10);
+
+        // Check if the entire string was a valid number
+        if (*endptr != '\0' || str.c_str() == endptr) {
+            throw std::invalid_argument("The string is not a valid integer.");
+        }
+
+        // Check for overflow/underflow
+        if (value > std::numeric_limits<int64_t>::max() || value < std::numeric_limits<int64_t>::min()) {
+            throw std::out_of_range("The value is out of the range for an int64_t.");
+        }
+
+        return static_cast<int64_t>(value);
+    }
+
+    // Function to convert a string to std::optional<int64_t>
+    std::optional<int64_t> to_optional_int64(const std::string& str) {
+        std::string trimmed_str = trim(str);
+
+        // Check if the trimmed string is empty
+        if (trimmed_str.empty()) {
+            return std::nullopt;
+        }
+
+        // Convert using to_int64
+        return to_int64(trimmed_str);
+    }
 
 }

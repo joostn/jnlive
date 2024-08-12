@@ -130,6 +130,24 @@ namespace project
             {
                 return Tuple() == other.Tuple();
             }
+            TParameter ChangeInitialValue(std::optional<int> initialValue) const
+            {
+                auto result = *this;
+                result.m_InitialValue = initialValue;
+                return result;
+            }
+            TParameter ChangeLabel(std::string &&label) const
+            {
+                auto result = *this;
+                result.m_Label = label;
+                return result;
+            }
+            TParameter ChangeControllerNumber(int controllerNumber) const
+            {
+                auto result = *this;
+                result.m_ControllerNumber = controllerNumber;
+                return result;
+            }
         private:
             int m_ControllerNumber;
             std::optional<int> m_InitialValue;
