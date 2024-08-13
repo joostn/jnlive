@@ -29,7 +29,7 @@ class PluginSelectorDialog : public Gtk::Dialog
 public:
     PluginSelectorDialog(PluginSelectorDialog &&other) = delete;
     PluginSelectorDialog(const PluginSelectorDialog &other) = delete;
-    PluginSelectorDialog()
+    PluginSelectorDialog(const std::string &selectedplugin)
     {
         set_title("Select Plugin");
         set_default_size(800, 400);
@@ -59,6 +59,19 @@ public:
         m_PluginList.append_column("Name", m_Columns.m_Name);
         m_PluginList.append_column("Class", m_Columns.m_Class);
         Populate();
+        if(!selectedplugin.empty())
+        {
+            for(auto iter = m_ListStore->children().begin(); iter != m_ListStore->children().end(); iter++)
+            {
+                const auto &row = *iter;
+                if((std::string)row[m_Columns.m_Lv2Uri] == selectedplugin)
+                {
+                    m_PluginList.get_selection()->select(iter);
+                    m_PluginList.scroll_to_row(m_ListStore->get_path(iter), 0.5);
+                    break;
+                }
+            }
+        }
         enableItems();
         show_all();
     }
@@ -286,6 +299,122 @@ private:
     };
 };
 
+class TEditPresetDialog : public Gtk::Dialog {
+public:
+    TEditPresetDialog(project::TPreset &&preset, std::vector<project::TInstrument>&& instruments)
+        : m_Preset(std::move(preset)), m_Instruments(std::move(instruments)),
+        m_NameLabel("Name:"),
+        m_InstrumentCaptionLabel("Instrument:"),
+        m_ParametersPanel(m_Preset.OverrideParameters()? std::vector<project::TInstrument::TParameter>(*m_Preset.OverrideParameters()) : std::vector<project::TInstrument::TParameter>()),
+        m_OverrideParametersCheckButton("Use custom controller settings"),
+        m_NameEntry(),
+        m_OkButton("OK"),
+        m_CancelButton("Cancel") 
+    {
+        // Set up the dialog properties
+        set_title("Edit Preset");
+        set_modal(true);
+        set_default_size(400, 300);
+
+        m_NameEntry.set_text(m_Preset.Name());
+        m_OverrideParametersCheckButton.set_active(m_Preset.OverrideParameters());
+
+        // Set up the grid layout
+        m_Grid.attach(m_NameLabel, 0, 0, 1, 1);
+        m_Grid.attach(m_NameEntry, 1, 0, 1, 1);
+        m_Grid.attach(m_InstrumentCaptionLabel, 0, 1, 1, 1);
+        m_Grid.attach(m_InstrumentLabel, 1, 1, 1, 1);
+
+        m_NameLabel.set_halign(Gtk::ALIGN_START);
+        m_InstrumentCaptionLabel.set_halign(Gtk::ALIGN_START);
+        m_InstrumentLabel.set_hexpand(true);
+        m_NameEntry.set_hexpand(true);
+
+        m_Grid.set_row_spacing(5);
+        m_Grid.attach(m_OverrideParametersCheckButton, 0, 2, 2, 1);
+
+        // Add the parameters panel to the grid
+        m_Grid.attach(m_ParametersPanel, 0, 3, 2, 1);
+
+        // Add the grid to the dialog's content area
+        get_content_area()->add(m_Grid);
+
+        m_Grid.set_hexpand(true);
+        m_Grid.set_vexpand(true);
+
+        // Set up the buttons
+        add_action_widget(m_CancelButton, Gtk::RESPONSE_CANCEL);
+        add_action_widget(m_OkButton, Gtk::RESPONSE_OK);
+
+        m_NameEntry.signal_changed().connect([this]() {
+            Update();
+        });
+
+        m_OverrideParametersCheckButton.signal_toggled().connect([this]() {
+            Update();
+        });
+
+        m_ParametersPanel.onchange().connect([this]() {
+            Update();
+        });
+        
+        // Show all widgets
+        m_Grid.show_all();
+        m_OkButton.show();
+        m_CancelButton.show();
+        show_all_children(true);
+        Update();
+    }
+
+    const project::TInstrument &Instrument() const {
+        return m_Instrument;
+    }
+
+    void Update()
+    {
+        m_Preset = m_Preset.ChangeName(utils::trim(m_NameEntry.get_text()));
+        TODO!
+        try
+        {
+            if(m_Instrument.Name().empty())
+            {
+                throw std::runtime_error("Enter a name");
+            }
+            try
+            {
+                lilvutils::Plugin plugin(lilvutils::Uri(std::string(m_Instrument.Lv2Uri())));
+            }
+            catch(const std::exception& e)
+            {
+                throw std::runtime_error("Cannot instantiate plugin: "+std::string(e.what()));
+            }
+            m_ErrorLabel.set_text("");
+            m_ErrorLabel.set_visible(false);
+            m_OkButton.set_sensitive(true);
+        }
+        catch(std::exception &e)
+        {
+            m_ErrorLabel.set_text(e.what());
+            m_ErrorLabel.set_visible(true);
+            m_OkButton.set_sensitive(false);
+        }
+        m_ParametersPanel.Update(); // update visibility of the row headers
+    }
+
+private:
+    project::TPreset m_Preset;
+    std::vector<project::TInstrument> m_Instruments;
+    Gtk::Grid m_Grid;
+    Gtk::Label m_NameLabel;
+    Gtk::Entry m_NameEntry;
+    Gtk::Label m_ErrorLabel;
+    Gtk::Label m_InstrumentCaptionLabel;
+    Gtk::Label m_InstrumentLabel;
+    Gtk::CheckButton m_OverrideParametersCheckButton;
+    Gtk::Button m_OkButton;
+    Gtk::Button m_CancelButton;
+    TEditParametersPanel m_ParametersPanel;
+};
 
 class PresetSelectorDialog : public Gtk::Dialog
 {
@@ -511,7 +640,7 @@ public:
             });
             m_ChangePluginButton.signal_clicked().connect([this](){
                 DoAndShowException([this](){
-                    PluginSelectorDialog dialog;
+                    PluginSelectorDialog dialog(m_Engine.Project().Reverb().ReverbLv2Uri());
                     int result = dialog.run();
                     if(result == Gtk::RESPONSE_OK)
                     {
@@ -589,6 +718,7 @@ public:
 
             // Initialize the entries with the current instrument data
             m_Lv2UriEntry.set_text(m_Instrument.Lv2Uri());
+            m_Lv2UriEntry.set_editable(false);
             m_NameEntry.set_text(m_Instrument.Name());
             m_IsHammondCheckButton.set_active(m_Instrument.IsHammond());
             m_HasVocoderInputCheckButton.set_active(m_Instrument.HasVocoderInput());
@@ -600,10 +730,14 @@ public:
 
             m_Lv2UriLabel.set_halign(Gtk::ALIGN_START);
             m_NameLabel.set_halign(Gtk::ALIGN_START);
+            m_ChooseLv2UriButton.set_halign(Gtk::ALIGN_START);
+            m_Lv2UriEntry.set_hexpand(true);
+            m_NameEntry.set_hexpand(true);
 
             m_Grid.attach(m_NameLabel, 0, 1, 1, 1);
             m_Grid.attach(m_NameEntry, 1, 1, 2, 1);
 
+            m_Grid.set_row_spacing(5);
             m_Grid.attach(m_IsHammondCheckButton, 0, 2, 3, 1);
             m_Grid.attach(m_HasVocoderInputCheckButton, 0, 3, 3, 1);
 
@@ -625,7 +759,7 @@ public:
 
             // Connect the "Choose" button to open the plugin selector dialog
             m_ChooseLv2UriButton.signal_clicked().connect([this]() {
-                PluginSelectorDialog dialog;
+                PluginSelectorDialog dialog(m_Instrument.Lv2Uri());
                 int result = dialog.run();
                 if (result == Gtk::RESPONSE_OK && dialog.SelectedPluginUri().has_value()) {
                     m_Lv2UriEntry.set_text(dialog.SelectedPluginUri().value());

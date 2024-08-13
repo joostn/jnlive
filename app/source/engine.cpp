@@ -94,14 +94,12 @@ namespace engine
                 if(doload)
                 {
                     m_LastSentPart2ControllerValues.at(partindex).clear();
-                }
-                m_LastSentPart2ControllerValues.at(partindex).resize(m_Data.Part2ControllerValues().at(partindex).size());
-                if(doload)
-                {
+                    m_LastSentPart2ControllerValues.at(partindex).resize(m_Data.Part2ControllerValues().at(partindex).size());
                     SyncPlugins();
                     LoadPresetForPart(partindex);
                 }
             }
+            m_LastSentPart2ControllerValues.at(partindex).resize(m_Data.Part2ControllerValues().at(partindex).size());
             std::optional<size_t> prevInstrumentIndex;
             if(partindex < olddata.Project().Parts().size())
             {
