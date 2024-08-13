@@ -126,7 +126,7 @@ public:
         m_AddButton.signal_clicked().connect([this]() {
             m_Parameters.emplace_back(1, std::optional<int>(), "New controller");
             m_OnChange.emit();
-            data2grid();  // Sync grid with the updated parameters
+            Update();  // Sync grid with the updated parameters
         });
 
         // Add grid and button to the panel
@@ -141,7 +141,7 @@ public:
             m_Grid.attach(m_RowHeadersLabel.at(i), i, 1, 1, 1);
         }
  
-        data2grid();  // Initialize the grid with the initial data
+        Update();  // Initialize the grid with the initial data
     }
 
     sigc::signal<void>& onchange() {
@@ -150,6 +150,34 @@ public:
 
     const std::vector<project::TInstrument::TParameter>& Parameters() const {
         return m_Parameters;
+    }
+    void Update() {
+        // Resize m_Rows to match the size of m_Parameters
+        while (m_Rows.size() < m_Parameters.size()) {
+            auto index = m_Rows.size();
+            auto row = std::make_unique<TRow>(index, this);
+            size_t colindex = 0;
+            for(auto control: {(Gtk::Widget *)&row->m_ControllerEntry, (Gtk::Widget *)&row->m_ValueEntry, (Gtk::Widget *)&row->m_LabelEntry, (Gtk::Widget *)&row->m_RemoveButton})
+            {
+                m_Grid.attach(*control, colindex++, index+2, 1, 1);
+                control->set_visible(true);
+            }
+            m_Rows.push_back(std::move(row));
+        }
+        if (m_Rows.size() > m_Parameters.size()) {
+            m_Rows.resize(m_Parameters.size());
+        }
+
+
+        // Update each row's entries to reflect the current state of m_Parameters
+        for (size_t i = 0; i < m_Parameters.size(); ++i) {
+            m_Rows.at(i)->update();
+        }
+
+        for(size_t i = 0; i < 3; i++)
+        {
+            m_RowHeadersLabel.at(i).set_visible(!m_Parameters.empty());
+        }
     }
 
 private:
@@ -240,38 +268,10 @@ private:
         if (index < m_Parameters.size()) {
             m_Parameters.erase(m_Parameters.begin() + index);
             m_OnChange.emit();
-            data2grid();  // Sync grid with the updated parameters
+            Update();  // Sync grid with the updated parameters
         }
     }
 
-    void data2grid() {
-        // Resize m_Rows to match the size of m_Parameters
-        while (m_Rows.size() < m_Parameters.size()) {
-            auto index = m_Rows.size();
-            auto row = std::make_unique<TRow>(index, this);
-            m_Grid.attach(row->m_ControllerEntry, 0, index+2, 1, 1);
-            m_Grid.attach(row->m_ValueEntry, 1, index+2, 1, 1);
-            m_Grid.attach(row->m_LabelEntry, 2, index+2, 1, 1);
-            m_Grid.attach(row->m_RemoveButton, 3, index+2, 1, 1);
-            m_Rows.push_back(std::move(row));
-        }
-        if (m_Rows.size() > m_Parameters.size()) {
-            m_Rows.resize(m_Parameters.size());
-        }
-
-
-        // Update each row's entries to reflect the current state of m_Parameters
-        for (size_t i = 0; i < m_Parameters.size(); ++i) {
-            m_Rows.at(i)->update();
-        }
-
-        m_Grid.show_all();  // Ensure all widgets are visible
-
-        for(size_t i = 0; i < 3; i++)
-        {
-            m_RowHeadersLabel.at(i).set_visible(!m_Parameters.empty());
-        }
-    }
 
     std::vector<project::TInstrument::TParameter> m_Parameters;
     Gtk::Grid m_Grid;
@@ -661,7 +661,12 @@ public:
             });
             
             // Show all widgets
-            show_all_children();
+            m_Grid.show_all();
+            m_OkButton.show();
+            m_CancelButton.show();
+            m_ParametersPanel.show();
+            show_all_children(true);
+            m_ParametersPanel.Update(); // update visibility of the row headers
             Update();
         }
 
