@@ -121,10 +121,11 @@ public:
     TEditParametersPanel(const TEditParametersPanel &) = delete;
     
     TEditParametersPanel(std::vector<project::TInstrument::TParameter> &&params)
-        : m_Parameters(std::move(params)), m_AddButton("Add Parameter") 
+        : m_Parameters(std::move(params)), m_AddButton("Add controller"), m_TopLabel("Controllers:")
     {
         m_AddButton.signal_clicked().connect([this]() {
-            m_Parameters.emplace_back(1, std::optional<int>(), "New Parameter");
+            m_Parameters.emplace_back(1, std::optional<int>(), "New controller");
+            m_OnChange.emit();
             data2grid();  // Sync grid with the updated parameters
         });
 
@@ -133,8 +134,18 @@ public:
         pack_start(m_AddButton, Gtk::PACK_SHRINK);
         m_Grid.set_hexpand(true);
         m_Grid.set_vexpand(true);
+        m_Grid.attach(m_TopLabel, 0, 0, 4, 1);
+        m_TopLabel.set_halign(Gtk::ALIGN_START);
+        for(size_t i = 0; i < 3; i++)
+        {
+            m_Grid.attach(m_RowHeadersLabel.at(i), i, 1, 1, 1);
+        }
  
         data2grid();  // Initialize the grid with the initial data
+    }
+
+    sigc::signal<void>& onchange() {
+        return m_OnChange;
     }
 
     const std::vector<project::TInstrument::TParameter>& Parameters() const {
@@ -156,7 +167,11 @@ private:
                     if( (v >= 1) && (v < 120) )
                     {
                         auto &param = m_Parent->m_Parameters.at(m_Index);
-                        param = param.ChangeControllerNumber((int)v);
+                        if(param.ControllerNumber() != v)
+                        {
+                            param = param.ChangeControllerNumber((int)v);
+                            m_Parent->m_OnChange.emit();
+                        }
                     }
                 }
                 catch(...) {}
@@ -165,12 +180,15 @@ private:
             m_ValueEntry.signal_changed().connect([this]() {
                 try
                 {
-                    auto v = utils::to_optional_int64(m_ControllerEntry.get_text());
+                    auto v = utils::to_optional_int64(m_ValueEntry.get_text());
                     if( (!v) || ((v.value() >= 0) && (v.value() <= 127)) )
                     {
                         auto &param = m_Parent->m_Parameters.at(m_Index);
-                        param = param.ChangeInitialValue(std::optional<int>(v));
-
+                        if(param.InitialValue() != std::optional<int>(v))
+                        {
+                            param = param.ChangeInitialValue(std::optional<int>(v));
+                            m_Parent->m_OnChange.emit();
+                        }
                     }
                 }
                 catch(...) {}
@@ -180,7 +198,11 @@ private:
                 auto v = m_LabelEntry.get_text();
                 v = utils::trim(v);
                 auto &param = m_Parent->m_Parameters.at(m_Index);
-                param = param.ChangeLabel(std::move(v));
+                if(param.Label() != v)
+                {
+                    param = param.ChangeLabel(std::move(v));
+                    m_Parent->m_OnChange.emit();
+                }
             });
 
             m_RemoveButton.signal_clicked().connect([this]() {
@@ -194,7 +216,6 @@ private:
                     return false;  // Continue with the default handler
                 });
             }
-
         }
 
         void update() {
@@ -218,6 +239,7 @@ private:
     void on_remove_button_clicked(size_t index) {
         if (index < m_Parameters.size()) {
             m_Parameters.erase(m_Parameters.begin() + index);
+            m_OnChange.emit();
             data2grid();  // Sync grid with the updated parameters
         }
     }
@@ -227,15 +249,16 @@ private:
         while (m_Rows.size() < m_Parameters.size()) {
             auto index = m_Rows.size();
             auto row = std::make_unique<TRow>(index, this);
-            m_Grid.attach(row->m_ControllerEntry, 0, index, 1, 1);
-            m_Grid.attach(row->m_ValueEntry, 1, index, 1, 1);
-            m_Grid.attach(row->m_LabelEntry, 2, index, 1, 1);
-            m_Grid.attach(row->m_RemoveButton, 3, index, 1, 1);
+            m_Grid.attach(row->m_ControllerEntry, 0, index+2, 1, 1);
+            m_Grid.attach(row->m_ValueEntry, 1, index+2, 1, 1);
+            m_Grid.attach(row->m_LabelEntry, 2, index+2, 1, 1);
+            m_Grid.attach(row->m_RemoveButton, 3, index+2, 1, 1);
             m_Rows.push_back(std::move(row));
         }
         if (m_Rows.size() > m_Parameters.size()) {
             m_Rows.resize(m_Parameters.size());
         }
+
 
         // Update each row's entries to reflect the current state of m_Parameters
         for (size_t i = 0; i < m_Parameters.size(); ++i) {
@@ -243,12 +266,24 @@ private:
         }
 
         m_Grid.show_all();  // Ensure all widgets are visible
+
+        for(size_t i = 0; i < 3; i++)
+        {
+            m_RowHeadersLabel.at(i).set_visible(!m_Parameters.empty());
+        }
     }
 
     std::vector<project::TInstrument::TParameter> m_Parameters;
     Gtk::Grid m_Grid;
     Gtk::Button m_AddButton;
     std::vector<std::unique_ptr<TRow>> m_Rows;
+    Gtk::Label m_TopLabel;
+    sigc::signal<void> m_OnChange;
+    std::array<Gtk::Label,3> m_RowHeadersLabel {
+        Gtk::Label("CC number"),
+        Gtk::Label("Initial value"),
+        Gtk::Label("Label"),
+    };
 };
 
 
@@ -563,6 +598,9 @@ public:
             m_Grid.attach(m_Lv2UriEntry, 1, 0, 1, 1);
             m_Grid.attach(m_ChooseLv2UriButton, 2, 0, 1, 1);
 
+            m_Lv2UriLabel.set_halign(Gtk::ALIGN_START);
+            m_NameLabel.set_halign(Gtk::ALIGN_START);
+
             m_Grid.attach(m_NameLabel, 0, 1, 1, 1);
             m_Grid.attach(m_NameEntry, 1, 1, 2, 1);
 
@@ -618,6 +656,10 @@ public:
                 Update();
             });
 
+            m_ParametersPanel.onchange().connect([this]() {
+                Update();
+            });
+            
             // Show all widgets
             show_all_children();
             Update();

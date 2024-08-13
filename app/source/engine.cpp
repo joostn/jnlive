@@ -94,7 +94,10 @@ namespace engine
                 if(doload)
                 {
                     m_LastSentPart2ControllerValues.at(partindex).clear();
-                    m_LastSentPart2ControllerValues.at(partindex).resize(m_Data.Part2ControllerValues().at(partindex).size());
+                }
+                m_LastSentPart2ControllerValues.at(partindex).resize(m_Data.Part2ControllerValues().at(partindex).size());
+                if(doload)
+                {
                     SyncPlugins();
                     LoadPresetForPart(partindex);
                 }
