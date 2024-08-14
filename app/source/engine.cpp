@@ -48,6 +48,7 @@ namespace engine
             {
                 if(partindex < m_Data.Part2ControllerValues().size())
                 {
+                    auto parameters = m_Data.Project().ParametersForPart(partindex);
                     const auto &part = m_Data.Project().Parts().at(partindex);
                     if(part.ActiveInstrumentIndex())
                     {
@@ -55,7 +56,7 @@ namespace engine
                         const auto& controllervalues = m_Data.Part2ControllerValues()[partindex];
                         for(size_t i =0; i < controllervalues.size(); i++)
                         {
-                            auto &param = instrument.Parameters().at(i);
+                            auto &param = parameters.at(i);
                             auto oldvalue = m_LastSentPart2ControllerValues.at(partindex).at(i);
                             if(controllervalues[i] && (controllervalues[i] != oldvalue))
                             {

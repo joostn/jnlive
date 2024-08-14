@@ -317,7 +317,7 @@ public:
         set_default_size(400, 300);
 
         m_NameEntry.set_text(m_Preset.Name());
-        m_OverrideParametersCheckButton.set_active(m_Preset.OverrideParameters());
+        m_OverrideParametersCheckButton.set_active((bool)m_Preset.OverrideParameters());
 
         // Set up the grid layout
         m_Grid.attach(m_NameLabel, 0, 0, 1, 1);
@@ -329,6 +329,10 @@ public:
         m_InstrumentCaptionLabel.set_halign(Gtk::ALIGN_START);
         m_InstrumentLabel.set_hexpand(true);
         m_NameEntry.set_hexpand(true);
+        if(m_Preset.InstrumentIndex() < m_Instruments.size())
+        {
+            m_InstrumentLabel.set_label(m_Instruments.at(m_Preset.InstrumentIndex()).Name());
+        }
 
         m_Grid.set_row_spacing(5);
         m_Grid.attach(m_OverrideParametersCheckButton, 0, 2, 2, 1);
@@ -363,30 +367,27 @@ public:
         m_OkButton.show();
         m_CancelButton.show();
         show_all_children(true);
-        Update();
-    }
-
-    const project::TInstrument &Instrument() const {
-        return m_Instrument;
+        Update(); 
     }
 
     void Update()
     {
         m_Preset = m_Preset.ChangeName(utils::trim(m_NameEntry.get_text()));
-        TODO!
+        {
+            if(m_OverrideParametersCheckButton.get_active())
+            {
+                m_Preset = m_Preset.ChangeOverrideParameters({m_ParametersPanel.Parameters()});
+            }
+            else
+            {
+                m_Preset = m_Preset.ChangeOverrideParameters(std::nullopt);
+            }
+        }
         try
         {
-            if(m_Instrument.Name().empty())
+            if(m_Preset.Name().empty())
             {
                 throw std::runtime_error("Enter a name");
-            }
-            try
-            {
-                lilvutils::Plugin plugin(lilvutils::Uri(std::string(m_Instrument.Lv2Uri())));
-            }
-            catch(const std::exception& e)
-            {
-                throw std::runtime_error("Cannot instantiate plugin: "+std::string(e.what()));
             }
             m_ErrorLabel.set_text("");
             m_ErrorLabel.set_visible(false);
@@ -399,7 +400,9 @@ public:
             m_OkButton.set_sensitive(false);
         }
         m_ParametersPanel.Update(); // update visibility of the row headers
+        m_ParametersPanel.set_visible((bool)m_Preset.OverrideParameters());
     }
+    const project::TPreset &Preset() const {return m_Preset; }
 
 private:
     project::TPreset m_Preset;
@@ -872,8 +875,24 @@ public:
             m_MenuButtonBox.pack_start(m_MenuButton, Gtk::PACK_SHRINK);
             m_PopupMenu.append(m_SavePresetMenuItem);
             m_PopupMenu.append(m_DeletePresetMenuItem);
+            m_PopupMenu.append(m_EditPresetMenuItem);
             m_PopupMenu.show_all();
-            m_MenuButton.set_popup(m_PopupMenu);
+            m_MenuButton.set_popup(m_PopupMenu);\
+            m_EditPresetMenuItem.signal_activate().connect([this](){
+                DoAndShowException([this](){
+                    auto presetindex = m_Engine.Project().Parts().at(m_Engine.Data().GuiFocusedPart().value()).ActivePresetIndex().value();
+                    auto preset = m_Engine.Project().Presets().at(presetindex).value();
+                    auto instruments = m_Engine.Project().Instruments();
+                    TEditPresetDialog dialog(std::move(preset), std::move(instruments));
+                    int result = dialog.run();
+                    if(result == Gtk::RESPONSE_OK)
+                    {
+                        auto preset = dialog.Preset();
+                        m_Engine.SetProject(m_Engine.Project().ChangePreset(presetindex, std::move(preset)));
+                    }
+                });
+            });
+
             m_SavePresetMenuItem.signal_activate().connect([this](){
                 DoAndShowException([this](){
                     auto project_copy = m_Engine.Project();
@@ -917,7 +936,7 @@ public:
         }
         void enableItems()
         {
-            bool canDeletePreset = false;
+            bool hasActivePreset = false;
             bool canSavePreset = false;
             if(m_Engine.Data().GuiFocusedPart() && (*m_Engine.Data().GuiFocusedPart() < m_Engine.Project().Parts().size()))
             {
@@ -927,7 +946,7 @@ public:
                     const auto &currentpreset = m_Engine.Project().Presets().at(*presetindex);
                     if(currentpreset)
                     {
-                        canDeletePreset = true;
+                        hasActivePreset = true;
                     }
                 }
                 auto instrindex = m_Engine.Project().Parts().at(*m_Engine.Data().GuiFocusedPart()).ActiveInstrumentIndex();
@@ -936,7 +955,8 @@ public:
                     canSavePreset = true;
                 }
             }
-            m_DeletePresetMenuItem.set_sensitive(canDeletePreset);
+            m_DeletePresetMenuItem.set_sensitive(hasActivePreset);
+            m_EditPresetMenuItem.set_sensitive(hasActivePreset);
             m_SavePresetMenuItem.set_sensitive(canSavePreset);
         }
         void OnDataChanged()
@@ -1015,6 +1035,7 @@ public:
         Gtk::Menu m_PopupMenu;
         Gtk::MenuItem m_SavePresetMenuItem {"Save Preset"};
         Gtk::MenuItem m_DeletePresetMenuItem {"Delete Current Preset"};
+        Gtk::MenuItem m_EditPresetMenuItem{"Edit Current Preset"};
         std::vector<size_t> m_BtnIndex2PresetIndex;
     };
     class InstrumentsPanel : public Gtk::Box
