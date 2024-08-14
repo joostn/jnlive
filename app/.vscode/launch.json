@@ -15,7 +15,8 @@
                 // "LV2_PATH": "/home/joostn/odin2/build/Odin2_artefacts/Debug/LV2:/usr/lib/lv2:/usr/local/lib/lv2",
                 "FLTK_SCALING_FACTOR": "2.0",
                 "GDK_BACKEND": "x11",
-                // "GTK_DEBUG": "interactive",
+                "G_DEBUG": "fatal-warnings", // abort/break on gtk warnings
+                "GTK_DEBUG": "interactive",
             },
         }
     ]
