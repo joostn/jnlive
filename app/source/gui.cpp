@@ -736,6 +736,22 @@ public:
                         }
                     });
                 });
+                pack_start(m_LevelScale, Gtk::PACK_SHRINK);
+                m_LevelScale.signal_value_changed().connect([this](){
+                    DoAndShowException([this](){
+                        if(!m_ChangingLevel)
+                        {
+                            auto v = m_LevelScale.get_value();
+                            m_ChangingLevel = true;
+                            utils::finally finally([this](){m_ChangingLevel = false;});
+                            m_Engine.SetProject(m_Engine.Project().ChangePart(m_PartIndex,
+                            m_Engine.Project().Parts().at(m_PartIndex).ChangeAmplitudeFactor((float)v)));
+                        }
+                    });
+                });
+                // m_LevelScale.set_digits(2);
+                m_LevelScale.set_draw_value(false);
+                m_LevelScale.set_size_request(100, -1);
                 OnDataChanged();
             }
             void OnDataChanged()
@@ -746,6 +762,14 @@ public:
                     const auto &part = m_Engine.Data().Project().Parts()[m_PartIndex];
                     m_ActivateButton.set_label(part.Name());
                     m_ActivateButton.set_state_flags(isSelected ? Gtk::STATE_FLAG_CHECKED : Gtk::STATE_FLAG_NORMAL, true);
+                    m_LevelScale.set_range(0.0, 1.0);
+                    if(!m_ChangingLevel)
+                    {
+                        m_ChangingLevel = true;
+                        utils::finally finally([this](){m_ChangingLevel = false;});
+                        auto v = m_Engine.Project().Parts().at(m_PartIndex).AmplitudeFactor();
+                        m_LevelScale.set_value(v);
+                    }
                 }
             }
         private:
@@ -753,6 +777,8 @@ public:
             engine::Engine &m_Engine;
             size_t m_PartIndex;
             utils::NotifySink m_OnDataChanged {m_Engine.OnDataChanged(), [this](){OnDataChanged();}};
+            Gtk::Scale m_LevelScale;
+            bool m_ChangingLevel = false;
         };
         PartsContainer(engine::Engine &engine) : m_Engine(engine)
         {
