@@ -24,6 +24,21 @@ void DoAndShowException(std::function<void()> f)
     }
 }
 
+class TEditPortsPanel : public Gtk::Box
+{
+public:
+    TEditPortsPanel(std::vector<std::string> && portNames, jackutils::Port::Kind kind, jackutils::Port::Direction direction) : m_PortNames(std::move(portNames)), m_Kind(kind), m_Direction(direction), Gtk::Box(Gtk::ORIENTATION_VERTICAL)
+    {
+        auto portnames = jackutils::Client::Static().GetAllPorts(kind, direction);
+        HIER!
+    }
+
+private:
+    std::vector<std::string> m_PortNames;
+    jackutils::Port::Kind m_Kind;
+    jackutils::Port::Direction m_Direction;
+};
+
 class TLevelSlider : public Gtk::Box
 {
 public:

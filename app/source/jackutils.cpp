@@ -69,6 +69,56 @@ namespace jackutils
 
     }
 
+    void Client::ListAllPorts()
+    {
+        auto ports = jack_get_ports(m_Client, nullptr, nullptr, 0);
+        utils::finally fin1([&](){
+            if(ports)
+            {
+                jack_free(ports);
+            }
+        });
+        if(ports)
+        {
+            size_t index = 0;
+            while(true)
+            {
+                const char *port = ports[index++];
+                if(!port)
+                {
+                    break;
+                }
+                printf("%s\n", port);
+            }
+        }
+    }
+
+    std::vector<std::string> Client::GetAllPorts(jackutils::Port::Kind kind, jackutils::Port::Direction direction) const
+    {
+        std::vector<std::string> result;
+        auto ports = jack_get_ports(m_Client, nullptr, kind == jackutils::Port::Kind::Midi? "midi":"audio", direction == jackutils::Port::Direction::Input ? JackPortIsInput : JackPortIsOutput);
+        utils::finally fin1([&](){
+            if(ports)
+            {
+                jack_free(ports);
+            }
+        });
+        if(ports)
+        {
+            size_t index = 0;
+            while(true)
+            {
+                const char *port = ports[index++];
+                if(!port)
+                {
+                    break;
+                }
+                result.push_back(port);
+            }
+        }
+        return result;
+    }
+
     // returns true on success
     bool Port::LinkToPortByName(const std::string &portname)
     {

@@ -26,29 +26,8 @@ namespace jackutils
         //     m_HasShutdown = true;
         //     m_Condition.notify_all();
         // }
-        void ListAllPorts()
-        {
-            auto ports = jack_get_ports(m_Client, nullptr, nullptr, 0);
-            utils::finally fin1([&](){
-                if(ports)
-                {
-                    jack_free(ports);
-                }
-            });
-            if(ports)
-            {
-                size_t index = 0;
-                while(true)
-                {
-                    const char *port = ports[index++];
-                    if(!port)
-                    {
-                        break;
-                    }
-                    printf("%s\n", port);
-                }
-            }
-        }
+        void ListAllPorts();
+        std::vector<std::string> GetAllPorts(jackutils::Port::Kind kind, jackutils::Port::Direction) const;
         void ShutDown()
         {
             if(m_Client) 
