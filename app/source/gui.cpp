@@ -581,7 +581,7 @@ private:
 
 class TEditInstrumentDialog : public Gtk::Dialog {
 public:
-    TEditInstrumentDialog(project::TInstrument &&instrument)
+    TEditInstrumentDialog(project::TInstrument &&instrument, bool canEditUri)
         : m_Instrument(std::move(instrument)),
         m_Lv2UriLabel("Plugin URI:"),
         m_NameLabel("Name:"),
@@ -614,6 +614,7 @@ public:
         m_Lv2UriLabel.set_halign(Gtk::ALIGN_START);
         m_NameLabel.set_halign(Gtk::ALIGN_START);
         m_ChooseLv2UriButton.set_halign(Gtk::ALIGN_START);
+        m_ChooseLv2UriButton.set_sensitive(canEditUri);
         m_Lv2UriEntry.set_hexpand(true);
         m_NameEntry.set_hexpand(true);
 
@@ -1021,31 +1022,38 @@ public:
         Gtk::MenuItem m_EditPartMenuItem{"Edit active part"};
         Gtk::MenuItem m_AddPartMenuItem{"Add part"};
     };
-    class ReverbPanel : public Gtk::ScrolledWindow
+    class ReverbPanel : public Gtk::Box
     {
     public:
         ReverbPanel(ReverbPanel &&other) = delete;
         ReverbPanel(const ReverbPanel &other) = delete;
-        ReverbPanel(engine::Engine &engine) : m_Engine(engine)
+        ReverbPanel(engine::Engine &engine) : m_Engine(engine), Gtk::Box(Gtk::ORIENTATION_HORIZONTAL)
         {
-            set_policy(Gtk::POLICY_NEVER, Gtk::POLICY_AUTOMATIC);
-            add(m_MainBox);
-            m_MainBox.set_spacing(5);
-            m_ButtonsBox.pack_start(m_ShowGuiButton, Gtk::PACK_SHRINK);
-            m_ButtonsBox.pack_start(m_ChangePluginButton, Gtk::PACK_SHRINK);
-            m_ButtonsBox.pack_start(m_ReverbStorePresetButton, Gtk::PACK_SHRINK);
-            m_MainBox.pack_start(m_ButtonsBox, Gtk::PACK_SHRINK);
-            m_MainBox.pack_start(m_ReverbNameLabel, Gtk::PACK_SHRINK);
-            m_MainBox.pack_start(m_ReverbLevelSlider, Gtk::PACK_SHRINK);
+            pack_start(m_Grid, Gtk::PACK_SHRINK);
+            pack_start(m_MenuButton, Gtk::PACK_SHRINK);
+            m_Grid.attach(m_ReverbNameCaptionLabel, 0, 0, 1, 1);
+            m_Grid.attach(m_ReverbNameLabel, 1, 0, 1, 1);
+            m_Grid.attach(m_ReverbLevelCaptionLabel, 0, 1, 1, 1);
+            m_Grid.attach(m_ReverbLevelSlider, 1, 1, 1, 1);
+            m_Grid.set_row_spacing(5);
+            m_Grid.set_column_spacing(5);
+            m_Grid.set_border_width(5);
+            m_PopupMenu.append(m_ChangePluginButton);
+            m_PopupMenu.append(m_ReverbStorePresetButton);
+            m_PopupMenu.append(m_ShowGuiMenuItem);
+            m_PopupMenu.show_all();
+            m_MenuButton.set_valign(Gtk::ALIGN_START);
+            m_MenuButton.set_popup(m_PopupMenu);
+            m_MenuButton.set_image(m_MenuButtonImage);
             m_ReverbLevelSlider.set_halign(Gtk::ALIGN_START);
-            m_ShowGuiButton.signal_clicked().connect([this](){
+            m_ShowGuiMenuItem.signal_activate().connect([this](){
                 DoAndShowException([this](){
                     auto newdata = m_Engine.Data().ChangeShowReverbUi(!m_Engine.Data().ShowReverbUi());
                     m_Engine.SetData(std::move(newdata));
                     m_Engine.LoadReverbPreset();
                 });
             });
-            m_ChangePluginButton.signal_clicked().connect([this](){
+            m_ChangePluginButton.signal_activate().connect([this](){
                 DoAndShowException([this](){
                     PluginSelectorDialog dialog(m_Engine.Project().Reverb().ReverbLv2Uri());
                     int result = dialog.run();
@@ -1056,7 +1064,7 @@ public:
                     }
                 });
             });
-            m_ReverbStorePresetButton.signal_clicked().connect([this](){
+            m_ReverbStorePresetButton.signal_activate().connect([this](){
                 DoAndShowException([this](){
                     m_Engine.StoreReverbPreset();
                 });
@@ -1073,7 +1081,7 @@ public:
         void OnDataChanged()
         {
             const auto &project = m_Engine.Project();
-            m_ShowGuiButton.set_state_flags(m_Engine.Data().ShowReverbUi()?  Gtk::STATE_FLAG_CHECKED : Gtk::STATE_FLAG_NORMAL, true);
+            m_ShowGuiMenuItem.set_state_flags(m_Engine.Data().ShowReverbUi()?  Gtk::STATE_FLAG_CHECKED : Gtk::STATE_FLAG_NORMAL, true);
             m_ReverbNameLabel.set_text(m_Engine.ReverbPluginName());
             show_all_children();
             m_ReverbLevelSlider.SetMultiplier(project.Reverb().MixLevel());
@@ -1081,12 +1089,16 @@ public:
     private:
         engine::Engine &m_Engine;
         utils::NotifySink m_OnDataChanged {m_Engine.OnDataChanged(), [this](){OnDataChanged();}};
-        Gtk::Box m_MainBox {Gtk::ORIENTATION_VERTICAL};
-        Gtk::Box m_ButtonsBox {Gtk::ORIENTATION_HORIZONTAL};
-        Gtk::ToggleButton m_ShowGuiButton {"Show GUI"};
-        Gtk::Label m_ReverbNameLabel;
-        Gtk::Button m_ChangePluginButton {"Change Plugin"};
-        Gtk::Button m_ReverbStorePresetButton {"Store Preset"};
+        Gtk::Grid m_Grid;
+        Gtk::Label m_ReverbNameCaptionLabel {"Plugin:", Gtk::ALIGN_START};
+        Gtk::Label m_ReverbLevelCaptionLabel {"Mix level:", Gtk::ALIGN_START};
+        Gtk::Label m_ReverbNameLabel {"", Gtk::ALIGN_START};
+        Gtk::MenuButton m_MenuButton;
+        Gtk::Image m_MenuButtonImage {"open-menu-symbolic", Gtk::ICON_SIZE_MENU};
+        Gtk::Menu m_PopupMenu;
+        Gtk::MenuItem m_ChangePluginButton {"Change reverb plugin"};
+        Gtk::MenuItem m_ReverbStorePresetButton {"Store reverb preset"};
+        Gtk::CheckMenuItem m_ShowGuiMenuItem {"Show reverb GUI"};
         TLevelSlider m_ReverbLevelSlider;
     };
 
@@ -1107,6 +1119,7 @@ public:
             m_PopupMenu.append(m_SavePresetMenuItem);
             m_PopupMenu.append(m_DeletePresetMenuItem);
             m_PopupMenu.append(m_EditPresetMenuItem);
+            m_PopupMenu.append(m_ShowGuiMenuItem);
             m_PopupMenu.show_all();
             m_MenuButton.set_popup(m_PopupMenu);
             m_MenuButton.set_image(m_MenuButtonImage);
@@ -1164,6 +1177,14 @@ public:
                     }
                 });
             });
+
+            m_ShowGuiMenuItem.signal_activate().connect([this](){
+                DoAndShowException([this](){
+                    auto newdata = m_Engine.Data().ChangeShowUi(!m_Engine.Data().ShowUi());
+                    m_Engine.SetData(std::move(newdata));
+                });
+            });
+
             OnDataChanged();
         }
         void enableItems()
@@ -1253,6 +1274,7 @@ public:
             {
                 show_all_children();
             }
+            m_ShowGuiMenuItem.set_state_flags(m_Engine.Data().ShowUi()?  Gtk::STATE_FLAG_CHECKED : Gtk::STATE_FLAG_NORMAL, true);
             enableItems();
         }
     private:
@@ -1266,9 +1288,10 @@ public:
         Gtk::MenuButton m_MenuButton;
         Gtk::Image m_MenuButtonImage {"open-menu-symbolic", Gtk::ICON_SIZE_MENU};
         Gtk::Menu m_PopupMenu;
-        Gtk::MenuItem m_SavePresetMenuItem {"Save Preset"};
-        Gtk::MenuItem m_DeletePresetMenuItem {"Delete Current Preset"};
-        Gtk::MenuItem m_EditPresetMenuItem{"Edit Current Preset"};
+        Gtk::MenuItem m_SavePresetMenuItem {"Save preset"};
+        Gtk::MenuItem m_DeletePresetMenuItem {"Delete current preset"};
+        Gtk::MenuItem m_EditPresetMenuItem{"Edit current preset"};
+        Gtk::CheckMenuItem m_ShowGuiMenuItem{"Show plugin GUI"};
         std::vector<size_t> m_BtnIndex2PresetIndex;
     };
     class InstrumentsPanel : public Gtk::Box
@@ -1287,13 +1310,14 @@ public:
             m_PopupMenu.append(m_AddInstrumentItem);
             m_PopupMenu.append(m_EditInstrumentItem);
             m_PopupMenu.append(m_DeleteInstrumentItem);
+            m_PopupMenu.append(m_ShowGuiMenuItem);
             m_PopupMenu.show_all();
             m_MenuButton.set_popup(m_PopupMenu);
             m_MenuButton.set_image(m_MenuButtonImage);
             m_AddInstrumentItem.signal_activate().connect([this](){
                 DoAndShowException([this](){
                     project::TInstrument instrument({}, false, {}, {}, false);
-                    TEditInstrumentDialog dlg(std::move(instrument));
+                    TEditInstrumentDialog dlg(std::move(instrument), true);
                     int result = dlg.run();
                     if(result == Gtk::RESPONSE_OK)
                     {
@@ -1301,6 +1325,12 @@ public:
                         auto newproject = m_Engine.Project().AddInstrument(std::move(newinstrument));
                         m_Engine.SetProject(std::move(newproject));
                     }
+                });
+            });
+            m_ShowGuiMenuItem.signal_activate().connect([this](){
+                DoAndShowException([this](){
+                    auto newdata = m_Engine.Data().ChangeShowUi(!m_Engine.Data().ShowUi());
+                    m_Engine.SetData(std::move(newdata));
                 });
             });
             m_EditInstrumentItem.signal_activate().connect([this](){
@@ -1312,7 +1342,7 @@ public:
                         {
                             auto instrumentindex = activeinstrumentindexOrNull.value();
                             auto instrument = m_Engine.Project().Instruments().at(activeinstrumentindexOrNull.value());
-                            TEditInstrumentDialog dlg(std::move(instrument));
+                            TEditInstrumentDialog dlg(std::move(instrument), false);
                             int result = dlg.run();
                             if(result == Gtk::RESPONSE_OK)
                             {
@@ -1405,6 +1435,7 @@ public:
                 button.set_label(instrument.Name());
                 button.set_state_flags(activeInstrument && *activeInstrument == i ? Gtk::STATE_FLAG_CHECKED : Gtk::STATE_FLAG_NORMAL, true);
             }
+            m_ShowGuiMenuItem.set_state_flags(m_Engine.Data().ShowUi()?  Gtk::STATE_FLAG_CHECKED : Gtk::STATE_FLAG_NORMAL, true);
             show_all_children();
             enableItems();
         }
@@ -1422,6 +1453,7 @@ public:
         Gtk::MenuItem m_AddInstrumentItem {"Add Instrument"};
         Gtk::MenuItem m_DeleteInstrumentItem {"Delete Instrument"};
         Gtk::MenuItem m_EditInstrumentItem {"Edit Instrument"};
+        Gtk::CheckMenuItem m_ShowGuiMenuItem{"Show plugin GUI"};
     };
     class TopBar : public Gtk::Box
     {
@@ -1442,18 +1474,11 @@ public:
                 m_ApplicationWindow.SetFocusedTab(FocusedTab::Reverb);
                 Update();
             });
-            m_ShowGuiButton.signal_clicked().connect([this](){
-                DoAndShowException([this](){
-                    auto newdata = m_ApplicationWindow.Engine().Data().ChangeShowUi(!m_ApplicationWindow.Engine().Data().ShowUi());
-                    m_ApplicationWindow.Engine().SetData(std::move(newdata));
-                });
-            });
             m_MenuButton.set_popup(applicationWindow.PopupMenu());
             m_MenuButton.set_image(m_MenuButtonImage);
             pack_start(m_ModePresetButton, Gtk::PACK_SHRINK);
             pack_start(m_ModeInstrumentsButton, Gtk::PACK_SHRINK);
             pack_start(m_ModeReverbButton, Gtk::PACK_SHRINK);
-            pack_start(m_ShowGuiButton, Gtk::PACK_SHRINK);
             pack_end(m_MenuButton, Gtk::PACK_SHRINK);
             Update();
         }
@@ -1463,7 +1488,6 @@ public:
             m_ModePresetButton.set_state_flags(focusedTab == FocusedTab::Presets?  Gtk::STATE_FLAG_CHECKED : Gtk::STATE_FLAG_NORMAL, true);
             m_ModeInstrumentsButton.set_state_flags(focusedTab == FocusedTab::Instruments?  Gtk::STATE_FLAG_CHECKED : Gtk::STATE_FLAG_NORMAL, true);
             m_ModeReverbButton.set_state_flags(focusedTab == FocusedTab::Reverb?  Gtk::STATE_FLAG_CHECKED : Gtk::STATE_FLAG_NORMAL, true);
-            m_ShowGuiButton.set_state_flags(m_ApplicationWindow.Engine().Data().ShowUi()?  Gtk::STATE_FLAG_CHECKED : Gtk::STATE_FLAG_NORMAL, true);
         }
     private:
         Gtk::ToggleButton m_ModePresetButton {"Presets"};
@@ -1482,6 +1506,7 @@ public:
 }
 )VVV");
         set_default_size(800, 600);
+        m_Box1.set_spacing(10);
         add(m_Box1);
         m_Box1.pack_start(*m_TopBar, Gtk::PACK_SHRINK);
         m_Box1.pack_start(m_Box2, Gtk::PACK_EXPAND_WIDGET);

@@ -452,7 +452,7 @@ namespace project
             {
                 result.m_Presets.resize(presetIndex+1);
             }
-            if( (presetIndex < m_Presets.size()) && (preset))
+            if(presetIndex < m_Presets.size())
             {
                 result.m_Presets[presetIndex] = std::move(preset);
             }
