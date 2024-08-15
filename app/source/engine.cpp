@@ -8,6 +8,72 @@ namespace
 
 namespace engine
 {
+    constexpr double sMinSliderValue = -60;
+    constexpr double sMaxSliderValue = 10;
+    constexpr double sSliderPow = 0.6;
+
+    double dbToSliderValue(double db)
+    {
+        auto slidervalue = (db - sMinSliderValue) / (sMaxSliderValue - sMinSliderValue);
+        slidervalue = std::clamp(slidervalue, 0.0, 1.0);
+        slidervalue = std::pow(slidervalue, sSliderPow);
+        return slidervalue;
+    }
+
+    double multiplierToDb(double multiplier)
+    {
+        if(multiplier <= 0.0) return - std::numeric_limits<double>::infinity();
+        return 20 * log10(multiplier);
+    }
+
+    double multiplierToSliderValue(double multiplier)
+    {
+        return dbToSliderValue(multiplierToDb(multiplier));
+    }
+
+    double sliderValueToMultiplier(double slidervalue)
+    {
+        if(slidervalue <= 0) return 0.0;
+        slidervalue = std::min(slidervalue, 1.0);
+        slidervalue = std::pow(slidervalue, 1.0 / sSliderPow);
+        auto db = slidervalue * (sMaxSliderValue - sMinSliderValue) + sMinSliderValue;
+        return pow(10, db / 20);
+    }
+
+    double increaseMultiplier(double origvalue, double deltaDb)
+    {   
+        double db;
+        if(origvalue <= 0.0)
+        {
+            db = sMinSliderValue;
+        }
+        else
+        {
+            db = 20 * log10(origvalue);
+            db = std::max(db, sMinSliderValue);
+        }
+        db += deltaDb;
+        if(db <= sMinSliderValue) return 0.0;
+        db = std::min(db, sMaxSliderValue);
+        return pow(10, db / 20);
+    }
+
+    std::string dbToText(double db)
+    {
+        if(db <= sMinSliderValue) return "-inf";
+        int dbRounded = (int)std::lround(db);
+        if(dbRounded > 0)
+        {
+            return "+" + std::to_string(dbRounded);
+        }
+        return std::to_string(dbRounded);
+    }
+
+    std::string multiplierToText(double v)
+    {
+        return dbToText(multiplierToDb(v));
+    }
+
     std::string Engine::SavePresetForInstance(lilvutils::Instance &instance)
     {
         std::string dirtemplate = PresetsDir() + "/state_XXXXXX";

@@ -226,6 +226,7 @@ namespace project
     class TPart  // one for each keyboard
     {
     public:
+        TPart(std::string &&name) : m_Name(std::move(name)) {}
         TPart(std::string &&name, int midiChannelForSharedInstruments, const std::optional<size_t>& activeInstrumentIndex, const std::optional<size_t>& activePresetIndex, std::vector<std::optional<size_t>> &&quickPresets, float amplitudeFactor) : m_Name(std::move(name)), m_MidiChannelForSharedInstruments(midiChannelForSharedInstruments), m_ActiveInstrumentIndex(activeInstrumentIndex), m_ActivePresetIndex(activePresetIndex), m_AmplitudeFactor(amplitudeFactor), m_QuickPresets(std::move(quickPresets))
         {
         }
@@ -256,6 +257,18 @@ namespace project
         {
             auto result = *this;
             result.m_AmplitudeFactor = amplitudeFactor;
+            return result;
+        }
+        TPart ChangeName(std::string &&name) const
+        {
+            auto result = *this;
+            result.m_Name = name;
+            return result;
+        }
+        TPart ChangeMidiChannelForSharedInstruments(int midiChannelForSharedInstruments) const
+        {
+            auto result = *this;
+            result.m_MidiChannelForSharedInstruments = midiChannelForSharedInstruments;
             return result;
         }
         std::vector<std::optional<size_t>> QuickPresets() const { return m_QuickPresets; }
@@ -410,6 +423,21 @@ namespace project
                     }
                 }
                 result.m_Parts[partIndex] = std::move(part);
+            }
+            return result;
+        }
+        TProject AddPart(TPart &&part) const
+        {
+            auto result = *this;
+            result.m_Parts.emplace_back(std::move(part));
+            return result;
+        }
+        TProject DeletePart(size_t partindex) const
+        {
+            auto result = *this;
+            if(partindex < m_Parts.size())
+            {
+                result.m_Parts.erase(result.m_Parts.begin() + partindex);
             }
             return result;
         }

@@ -14,6 +14,15 @@
 
 namespace engine
 {
+    double dbToSliderValue(double db);
+    double multiplierToDb(double multiplier);
+    double multiplierToSliderValue(double multiplier);
+    double sliderValueToMultiplier(double slidervalue);
+    double increaseMultiplier(double origvalue, double deltaDb);
+    std::string dbToText(double db);
+    std::string multiplierToText(double v);
+
+
     class Engine;
     class PluginInstanceForPart;
     class OptionalUI

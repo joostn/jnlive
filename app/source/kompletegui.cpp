@@ -9,76 +9,13 @@ using std::chrono_literals::operator""ms;
 namespace komplete
 {
     constexpr int sNumPresetPages = 16;
-    constexpr double sMinSliderValue = -60;
-    constexpr double sMaxSliderValue = 10;
-    constexpr double sSliderPow = 0.6;
 
-    double dbToSliderValue(double db)
-    {
-        auto slidervalue = (db - sMinSliderValue) / (sMaxSliderValue - sMinSliderValue);
-        slidervalue = std::clamp(slidervalue, 0.0, 1.0);
-        slidervalue = std::pow(slidervalue, sSliderPow);
-        return slidervalue;
-    }
-
-    double multiplierToDb(double multiplier)
-    {
-        if(multiplier <= 0.0) return - std::numeric_limits<double>::infinity();
-        return 20 * log10(multiplier);
-    }
-
-    double multiplierToSliderValue(double multiplier)
-    {
-        return dbToSliderValue(multiplierToDb(multiplier));
-    }
-
-    double sliderValueToMultiplier(double slidervalue)
-    {
-        if(slidervalue <= 0) return 0.0;
-        slidervalue = std::min(slidervalue, 1.0);
-        slidervalue = std::pow(slidervalue, 1.0 / sSliderPow);
-        auto db = slidervalue * (sMaxSliderValue - sMinSliderValue) + sMinSliderValue;
-        return pow(10, db / 20);
-    }
-
-    double increaseMultiplier(double origvalue, double deltaDb)
-    {   
-        double db;
-        if(origvalue <= 0.0)
-        {
-            db = sMinSliderValue;
-        }
-        else
-        {
-            db = 20 * log10(origvalue);
-            db = std::max(db, sMinSliderValue);
-        }
-        db += deltaDb;
-        if(db <= sMinSliderValue) return 0.0;
-        db = std::min(db, sMaxSliderValue);
-        return pow(10, db / 20);
-    }
 
     utils::TFloatColor colorForPart(size_t partindex)
     {
         return (partindex == 0)? utils::TFloatColor(1, 0.3, 0.3): utils::TFloatColor(0.3, 1, 0.3);
     }
 
-    std::string dbToText(double db)
-    {
-        if(db <= sMinSliderValue) return "-inf";
-        int dbRounded = (int)std::lround(db);
-        if(dbRounded > 0)
-        {
-            return "+" + std::to_string(dbRounded);
-        }
-        return std::to_string(dbRounded);
-    }
-
-    std::string multiplierToText(double v)
-    {
-        return dbToText(multiplierToDb(v));
-    }
 
     class TDrawbarKnob : public simplegui::Window
     {
@@ -539,7 +476,7 @@ namespace komplete
                         if(partindex_i < 0)
                         {
                             auto multiplier = GuiState().EngineData().Project().Reverb().MixLevel();
-                            auto newmultiplier = increaseMultiplier(multiplier, dB);
+                            auto newmultiplier = engine::increaseMultiplier(multiplier, dB);
                             if(newmultiplier != multiplier)
                             {
                                 auto newreverb = GuiState().EngineData().Project().Reverb().ChangeMixLevel(newmultiplier);
@@ -554,7 +491,7 @@ namespace komplete
                             if(GuiState().EngineData().Project().Parts().size() > partindex)
                             {
                                 auto multiplier = GuiState().EngineData().Project().Parts().at(partindex).AmplitudeFactor();
-                                auto newmultiplier = increaseMultiplier(multiplier, dB);
+                                auto newmultiplier = engine::increaseMultiplier(multiplier, dB);
                                 if(newmultiplier != multiplier)
                                 {
                                     auto newpart = GuiState().EngineData().Project().Parts().at(partindex).ChangeAmplitudeFactor(newmultiplier);
@@ -795,8 +732,8 @@ namespace komplete
             int levelmeterleft = 0;
             int levelmeterwidth = 200;
 
-            auto text = dbToText(GuiState().m_OutputPeakLevel);
-            auto slidervalue = dbToSliderValue(GuiState().m_OutputLevel);
+            auto text = engine::dbToText(GuiState().m_OutputPeakLevel);
+            auto slidervalue = engine::dbToSliderValue(GuiState().m_OutputLevel);
             window.AddChild<simplegui::TSlider>(utils::TIntRect::FromTopLeftAndSize({levelmeterleft, levelmetertop}, {levelmeterwidth, levelmeterheight}), text, slidervalue, utils::TFloatColor(0.8, 0.8, 0.8));
         }
 
@@ -903,8 +840,8 @@ namespace komplete
                     slidercolor = colorForPart(partindex);
                     label = project.Parts().at(partindex).Name();
                 }
-                double slidervalue = multiplierToSliderValue(multiplier);
-                auto slidertext = multiplierToText(multiplier);
+                double slidervalue = engine::multiplierToSliderValue(multiplier);
+                auto slidertext = engine::multiplierToText(multiplier);
 
                 window.AddChild<simplegui::TextWindow>(utils::TIntRect::FromTopLeftAndSize({sliderleft, sliderlabeltop}, {sliderright - sliderleft, lineheight}), label, slidercolor, sFontSize, simplegui::TextWindow::THalign::Left);
 
