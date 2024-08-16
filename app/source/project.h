@@ -548,7 +548,7 @@ namespace project
         int BufferSize() const {return m_BufferSize;}
         TJackConnections ChangeBufferSize(int buffersize) const
         {
-            TJackConnections result;
+            auto result = *this;
             result.m_BufferSize = FixBufferSize(buffersize);
             return result;
         }

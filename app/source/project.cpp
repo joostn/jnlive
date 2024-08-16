@@ -179,6 +179,7 @@ namespace project
             }
         }
         result["reverb"] = ToJson(project.Reverb());
+        result["version"] = (int)1;
         return result;
     }
     TProject ProjectFromJson(const Json::Value &v)
@@ -269,6 +270,7 @@ namespace project
         {
             result["vocoderinput"].append(portname);
         }
+        result["version"] = (int)1;
         return result;
     }
     TJackConnections JackConnectionsFromJson(const Json::Value &v)

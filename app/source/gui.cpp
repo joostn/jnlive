@@ -388,30 +388,34 @@ private:
     Gtk::Button *m_OkButton = nullptr;
 };
 
-class TEditParametersPanel : public Gtk::VBox {
+class TEditParametersPanel : public Gtk::Frame {
 public:
     TEditParametersPanel(TEditParametersPanel &&) = delete;
     TEditParametersPanel(const TEditParametersPanel &) = delete;
     
     TEditParametersPanel(std::vector<project::TInstrument::TParameter> &&params)
-        : m_Parameters(std::move(params)), m_AddButton("Add controller"), m_TopLabel("Controllers:")
+        : m_Parameters(std::move(params)), m_AddButton("Add controller")
     {
         m_AddButton.signal_clicked().connect([this]() {
             m_Parameters.emplace_back(1, std::optional<int>(), "New controller");
             m_OnChange.emit();
             Update();  // Sync grid with the updated parameters
         });
+        add(m_ScrolledWindow);
+        m_ScrolledWindow.set_policy(Gtk::POLICY_NEVER, Gtk::POLICY_AUTOMATIC);
+        m_ScrolledWindow.add(m_Box);
+        m_ScrolledWindow.set_size_request(400, 140);
+        m_ScrolledWindow.set_border_width(5);
 
         // Add grid and button to the panel
-        pack_start(m_Grid, Gtk::PACK_EXPAND_WIDGET);
-        pack_start(m_AddButton, Gtk::PACK_SHRINK);
+        m_Box.pack_start(m_Grid, Gtk::PACK_EXPAND_WIDGET);
+        m_Box.pack_start(m_AddButton, Gtk::PACK_SHRINK);
+        m_AddButton.set_halign(Gtk::ALIGN_START);
         m_Grid.set_hexpand(true);
         m_Grid.set_vexpand(true);
-        m_Grid.attach(m_TopLabel, 0, 0, 4, 1);
-        m_TopLabel.set_halign(Gtk::ALIGN_START);
         for(size_t i = 0; i < 3; i++)
         {
-            m_Grid.attach(m_RowHeadersLabel.at(i), i, 1, 1, 1);
+            m_Grid.attach(m_RowHeadersLabel.at(i), i, 0, 1, 1);
         }
  
         Update();  // Initialize the grid with the initial data
@@ -432,7 +436,7 @@ public:
             size_t colindex = 0;
             for(auto control: {(Gtk::Widget *)&row->m_ControllerEntry, (Gtk::Widget *)&row->m_ValueEntry, (Gtk::Widget *)&row->m_LabelEntry, (Gtk::Widget *)&row->m_RemoveButton})
             {
-                m_Grid.attach(*control, colindex++, index+2, 1, 1);
+                m_Grid.attach(*control, colindex++, index+1, 1, 1);
                 control->set_visible(true);
             }
             m_Rows.push_back(std::move(row));
@@ -555,10 +559,11 @@ private:
 
 
     std::vector<project::TInstrument::TParameter> m_Parameters;
+    Gtk::ScrolledWindow m_ScrolledWindow;
+    Gtk::VBox m_Box;
     Gtk::Grid m_Grid;
     Gtk::Button m_AddButton;
     std::vector<std::unique_ptr<TRow>> m_Rows;
-    Gtk::Label m_TopLabel;
     sigc::signal<void> m_OnChange;
     std::array<Gtk::Label,3> m_RowHeadersLabel {
         Gtk::Label("CC number"),
@@ -820,6 +825,7 @@ public:
 
         m_Lv2UriLabel.set_halign(Gtk::ALIGN_START);
         m_NameLabel.set_halign(Gtk::ALIGN_START);
+        m_ControllersLabel.set_halign(Gtk::ALIGN_START);
         m_ChooseLv2UriButton.set_halign(Gtk::ALIGN_START);
         m_ChooseLv2UriButton.set_sensitive(canEditUri);
         m_Lv2UriEntry.set_hexpand(true);
@@ -829,11 +835,12 @@ public:
         m_Grid.attach(m_NameEntry, 1, 1, 2, 1);
 
         m_Grid.set_row_spacing(5);
-        m_Grid.attach(m_IsHammondCheckButton, 0, 2, 3, 1);
-        m_Grid.attach(m_HasVocoderInputCheckButton, 0, 3, 3, 1);
+        m_Grid.attach(m_IsHammondCheckButton, 1, 2, 2, 1);
+        m_Grid.attach(m_HasVocoderInputCheckButton, 1, 3, 2, 1);
 
         // Add the parameters panel to the grid
-        m_Grid.attach(m_ParametersPanel, 0, 4, 3, 1);
+        m_Grid.attach(m_ControllersLabel, 0, 4, 1, 1);
+        m_Grid.attach(m_ParametersPanel, 1, 4, 2, 1);
         m_Grid.attach(m_ErrorLabel, 0, 5, 3, 1);
         // make red:
         m_ErrorLabel.override_color(Gdk::RGBA("red"));
@@ -936,6 +943,7 @@ private:
     project::TInstrument m_Instrument;
     Gtk::Grid m_Grid;
     Gtk::Label m_Lv2UriLabel;
+    Gtk::Label m_ControllersLabel {"Controllers:"};
     Gtk::Label m_NameLabel;
     Gtk::Entry m_Lv2UriEntry;
     Gtk::Entry m_NameEntry;
