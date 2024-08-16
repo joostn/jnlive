@@ -24,19 +24,121 @@ void DoAndShowException(std::function<void()> f)
     }
 }
 
-class TEditPortsPanel : public Gtk::Box
+class TEditPortsPanel : public Gtk::Frame
 {
 public:
-    TEditPortsPanel(std::vector<std::string> && portNames, jackutils::Port::Kind kind, jackutils::Port::Direction direction) : m_PortNames(std::move(portNames)), m_Kind(kind), m_Direction(direction), Gtk::Box(Gtk::ORIENTATION_VERTICAL)
+    class TRow
+    {
+    public:
+        Gtk::Entry m_Entry;
+        Gtk::Button m_RemoveButton {"Remove"};
+    };
+    TEditPortsPanel(std::vector<std::string> && portNames, jackutils::PortKind kind, jackutils::PortDirection direction) : m_PortNames(std::move(portNames)), m_Kind(kind), m_Direction(direction)
     {
         auto portnames = jackutils::Client::Static().GetAllPorts(kind, direction);
-        HIER!
+        add(m_ScrolledWindow);
+        set_border_width(5);
+        m_ScrolledWindow.set_policy(Gtk::POLICY_NEVER, Gtk::POLICY_AUTOMATIC);
+        m_ScrolledWindow.add(m_Box);
+        m_Box.pack_start(m_Grid, Gtk::PACK_EXPAND_WIDGET);
+        m_ScrolledWindow.set_size_request(500,200);
+        m_Box.pack_start(m_AddButton, Gtk::PACK_SHRINK);
+        m_AddButton.set_halign(Gtk::ALIGN_START);
+        for(const auto &portname: portnames)
+        {
+            m_MenuItems.emplace_back(portname);
+            m_MenuItems.back().signal_activate().connect([this, portname](){
+                m_PortNames.push_back(portname);
+                data2grid();
+            });
+            m_PopupMenu.add(m_MenuItems.back());
+        }
+        if(!portnames.empty())
+        {
+            m_PopupMenu.add(m_MenuSeparator);
+        }
+        m_OtherMenuItem.signal_activate().connect([this](){
+            m_PortNames.push_back("");
+            data2grid();
+        });
+        m_PopupMenu.add(m_OtherMenuItem);
+        m_PopupMenu.show_all();
+        m_AddButton.set_popup(m_PopupMenu);
+        m_AddButton.set_label("Add port");
+        show_all_children(true);
+        data2grid();
     }
+    ~TEditPortsPanel()
+    {
+        m_Destructing = true;
+    }
+    const std::vector<std::string>& PortNames() const {return m_PortNames;}
+    void data2grid()
+    {
+        while(m_Rows.size() < m_PortNames.size())
+        {
+            auto index = m_Rows.size();
+            m_Rows.push_back(TRow());
+            auto &row = m_Rows.back();
+            m_Grid.attach(row.m_Entry, 0, index);
+            m_Grid.attach(row.m_RemoveButton, 1, index);
+            row.m_Entry.show();
+            row.m_RemoveButton.show();
+            row.m_RemoveButton.set_hexpand(false);
+            row.m_RemoveButton.set_halign(Gtk::ALIGN_START);
+            row.m_RemoveButton.signal_clicked().connect([this, index]() {
+                if (index < m_PortNames.size()) {
+                    m_PortNames.erase(m_PortNames.begin() + index);
+                    m_OnChange.emit();
+                    data2grid();
+                }
+            });
+            row.m_Entry.set_hexpand(true);
+            row.m_Entry.signal_changed().connect([this, index]() {
+                if (index < m_PortNames.size()) {
+                    auto txt = utils::trim(m_Rows.at(index).m_Entry.get_text());
+                    if(m_PortNames.at(index) != txt)
+                    {
+                        m_PortNames.at(index) = std::move(txt);
+                        m_OnChange.emit();
+                    }
+                }
+            });
+            row.m_Entry.signal_focus_out_event().connect([this](GdkEventFocus* event) {
+                if(!m_Destructing)
+                {
+                    data2grid();
+                }
+                return false;  // Continue with the default handler
+            });
+        }
+        if(m_Rows.size() > m_PortNames.size())
+        {   
+            m_Rows.resize(m_PortNames.size());
+        }
+        for(size_t i = 0; i < m_PortNames.size(); i++)
+        {
+            m_Rows.at(i).m_Entry.set_text(utils::trim(m_PortNames.at(i)));
+        }
+
+    }
+    auto& signal_value_changed() {return m_OnChange;}
 
 private:
     std::vector<std::string> m_PortNames;
-    jackutils::Port::Kind m_Kind;
-    jackutils::Port::Direction m_Direction;
+    std::vector<TRow> m_Rows;
+    jackutils::PortKind m_Kind;
+    jackutils::PortDirection m_Direction;
+    Gtk::MenuButton m_AddButton;
+    Gtk::Menu m_PopupMenu;
+    std::vector<Gtk::MenuItem> m_MenuItems;
+    Gtk::SeparatorMenuItem m_MenuSeparator;
+    Gtk::MenuItem m_OtherMenuItem {"Other..."};
+    Gtk::Grid m_Grid;
+    Gtk::Box m_Box {Gtk::ORIENTATION_VERTICAL};
+    bool m_Destructing = false;
+    sigc::signal<void> m_OnChange;
+    Gtk::ScrolledWindow m_ScrolledWindow;
 };
 
 class TLevelSlider : public Gtk::Box
@@ -385,7 +487,7 @@ private:
 
 class TEditPartDialog : public Gtk::Dialog {
 public:
-    TEditPartDialog(project::TPart &&part) : m_Part(std::move(part)), m_NameLabel("Name:"), m_MidiChanLabel("Midi channel (for Hammond):"),  m_OkButton("OK"), m_CancelButton("Cancel") 
+    TEditPartDialog(project::TPart &&part, std::vector<std::string> &&midiInPorts) : m_Part(std::move(part)), m_NameLabel("Name:"), m_MidiChanLabel("Midi channel (for Hammond):"),  m_OkButton("OK"), m_CancelButton("Cancel"), m_MidiInPortsLabel("Midi input:"), m_EditPortsPanel(std::move(midiInPorts), jackutils::PortKind::Midi, jackutils::PortDirection::Output)
     {
         // Set up the dialog properties
         set_title("Edit Part");
@@ -396,11 +498,14 @@ public:
         m_Grid.attach(m_NameEntry, 1, 0, 1, 1);
         m_Grid.attach(m_MidiChanLabel, 0, 1, 1, 1);
         m_Grid.attach(m_MidiChanEntry, 1, 1, 1, 1);
+        m_Grid.attach(m_MidiInPortsLabel, 0, 2, 1, 1);
+        m_Grid.attach(m_EditPortsPanel, 1, 2, 1, 1);
         m_Grid.set_row_spacing(5);
         get_content_area()->add(m_Grid);
         m_Grid.set_hexpand(true);
         m_Grid.set_vexpand(true);
         m_NameLabel.set_halign(Gtk::ALIGN_START);
+        m_MidiInPortsLabel.set_halign(Gtk::ALIGN_START);
         m_MidiChanLabel.set_halign(Gtk::ALIGN_START);
         m_NameEntry.set_hexpand(true);
         m_MidiChanEntry.set_hexpand(false);
@@ -429,6 +534,10 @@ public:
     ~TEditPartDialog()
     {
         m_Destroying = true;
+    }
+    const std::vector<std::string>& MidiInPorts() const
+    {
+        return m_EditPortsPanel.PortNames();
     }
     void data2dlg()
     {
@@ -462,7 +571,6 @@ public:
     }
     const project::TPart &Part() const { return m_Part; }
 
-
 private:
     project::TPart m_Part;
     Gtk::Grid m_Grid;
@@ -470,8 +578,10 @@ private:
     Gtk::Entry m_NameEntry;
     Gtk::Label m_MidiChanLabel;
     Gtk::Entry m_MidiChanEntry;
+    Gtk::Label m_MidiInPortsLabel;
     Gtk::Button m_OkButton;
     Gtk::Button m_CancelButton;
+    TEditPortsPanel m_EditPortsPanel;
     bool m_Destroying = false;
 };
 
@@ -941,6 +1051,37 @@ public:
             utils::NotifySink m_OnDataChanged {m_Engine.OnDataChanged(), [this](){OnDataChanged();}};
             TLevelSlider m_LevelSlider;
         };
+        void EditPartWithDialog(size_t partindex)
+        {
+            auto part = (partindex < m_Engine.Project().Parts().size())? m_Engine.Project().Parts().at(partindex) : project::TPart("Part " + std::to_string(partindex + 1));
+            std::vector<std::string> midiInPorts;
+            if(partindex < m_Engine.Data().JackConnections().MidiInputs().size())
+            {
+                midiInPorts = m_Engine.Data().JackConnections().MidiInputs().at(partindex);
+            }
+            TEditPartDialog dlg(std::move(part), std::move(midiInPorts));
+            int result = dlg.run();
+            if(result == Gtk::RESPONSE_OK)
+            {
+                auto modifiedpart =  m_Engine.Data().Project().Parts().at(partindex).ChangeName(std::string{dlg.Part().Name()}).ChangeMidiChannelForSharedInstruments(dlg.Part().MidiChannelForSharedInstruments());
+                auto newproject = m_Engine.Data().Project().ChangePart(m_Engine.Data().GuiFocusedPart().value(), std::move(modifiedpart));
+                auto midiinputs = m_Engine.Data().JackConnections().MidiInputs();
+                if(midiinputs.size() <= partindex)
+                {
+                    midiinputs.resize(partindex + 1);
+                }
+                midiinputs[partindex] = {};
+                for(const auto &port: dlg.MidiInPorts())
+                {
+                    if(!port.empty())
+                    {
+                        midiinputs[partindex].push_back(port);
+                    }
+                }
+                auto newjackconnections = m_Engine.Data().JackConnections().ChangeMidiInputs(std::move(midiinputs));
+                auto newdata = m_Engine.Data().ChangeProject(std::move(newproject)).ChangeJackConnections(std::move(newjackconnections));
+                m_Engine.SetData(std::move(newdata));
+            }        }
         PartsContainer(engine::Engine &engine) : m_Engine(engine), Gtk::Box(Gtk::ORIENTATION_HORIZONTAL)
         {
             set_spacing(5);
@@ -961,15 +1102,7 @@ public:
             m_EditPartMenuItem.signal_activate().connect([this](){
                 DoAndShowException([this](){
                     size_t partindex = m_Engine.Data().GuiFocusedPart().value();
-                    auto part = m_Engine.Project().Parts().at(partindex);
-                    TEditPartDialog dlg(std::move(part));
-                    int result = dlg.run();
-                    if(result == Gtk::RESPONSE_OK)
-                    {
-                        auto modifiedpart =  m_Engine.Project().Parts().at(partindex).ChangeName(std::string{dlg.Part().Name()}).ChangeMidiChannelForSharedInstruments(dlg.Part().MidiChannelForSharedInstruments());
-                        auto newproject = m_Engine.Project().ChangePart(m_Engine.Data().GuiFocusedPart().value(), std::move(modifiedpart));
-                        m_Engine.SetProject(std::move(newproject));
-                    }
+                    EditPartWithDialog(partindex);
                 });
             });
             m_DeletePartMenuItem.signal_activate().connect([this](){
@@ -988,9 +1121,15 @@ public:
             });
             m_AddPartMenuItem.signal_activate().connect([this](){
                 DoAndShowException([this](){
-                    auto name = "Part " + std::to_string(m_Engine.Project().Parts().size() + 1);
+                    auto partindex = m_Engine.Project().Parts().size();
+                    auto name = "Part " + std::to_string(partindex + 1);
                     auto part = project::TPart(std::move(name));
-                    TEditPartDialog dlg(std::move(part));
+                    std::vector<std::string> midiInPorts;
+                    if(partindex < m_Engine.Data().JackConnections().MidiInputs().size())
+                    {
+                        midiInPorts = m_Engine.Data().JackConnections().MidiInputs().at(partindex);
+                    }
+                    TEditPartDialog dlg(std::move(part), std::move(midiInPorts));
                     int result = dlg.run();
                     if(result == Gtk::RESPONSE_OK)
                     {

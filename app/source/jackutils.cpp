@@ -3,12 +3,12 @@
 
 namespace jackutils
 {
-    Port::Port(std::string &&name, Kind kind, Direction direction) : m_Kind(kind), m_Direction(direction), m_Name(name)
+    Port::Port(std::string &&name, PortKind kind, PortDirection direction) : m_Kind(kind), m_Direction(direction), m_Name(name)
     {
         auto jackclient = Client::Static().get();
         auto jackport = jack_port_register(jackclient, m_Name.c_str(), 
-            kind == Kind::Audio ? JACK_DEFAULT_AUDIO_TYPE : JACK_DEFAULT_MIDI_TYPE, 
-            direction == Direction::Input ? JackPortIsInput : JackPortIsOutput, 0);
+            kind == PortKind::Audio ? JACK_DEFAULT_AUDIO_TYPE : JACK_DEFAULT_MIDI_TYPE, 
+            direction == PortDirection::Input ? JackPortIsInput : JackPortIsOutput, 0);
         if (!jackport) {
             throw std::runtime_error("Failed to open JACK port.");
         }
@@ -93,10 +93,10 @@ namespace jackutils
         }
     }
 
-    std::vector<std::string> Client::GetAllPorts(jackutils::Port::Kind kind, jackutils::Port::Direction direction) const
+    std::vector<std::string> Client::GetAllPorts(jackutils::PortKind kind, jackutils::PortDirection direction) const
     {
         std::vector<std::string> result;
-        auto ports = jack_get_ports(m_Client, nullptr, kind == jackutils::Port::Kind::Midi? "midi":"audio", direction == jackutils::Port::Direction::Input ? JackPortIsInput : JackPortIsOutput);
+        auto ports = jack_get_ports(m_Client, nullptr, kind == jackutils::PortKind::Midi? "midi":"audio", direction == jackutils::PortDirection::Input ? JackPortIsInput : JackPortIsOutput);
         utils::finally fin1([&](){
             if(ports)
             {
@@ -124,7 +124,7 @@ namespace jackutils
     {
         auto jackclient = Client::Static().get();
         int result;
-        if(direction() == Direction::Input)
+        if(direction() == PortDirection::Input)
         {
             result = jack_connect(jackclient, portname.c_str(), jack_port_name(m_Port));
         }
@@ -189,7 +189,7 @@ namespace jackutils
         for(const auto &portname: matchingportnames)
         {
             int result;
-            if(direction() == Direction::Input)
+            if(direction() == PortDirection::Input)
             {
                 result = jack_connect(jackclient, portname.c_str(), jack_port_name(m_Port));
             }
@@ -221,7 +221,7 @@ namespace jackutils
     {
         auto jackclient = Client::Static().get();
         auto matchingportnames = GetMatchingPortNames(portnames);
-        if(direction() == Direction::Input)
+        if(direction() == PortDirection::Input)
         {
             throw std::runtime_error("LinkToAllPortsByName only works for output ports");
         }

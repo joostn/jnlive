@@ -102,7 +102,7 @@ namespace engine
         TAuxInPortLink& operator=(TAuxInPortLink&&) = delete;
         TAuxInPortLink(const TAuxInPortLink&) = delete;
         TAuxInPortLink& operator=(const TAuxInPortLink&) = delete;
-        TAuxInPortLink(TAuxInPortBase *inport) : m_AuxInPort(inport), m_Port(std::string(inport->Name()), jackutils::Port::Kind::Midi, jackutils::Port::Direction::Input), m_OnMidiCallback([this](const midi::TMidiOrSysexEvent &event){ this->OnMidi(event); })
+        TAuxInPortLink(TAuxInPortBase *inport) : m_AuxInPort(inport), m_Port(std::string(inport->Name()), jackutils::PortKind::Midi, jackutils::PortDirection::Input), m_OnMidiCallback([this](const midi::TMidiOrSysexEvent &event){ this->OnMidi(event); })
         {
         }
         jackutils::Port& Port() { return m_Port; }
@@ -245,7 +245,7 @@ namespace engine
             }
             auto Tuple() const
             {
-                return std::tie(m_Project, m_HammondData, m_GuiFocusedPart, m_ShowUi, m_ShowReverbUi, m_Part2ControllerValues);
+                return std::tie(m_Project, m_HammondData, m_GuiFocusedPart, m_ShowUi, m_ShowReverbUi, m_Part2ControllerValues, m_JackConnections);
             }
             TData ChangePart2ControllerValues(std::vector<std::vector<std::optional<int>>> &&part2ControllerValues) const
             {
@@ -257,6 +257,13 @@ namespace engine
             bool operator==(const TData &other) const
             {
                 return Tuple() == other.Tuple();
+            }
+            const project::TJackConnections& JackConnections() const {return m_JackConnections;}
+            TData ChangeJackConnections(project::TJackConnections&& jackconnections) const
+            {
+                TData ret = *this;
+                ret.m_JackConnections = std::move(jackconnections);
+                return ret;
             }
         private:
             void Fix(const project::TProject &prevProject)
@@ -312,6 +319,7 @@ namespace engine
             bool m_ShowUi = false;
             bool m_ShowReverbUi = false;
             std::vector<std::vector<std::optional<int>>> m_Part2ControllerValues;
+            project::TJackConnections m_JackConnections;
         };
         class Part
         {
@@ -400,7 +408,6 @@ namespace engine
         realtimethread::Data m_CurrentRtData;
         std::vector<std::unique_ptr<jackutils::Port>> m_AudioOutPorts;
         std::unique_ptr<jackutils::Port> m_VocoderInPort;
-        project::TJackConnections m_JackConnections;
         std::optional<std::chrono::steady_clock::time_point> m_LastApplyJackConnectionTime;
         utils::NotifySource m_OnDataChanged;
         bool m_SafeToDestroy = false;

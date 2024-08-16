@@ -10,6 +10,9 @@
 
 namespace jackutils
 {
+    enum class PortKind {Audio, Midi};
+    enum class PortDirection {Input, Output};
+
     class ProcessBlocker;
     class Client
     {
@@ -27,7 +30,7 @@ namespace jackutils
         //     m_Condition.notify_all();
         // }
         void ListAllPorts();
-        std::vector<std::string> GetAllPorts(jackutils::Port::Kind kind, jackutils::Port::Direction) const;
+        std::vector<std::string> GetAllPorts(jackutils::PortKind kind, jackutils::PortDirection) const;
         void ShutDown()
         {
             if(m_Client) 
@@ -91,16 +94,14 @@ namespace jackutils
     class Port
     {
     public:
-        enum class Kind {Audio, Midi};
-        enum class Direction {Input, Output};
         Port(const Port&) = delete;
         Port& operator=(const Port&) = delete;
         Port(Port&&) = delete;
         Port& operator=(Port&&) = delete;
-        Port(std::string &&name, Kind kind, Direction direction);
+        Port(std::string &&name, PortKind kind, PortDirection direction);
         ~Port();
-        Kind kind() const { return m_Kind; }
-        Direction direction() const { return m_Direction; }
+        PortKind kind() const { return m_Kind; }
+        PortDirection direction() const { return m_Direction; }
         jack_port_t* get()
         {
             return m_Port;
@@ -123,8 +124,8 @@ namespace jackutils
 
     private:
         jack_port_t *m_Port = nullptr;
-        Kind m_Kind;
+        PortKind m_Kind;
         std::string m_Name;
-        Direction m_Direction;
+        PortDirection m_Direction;
     };
 }

@@ -264,7 +264,7 @@ namespace engine
         }
         m_LastApplyJackConnectionTime = now;
         size_t partindex = 0;
-        for(const auto &midiInPortNames: m_JackConnections.MidiInputs())
+        for(const auto &midiInPortNames: Data().JackConnections().MidiInputs())
         {
             if(partindex >= m_Parts.size())
             {
@@ -276,22 +276,22 @@ namespace engine
         }
         for(size_t portindex = 0; portindex < m_AudioOutPorts.size(); ++portindex)
         {
-            if(portindex < m_JackConnections.AudioOutputs().size())
+            if(portindex < Data().JackConnections().AudioOutputs().size())
             {
-                const auto &audioportnames = m_JackConnections.AudioOutputs()[portindex];
+                const auto &audioportnames = Data().JackConnections().AudioOutputs()[portindex];
                 m_AudioOutPorts[portindex]->LinkToAllPortsByPattern(audioportnames);
             }
         }
         if(m_VocoderInPort)
         {
-            m_VocoderInPort->LinkToAnyPortByPattern(m_JackConnections.VocoderInput());
+            m_VocoderInPort->LinkToAnyPortByPattern(Data().JackConnections().VocoderInput());
         }
         for(const auto &auxinport: m_AuxInPorts)
         {
             if(auxinport && auxinport->AuxInPort())
             {
                 const auto &name = auxinport->AuxInPort()->Name();
-                for(const auto &portpair: m_JackConnections.ControllerMidiPorts())
+                for(const auto &portpair: Data().JackConnections().ControllerMidiPorts())
                 {
                     if(portpair.first == name)
                     {
@@ -305,7 +305,7 @@ namespace engine
             if(auxOutport && auxOutport->AuxOutPort())
             {
                 const auto &name = auxOutport->AuxOutPort()->Name();
-                for(const auto &portpair: m_JackConnections.ControllerMidiPorts())
+                for(const auto &portpair: Data().JackConnections().ControllerMidiPorts())
                 {
                     if(portpair.first == name)
                     {
@@ -540,7 +540,7 @@ namespace engine
             }
             else
             {
-                midiInPort = std::make_unique<jackutils::Port>("midi_in_" + std::to_string(partindex), jackutils::Port::Kind::Midi, jackutils::Port::Direction::Input);
+                midiInPort = std::make_unique<jackutils::Port>("midi_in_" + std::to_string(partindex), jackutils::PortKind::Midi, jackutils::PortDirection::Input);
             }
             std::vector<size_t> pluginindices;
             for(size_t instrumentindex = 0; instrumentindex < Project().Instruments().size(); ++instrumentindex)
@@ -958,13 +958,13 @@ namespace engine
                 throw std::runtime_error("jack_set_buffer_size failed");
             }
         }
-        m_AudioOutPorts.push_back(std::make_unique<jackutils::Port>("out_l", jackutils::Port::Kind::Audio, jackutils::Port::Direction::Output));
-        m_AudioOutPorts.push_back(std::make_unique<jackutils::Port>("out_r", jackutils::Port::Kind::Audio, jackutils::Port::Direction::Output));
+        m_AudioOutPorts.push_back(std::make_unique<jackutils::Port>("out_l", jackutils::PortKind::Audio, jackutils::PortDirection::Output));
+        m_AudioOutPorts.push_back(std::make_unique<jackutils::Port>("out_r", jackutils::PortKind::Audio, jackutils::PortDirection::Output));
         if(!std::filesystem::exists(m_ProjectDir))
         {
             std::filesystem::create_directory(m_ProjectDir);
         }
-        m_VocoderInPort = std::make_unique<jackutils::Port>("vocoder_in", jackutils::Port::Kind::Audio, jackutils::Port::Direction::Input);
+        m_VocoderInPort = std::make_unique<jackutils::Port>("vocoder_in", jackutils::PortKind::Audio, jackutils::PortDirection::Input);
         LoadProject();
         LoadJackConnections();
         SyncPlugins();
@@ -1001,15 +1001,13 @@ namespace engine
         std::string jackconnectionfile = ProjectDir() + "/jackconnection.json";
         if(!std::filesystem::exists(jackconnectionfile))
         {
-            std::array<std::vector<std::string>, 2> m_AudioOutputs;
-            std::vector<std::vector<std::string>> midiInputs {};
-            std::vector<std::pair<std::string, std::vector<std::string>>> controllermidiports;
-            std::vector<std::string> vocoderinput;
-            project::TJackConnections jackconn(std::move(m_AudioOutputs), std::move(midiInputs), std::move(controllermidiports), std::move(vocoderinput));
+            project::TJackConnections jackconn;
             JackConnectionsToFile(jackconn, jackconnectionfile);
         }
         {
-            m_JackConnections = project::JackConnectionsFromFile(jackconnectionfile);
+            auto jackconn = project::JackConnectionsFromFile(jackconnectionfile);
+            auto data = Data().ChangeJackConnections(std::move(jackconn));
+            SetData(std::move(data));
         }
     }      
     void Engine::LoadFirstHammondPreset()
@@ -1381,7 +1379,7 @@ namespace engine
         }
     }
 
-    TAuxOutPortLink::TAuxOutPortLink(TAuxOutPortBase *outport, Engine &engine) : m_AuxOutPort(outport), m_Port(std::string(outport->Name()), jackutils::Port::Kind::Midi, jackutils::Port::Direction::Output), m_Engine(engine)
+    TAuxOutPortLink::TAuxOutPortLink(TAuxOutPortBase *outport, Engine &engine) : m_AuxOutPort(outport), m_Port(std::string(outport->Name()), jackutils::PortKind::Midi, jackutils::PortDirection::Output), m_Engine(engine)
     {
         outport->m_MidiSendFunc = [this](const midi::TMidiOrSysexEvent &event){
             m_Engine.SendMidiAsync(event, m_Port);

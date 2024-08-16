@@ -517,6 +517,31 @@ namespace project
         const std::vector<std::vector<std::string>>& MidiInputs() const { return m_MidiInputs; }
         const std::vector<std::pair<std::string /* id */, std::vector<std::string> /* jackname */>>& ControllerMidiPorts() const { return m_ControllerMidiPorts; }
         const std::vector<std::string>& VocoderInput() const { return m_VocoderInput; }
+        bool operator==(const TJackConnections&) const = default;
+        TJackConnections ChangeAudioOutputs(std::array<std::vector<std::string>, 2> &&audioOutputs) const
+        {
+            auto result = *this;
+            result.m_AudioOutputs = std::move(audioOutputs);
+            return result;
+        }
+        TJackConnections ChangeMidiInputs(std::vector<std::vector<std::string>> &&midiInputs) const
+        {
+            auto result = *this;
+            result.m_MidiInputs = std::move(midiInputs);
+            return result;
+        }
+        TJackConnections ChangeControllerMidiPorts(std::vector<std::pair<std::string /* id */, std::vector<std::string> /* jacknames */>> &&controllermidiports) const
+        {
+            auto result = *this;
+            result.m_ControllerMidiPorts = std::move(controllermidiports);
+            return result;
+        }
+        TJackConnections ChangeVocoderInput(std::vector<std::string> &&vocoderInput) const
+        {
+            auto result = *this;
+            result.m_VocoderInput = std::move(vocoderInput);
+            return result;
+        }
 
     private:
         std::array<std::vector<std::string>, 2> m_AudioOutputs;
