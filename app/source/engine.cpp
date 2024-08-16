@@ -1077,6 +1077,7 @@ namespace engine
         if(!std::filesystem::exists(projectfile))
         {
             auto prj = project::TProject();
+            prj = prj.AddPart(project::TPart("Part 1"));
             ProjectToFile(prj, projectfile);
         }
         {
