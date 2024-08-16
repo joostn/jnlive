@@ -237,6 +237,7 @@ namespace project
     Json::Value ToJson(const TJackConnections &jackConnections)
     {
         Json::Value result;
+        result["buffersize"] = jackConnections.BufferSize(); 
         result["audiooutputs"] = Json::Value(Json::arrayValue);
         for (const std::vector<std::string> &audioOutputs : jackConnections.AudioOutputs())
         {
@@ -310,7 +311,7 @@ namespace project
         {
             vocoderInput.push_back(portname.asString());
         }
-        return TJackConnections(std::move(audioOutputs), std::move(midiInputs), std::move(controllermidiports), std::move(vocoderInput));
+        return TJackConnections(std::move(audioOutputs), std::move(midiInputs), std::move(controllermidiports), std::move(vocoderInput), v["buffersize"].asUInt());
     }
 
     TJackConnections JackConnectionsFromFile(const std::string &filename)

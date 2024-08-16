@@ -63,8 +63,7 @@ namespace jackutils
         m_Client = jackclient;
         jackclient = nullptr;
         staticptr() = this;
-        ListAllPorts();
-
+        // ListAllPorts();
         // https://jackaudio.org/api/group__PortFunctions.html#gae6090e81f2ee23b5c0e432a899085ec8
 
     }

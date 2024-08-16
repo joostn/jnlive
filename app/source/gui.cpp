@@ -41,7 +41,7 @@ public:
         m_ScrolledWindow.set_policy(Gtk::POLICY_NEVER, Gtk::POLICY_AUTOMATIC);
         m_ScrolledWindow.add(m_Box);
         m_Box.pack_start(m_Grid, Gtk::PACK_EXPAND_WIDGET);
-        m_ScrolledWindow.set_size_request(500,200);
+        m_ScrolledWindow.set_size_request(500,130);
         m_Box.pack_start(m_AddButton, Gtk::PACK_SHRINK);
         m_AddButton.set_halign(Gtk::ALIGN_START);
         for(const auto &portname: portnames)
@@ -49,6 +49,7 @@ public:
             m_MenuItems.emplace_back(portname);
             m_MenuItems.back().signal_activate().connect([this, portname](){
                 m_PortNames.push_back(portname);
+                m_OnChange.emit();
                 data2grid();
             });
             m_PopupMenu.add(m_MenuItems.back());
@@ -59,6 +60,7 @@ public:
         }
         m_OtherMenuItem.signal_activate().connect([this](){
             m_PortNames.push_back("");
+            m_OnChange.emit();
             data2grid();
         });
         m_PopupMenu.add(m_OtherMenuItem);
@@ -139,6 +141,86 @@ private:
     bool m_Destructing = false;
     sigc::signal<void> m_OnChange;
     Gtk::ScrolledWindow m_ScrolledWindow;
+};
+
+class TEditSettingsDialog : public Gtk::Dialog
+{
+public:
+    TEditSettingsDialog(project::TJackConnections &&conn) : m_JackConnections(std::move(conn)), m_AudioOutPortPanels({TEditPortsPanel(std::vector<std::string>{m_JackConnections.AudioOutputs()[0]}, jackutils::PortKind::Audio, jackutils::PortDirection::Input), TEditPortsPanel(std::vector<std::string>{m_JackConnections.AudioOutputs()[1]}, jackutils::PortKind::Audio, jackutils::PortDirection::Input)}), m_VocoderInputPanel(std::vector<std::string>{m_JackConnections.VocoderInput()}, jackutils::PortKind::Audio, jackutils::PortDirection::Output)
+    {
+        set_title("Settings");
+        set_modal(true);
+        size_t row = 0;
+        m_Grid.set_row_spacing(5);
+        get_content_area()->add(m_Grid);
+        m_Grid.attach(m_BufferSizeLabel, 0, row);
+        m_Grid.attach(m_BufferSizeEntry, 1, row++);
+        for(size_t i = 0; i < 2; i++)
+        {
+            m_Grid.attach(m_AudioOutPortLabels[i], 0, row);
+            m_Grid.attach(m_AudioOutPortPanels[i], 1, row++);
+            m_AudioOutPortPanels[i].signal_value_changed().connect([this, i](){
+                auto outports = m_JackConnections.AudioOutputs();
+                outports[i] = m_AudioOutPortPanels[i].PortNames();
+                m_JackConnections = m_JackConnections.ChangeAudioOutputs(std::move(outports));
+            });
+        }
+        m_Grid.attach(m_VocoderInputLabel, 0, row);
+        m_Grid.attach(m_VocoderInputPanel, 1, row++);
+        m_VocoderInputPanel.signal_value_changed().connect([this](){
+            auto vocoderinput = m_VocoderInputPanel.PortNames();
+            m_JackConnections = m_JackConnections.ChangeVocoderInput(std::move(vocoderinput));
+        });
+        for(auto label: {&m_BufferSizeLabel, &m_VocoderInputLabel, &m_AudioOutPortLabels[0], &m_AudioOutPortLabels[1]})
+        {
+            label->set_halign(Gtk::ALIGN_START);
+        }
+        m_BufferSizeEntry.set_size_request(50,-1);
+        m_BufferSizeEntry.set_halign(Gtk::ALIGN_START);
+        m_BufferSizeEntry.signal_changed().connect([this](){
+            try
+            {
+                auto v = (int)utils::to_int64(m_BufferSizeEntry.get_text());
+                if(v != m_JackConnections.BufferSize())
+                {
+                    m_JackConnections = m_JackConnections.ChangeBufferSize(v);
+                }
+            }
+            catch(...) {}
+        });
+        m_BufferSizeEntry.signal_focus_out_event().connect([this](GdkEventFocus* event) {
+            if(!m_Destructing)
+            {
+                data2dlg();
+            }
+            return false;  // Continue with the default handler
+        });
+        add_action_widget(m_CancelButton, Gtk::RESPONSE_CANCEL);
+        add_action_widget(m_OkButton, Gtk::RESPONSE_OK);
+        data2dlg();
+        show_all_children();
+    }
+    const project::TJackConnections& JackConnections() const { return m_JackConnections; }
+    ~TEditSettingsDialog()
+    {
+        m_Destructing = true;
+    }
+    void data2dlg()
+    {
+        m_BufferSizeEntry.set_text(std::to_string(m_JackConnections.BufferSize()));
+    }
+private:
+    project::TJackConnections m_JackConnections;
+    Gtk::Grid m_Grid;
+    Gtk::Label m_BufferSizeLabel {"Audio buffer size:"};
+    Gtk::Entry m_BufferSizeEntry;
+    std::array<Gtk::Label, 2> m_AudioOutPortLabels {Gtk::Label("Left audio output:"), Gtk::Label("Right audio output:")};
+    std::array<TEditPortsPanel, 2> m_AudioOutPortPanels;
+    Gtk::Label m_VocoderInputLabel {"Vocoder input:"};
+    TEditPortsPanel m_VocoderInputPanel;
+    Gtk::Button m_OkButton {"OK"};
+    Gtk::Button m_CancelButton {"Cancel"};
+    bool m_Destructing = false;
 };
 
 class TLevelSlider : public Gtk::Box
@@ -1002,7 +1084,7 @@ public:
                 set_orientation(Gtk::ORIENTATION_VERTICAL);
                 set_vexpand(false);
                 pack_start(m_ActivateButton);
-                m_ActivateButton->set_size_request(100, 100);
+                m_ActivateButton.set_size_request(100, 100);
                 m_ActivateButton.signal_clicked().connect([this](){
                     DoAndShowException([this](){
                         if(m_PartIndex < m_Engine.Data().Project().Parts().size())
@@ -1659,12 +1741,19 @@ public:
         m_MainPanelStack.add(*m_InstrumentsPanel);
         m_MainPanelStack.add(*m_ReverbPanel);
         show_all_children();
-        // m_SaveProjectMenuItem.signal_activate().connect([this](){
-        //     DoAndShowException([this](){
-        //         m_Engine.SaveProject();
-        //     });
-        // });
-        // m_PopupMenu.append(m_SaveProjectMenuItem);
+        m_SettingsMenuItem.signal_activate().connect([this](){
+            DoAndShowException([this](){
+                auto jackconnections = m_Engine.Data().JackConnections();
+                TEditSettingsDialog dlg(std::move(jackconnections));
+                int result = dlg.run();
+                if(result == Gtk::RESPONSE_OK)
+                {
+                    auto newjackconnections = dlg.JackConnections();
+                    m_Engine.SetData(m_Engine.Data().ChangeJackConnections(std::move(newjackconnections)));
+                }
+            });
+        });
+        m_PopupMenu.append(m_SettingsMenuItem);
         m_PopupMenu.show_all();
         Update();
     }
@@ -1702,6 +1791,7 @@ private:
     Gtk::Box m_Box2 {Gtk::ORIENTATION_HORIZONTAL};
     Gtk::Box m_Spacer1 {Gtk::ORIENTATION_VERTICAL};
     Gtk::Menu m_PopupMenu;
+    Gtk::MenuItem m_SettingsMenuItem {"Settings..."};
     std::unique_ptr<TopBar> m_TopBar {std::make_unique<TopBar>(*this)};
     std::unique_ptr<PresetsPanel> m_PresetsPanel { std::make_unique<PresetsPanel>(m_Engine) };
     std::unique_ptr<InstrumentsPanel> m_InstrumentsPanel { std::make_unique<InstrumentsPanel>(m_Engine) };

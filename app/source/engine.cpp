@@ -954,13 +954,17 @@ namespace engine
         }
     }
 
-    Engine::Engine(uint32_t maxBlockSize, int argc, char** argv, std::string &&projectdir, utils::TEventLoop &eventLoop) : m_BufferSize(64),m_JackClient {"JN Live", [this](jack_nframes_t nframes){
+    Engine::Engine(uint32_t maxBlockSize, int argc, char** argv, std::string &&projectdir, utils::TEventLoop &eventLoop) :  m_JackClient {"JN Live", [this](jack_nframes_t nframes){
         m_RtProcessor.Process(nframes);
     }}, m_LilvWorld(m_JackClient.SampleRate(), maxBlockSize, argc, argv), m_ProjectDir(std::move(projectdir)), m_EventLoop(eventLoop), m_CleanupPresetLoadersAction(m_EventLoop, [this](){CleanupPresetLoaders();})
     {
+        if(!std::filesystem::exists(m_ProjectDir))
         {
-            auto errcode = jack_set_buffer_size(jackutils::Client::Static().get(), BufferSize()
-            );
+            std::filesystem::create_directory(m_ProjectDir);
+        }
+        LoadJackConnections();
+        {
+            auto errcode = jack_set_buffer_size(jackutils::Client::Static().get(), Data().JackConnections().BufferSize());
             if(errcode)
             {
                 throw std::runtime_error("jack_set_buffer_size failed");
@@ -968,13 +972,8 @@ namespace engine
         }
         m_AudioOutPorts.push_back(std::make_unique<jackutils::Port>("out_l", jackutils::PortKind::Audio, jackutils::PortDirection::Output));
         m_AudioOutPorts.push_back(std::make_unique<jackutils::Port>("out_r", jackutils::PortKind::Audio, jackutils::PortDirection::Output));
-        if(!std::filesystem::exists(m_ProjectDir))
-        {
-            std::filesystem::create_directory(m_ProjectDir);
-        }
         m_VocoderInPort = std::make_unique<jackutils::Port>("vocoder_in", jackutils::PortKind::Audio, jackutils::PortDirection::Input);
         LoadProject();
-        LoadJackConnections();
         SyncPlugins();
         ApplyJackConnections(true);
 
@@ -1465,26 +1464,6 @@ namespace engine
         try
         {    
             m_PluginInstance.pluginInstance()->Instance().LoadState(m_PresetDir);
-
-/*
-            auto midiinbuf = m_PluginInstance.pluginInstance()->GetMidiInBuf();
-            if(midiinbuf)
-            {
-                auto uridMidiEvent = lilvutils::World::Static().UriMapLookup(LV2_MIDI__MidiEvent);
-                // send a midi event to the plugin and let it generate audio. Misbehaving plugins may initially cause an xrun
-                auto pedalon = midi::SimpleEvent::ControlChange(0, 64, 127);
-                //auto pedaloff = midi::SimpleEvent::NoteOn(0, 64, 100);
-
-                lv2_evbuf_write(midiinbuf, 0, 0, uridMidiEvent, pedalon.Span().size(), pedalon.Span().data());
-
-                for(int i=0; i < 1000; i++)
-                {
-                    m_PluginInstance.pluginInstance()->Instance().Run(m_Engine.BufferSize());
-                }
-                auto pedaloff = midi::SimpleEvent::ControlChange(0, 64, 0);
-                lv2_evbuf_write(midiinbuf, 0, 0, uridMidiEvent, pedalon.Span().size(), pedaloff.Span().data());
-            }
-*/
         }
         catch(const std::exception& e)
         {

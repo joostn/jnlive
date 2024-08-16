@@ -512,7 +512,10 @@ namespace project
     {
     public:
         TJackConnections() {}
-        TJackConnections(std::array<std::vector<std::string>, 2> &&audioOutputs, std::vector<std::vector<std::string>> &&midiInputs, std::vector<std::pair<std::string, std::vector<std::string>>> &&controllermidiports, std::vector<std::string> &&vocoderInput) : m_AudioOutputs(std::move(audioOutputs)), m_MidiInputs(std::move(midiInputs)), m_ControllerMidiPorts(std::move(controllermidiports)), m_VocoderInput(std::move(vocoderInput)) {}
+        TJackConnections(std::array<std::vector<std::string>, 2> &&audioOutputs, std::vector<std::vector<std::string>> &&midiInputs, std::vector<std::pair<std::string, std::vector<std::string>>> &&controllermidiports, std::vector<std::string> &&vocoderInput, int buffersize) : m_AudioOutputs(std::move(audioOutputs)), m_MidiInputs(std::move(midiInputs)), m_ControllerMidiPorts(std::move(controllermidiports)), m_VocoderInput(std::move(vocoderInput)), m_BufferSize(buffersize)
+        {
+            m_BufferSize = FixBufferSize(m_BufferSize);
+        }
         const std::array<std::vector<std::string>, 2>& AudioOutputs() const { return m_AudioOutputs; }
         const std::vector<std::vector<std::string>>& MidiInputs() const { return m_MidiInputs; }
         const std::vector<std::pair<std::string /* id */, std::vector<std::string> /* jackname */>>& ControllerMidiPorts() const { return m_ControllerMidiPorts; }
@@ -542,12 +545,30 @@ namespace project
             result.m_VocoderInput = std::move(vocoderInput);
             return result;
         }
+        int BufferSize() const {return m_BufferSize;}
+        TJackConnections ChangeBufferSize(int buffersize) const
+        {
+            TJackConnections result;
+            result.m_BufferSize = FixBufferSize(buffersize);
+            return result;
+        }
+        static int FixBufferSize(int buffersize)
+        {
+            if(buffersize & (buffersize-1))
+            {
+                // round up to nearest power of 2
+                buffersize = 1 << (32 - __builtin_clz(buffersize));
+            }
+            buffersize = std::clamp(buffersize, 32, 4096);
+            return buffersize;
+        }
 
     private:
         std::array<std::vector<std::string>, 2> m_AudioOutputs;
         std::vector<std::vector<std::string>> m_MidiInputs;
         std::vector<std::pair<std::string /* id */, std::vector<std::string> /* jacknames */>> m_ControllerMidiPorts; 
         std::vector<std::string> m_VocoderInput;
+        int m_BufferSize = 64;
     };
 
     Json::Value ToJson(const TReverb &reverb);
