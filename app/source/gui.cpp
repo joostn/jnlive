@@ -37,7 +37,7 @@ public:
     {
         auto portnames = jackutils::Client::Static().GetAllPorts(kind, direction);
         add(m_ScrolledWindow);
-        set_border_width(5);
+        m_ScrolledWindow.set_border_width(5);
         m_ScrolledWindow.set_policy(Gtk::POLICY_NEVER, Gtk::POLICY_AUTOMATIC);
         m_ScrolledWindow.add(m_Box);
         m_Box.pack_start(m_Grid, Gtk::PACK_EXPAND_WIDGET);
@@ -985,8 +985,6 @@ private:
     Gtk::Button *m_OkButton = nullptr;
 };
 
-
-
 class ApplicationWindow : public Gtk::ApplicationWindow
 {
 public:
@@ -1004,6 +1002,7 @@ public:
                 set_orientation(Gtk::ORIENTATION_VERTICAL);
                 set_vexpand(false);
                 pack_start(m_ActivateButton);
+                m_ActivateButton->set_size_request(100, 100);
                 m_ActivateButton.signal_clicked().connect([this](){
                     DoAndShowException([this](){
                         if(m_PartIndex < m_Engine.Data().Project().Parts().size())
@@ -1063,8 +1062,8 @@ public:
             int result = dlg.run();
             if(result == Gtk::RESPONSE_OK)
             {
-                auto modifiedpart =  m_Engine.Data().Project().Parts().at(partindex).ChangeName(std::string{dlg.Part().Name()}).ChangeMidiChannelForSharedInstruments(dlg.Part().MidiChannelForSharedInstruments());
-                auto newproject = m_Engine.Data().Project().ChangePart(m_Engine.Data().GuiFocusedPart().value(), std::move(modifiedpart));
+                auto modifiedpart =  (partindex < m_Engine.Project().Parts().size())? m_Engine.Data().Project().Parts().at(partindex).ChangeName(std::string{dlg.Part().Name()}).ChangeMidiChannelForSharedInstruments(dlg.Part().MidiChannelForSharedInstruments()) : dlg.Part();
+                auto newproject = (partindex < m_Engine.Project().Parts().size())? m_Engine.Data().Project().ChangePart(m_Engine.Data().GuiFocusedPart().value(), std::move(modifiedpart)) : m_Engine.Data().Project().AddPart(std::move(modifiedpart));
                 auto midiinputs = m_Engine.Data().JackConnections().MidiInputs();
                 if(midiinputs.size() <= partindex)
                 {
@@ -1081,7 +1080,8 @@ public:
                 auto newjackconnections = m_Engine.Data().JackConnections().ChangeMidiInputs(std::move(midiinputs));
                 auto newdata = m_Engine.Data().ChangeProject(std::move(newproject)).ChangeJackConnections(std::move(newjackconnections));
                 m_Engine.SetData(std::move(newdata));
-            }        }
+            }
+        }
         PartsContainer(engine::Engine &engine) : m_Engine(engine), Gtk::Box(Gtk::ORIENTATION_HORIZONTAL)
         {
             set_spacing(5);
@@ -1122,21 +1122,7 @@ public:
             m_AddPartMenuItem.signal_activate().connect([this](){
                 DoAndShowException([this](){
                     auto partindex = m_Engine.Project().Parts().size();
-                    auto name = "Part " + std::to_string(partindex + 1);
-                    auto part = project::TPart(std::move(name));
-                    std::vector<std::string> midiInPorts;
-                    if(partindex < m_Engine.Data().JackConnections().MidiInputs().size())
-                    {
-                        midiInPorts = m_Engine.Data().JackConnections().MidiInputs().at(partindex);
-                    }
-                    TEditPartDialog dlg(std::move(part), std::move(midiInPorts));
-                    int result = dlg.run();
-                    if(result == Gtk::RESPONSE_OK)
-                    {
-                        auto newpart = dlg.Part();
-                        auto newproject = m_Engine.Project().AddPart(std::move(newpart));
-                        m_Engine.SetProject(std::move(newproject));
-                    }
+                    EditPartWithDialog(partindex);
                 });
             });
 

@@ -258,7 +258,7 @@ namespace project
         {
             result["controllermidiports"].append(Json::Value(Json::objectValue));
             result["controllermidiports"][result["controllermidiports"].size() - 1]["id"] = id; 
-            result["controllermidiports"][result["controllermidiports"].size() - 1]["device"] = Json::Value(Json::objectValue);
+            result["controllermidiports"][result["controllermidiports"].size() - 1]["device"] = Json::Value(Json::arrayValue);
             for(const auto &portname: portnames)
             {
                 result["controllermidiports"][result["controllermidiports"].size() - 1]["device"].append(portname);

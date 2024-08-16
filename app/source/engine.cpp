@@ -189,6 +189,14 @@ namespace engine
                 m_ProjectToSave = std::make_unique<project::TProject>(m_Data.Project());
             }
         }
+        if(olddata.JackConnections() != m_Data.JackConnections())
+        {
+            if(!m_Quitting)
+            {
+                std::unique_lock<std::mutex> lock(m_ProjectSaveMutex);
+                m_JackConnectionsToSave = std::make_unique<project::TJackConnections>(m_Data.JackConnections());
+            }
+        }
         if( (olddata.Project() != m_Data.Project())
           || (olddata.ShowUi()  != m_Data.ShowUi())
             || (olddata.ShowReverbUi() != m_Data.ShowReverbUi()) 
@@ -1047,14 +1055,20 @@ namespace engine
         std::unique_lock<std::mutex> lock1(m_SaveProjectNowMutex);
         bool quitting = false;
         std::unique_ptr<project::TProject> projectToSave;
+        std::unique_ptr<project::TJackConnections> jackConnectionsToSave;
         {
             std::unique_lock<std::mutex> lock(m_ProjectSaveMutex);
             quitting = m_Quitting;
             projectToSave = std::move(m_ProjectToSave);
+            jackConnectionsToSave = std::move(m_JackConnectionsToSave);
         }
         if(projectToSave)
         {
             SaveProject(*projectToSave);
+        }
+        if(jackConnectionsToSave)
+        {
+            SaveJackConnections(*jackConnectionsToSave);
         }
         return quitting;
     }
@@ -1125,6 +1139,17 @@ namespace engine
         } while (std::filesystem::exists(tempfile));
         ProjectToFile(project, tempfile);
         std::filesystem::rename(tempfile, projectfile);
+    }
+    void Engine::SaveJackConnections(const project::TJackConnections &jackconnections)
+    {
+        std::string jackconnectionfile = ProjectDir() + "/jackconnection.json";
+        std::string tempfile;
+        do
+        {
+            tempfile = jackconnectionfile + ".tmp" + std::to_string(rand());
+        } while (std::filesystem::exists(tempfile));
+        JackConnectionsToFile(jackconnections, tempfile);
+        std::filesystem::rename(tempfile, jackconnectionfile);
     }
     Engine::~Engine()
     {

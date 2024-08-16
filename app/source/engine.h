@@ -357,6 +357,7 @@ namespace engine
         void ChangeReverbLv2Uri(std::string &&uri);
         void LoadProject();
         void SaveProject(const project::TProject &project);
+        void SaveJackConnections(const project::TJackConnections &jackconnections);
         std::string ReverbPluginName() const;
         void LoadReverbPreset();
         void DeletePreset(size_t presetindex);
@@ -420,6 +421,7 @@ namespace engine
         //bool m_NeedCloseReverbUi = false;
         std::thread m_ProjectSaveThread;
         std::unique_ptr<project::TProject> m_ProjectToSave;
+        std::unique_ptr<project::TJackConnections> m_JackConnectionsToSave;
         std::mutex m_ProjectSaveMutex;
         std::mutex m_SaveProjectNowMutex;
         bool m_Quitting = false;
