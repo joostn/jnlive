@@ -650,7 +650,7 @@ namespace komplete
             {
                 auto starttime = std::chrono::steady_clock::now();
                 utils::TIntRegion dirtyregion;
-                window->GetUpdateRegion(m_PrevWindow.get(), dirtyregion, {0, 0});
+                window->GetUpdateRegion(m_PrevWindow.get(), dirtyregion, {0, 0}, {0, 0});
                 PaintWindow(display, *window, dirtyregion);
                 m_PrevWindow = std::move(window);
                 // display.SendPixels(0, 0, Display::sWidth, Display::sHeight);
@@ -1027,7 +1027,7 @@ namespace komplete
     void Gui::RefreshLcd()
     {
         m_NextScheduledLcdRefresh = GuiState().NextScreenUpdateNeeded();
-        auto mainwindow = std::make_unique<simplegui::Window>(nullptr, utils::TIntRect::FromTopLeftAndSize({0, 0}, {Display::sWidth, Display::sWidth}));
+        auto mainwindow = std::make_unique<simplegui::PlainWindow>(nullptr, utils::TIntRect::FromTopLeftAndSize({0, 0}, {Display::sWidth, Display::sWidth}), utils::TFloatColor::Black());
         int lineheight = sFontSize + 2;
 
         const auto &project = GuiState().EngineData().Project();

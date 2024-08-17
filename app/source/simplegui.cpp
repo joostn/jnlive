@@ -7,22 +7,31 @@ namespace simplegui
         return Cairo::RectangleInt(rect.Left(), rect.Top(), rect.Width(), rect.Height());
     }
 
-    void Window::DoGetUpdateRegionExcludingChildren(const Window &other, utils::TIntRegion &region, const utils::TIntPoint &offset) const
+    void Window::DoGetUpdateRegionExcludingChildren(const Window &other, utils::TIntRegion &region, const utils::TIntPoint &offset, const utils::TIntPoint &otheroffset) const
     {
         if(!Equals(&other))
         {
             region = region.Union(Rectangle() + offset);
-            region = region.Union(other.Rectangle() + offset);
+            region = region.Union(other.Rectangle() + otheroffset);
         }
     }
 
-    void Window::GetUpdateRegion(const Window *other, utils::TIntRegion &region, const utils::TIntPoint &offset) const
+    void Window::GetUpdateRegion(const Window *other, utils::TIntRegion &region, const utils::TIntPoint &offset, const utils::TIntPoint &otheroffset) const
     {
         if( (!other) || (!Equals(other)) )
         {
             if(other)
             {
-                DoGetUpdateRegionExcludingChildren(*other, region, offset);
+                // if(other->Rectangle().TopLeft() != Rectangle().TopLeft())
+                // {
+                //     region = region.Union(Rectangle() + offset);
+                //     region = region.Union(other->Rectangle() + offset);
+                //     return;
+                // }
+                // else
+                // {
+                    DoGetUpdateRegionExcludingChildren(*other, region, offset, otheroffset);
+                // }
             }
             else
             {
@@ -30,9 +39,12 @@ namespace simplegui
                 return;
             }
         }
+        nhAssert(other);
+        // nhAssert(other->Rectangle().TopLeft() == Rectangle().TopLeft());
 
         {
             auto childoffset = offset + Rectangle().TopLeft();
+            auto otherchildoffset = otheroffset + other->Rectangle().TopLeft();
             std::vector<Window*> ourchildren;
             std::vector<Window*> otherchildren;
             for(auto &child : Children())
@@ -57,7 +69,7 @@ namespace simplegui
                     // If we have combinations of inserted and deleted children or updated children, we will probably get a pessimistic estimate but that is acceptable.
                 foundmatch:
                     // add the child's update region:
-                    (*ourit)->GetUpdateRegion(*otherit, region, childoffset);
+                    (*ourit)->GetUpdateRegion(*otherit, region, childoffset, otherchildoffset);
                     *ourit = nullptr;  // exclude the pair from further checks
                     *otherit = nullptr;
                     ourit++;
@@ -95,14 +107,18 @@ namespace simplegui
                 }
             }
             // add all new and deleted windows entirely to the update region:
-            for(const auto &vec: {ourchildren, otherchildren})
+            for(const auto &win: ourchildren)
             {
-                for(const auto &win: vec)
+                if(win)
                 {
-                    if(win)
-                    {
-                        region = region.Union(win->Rectangle() + childoffset);
-                    }
+                    region = region.Union(win->Rectangle() + childoffset);
+                }
+            }
+            for(const auto &win: otherchildren)
+            {
+                if(win)
+                {
+                    region = region.Union(win->Rectangle() + otherchildoffset);
                 }
             }
         }
@@ -141,7 +157,7 @@ namespace simplegui
         // fill entire context:
         cr.paint();
     }
-    void PlainWindow::DoGetUpdateRegionExcludingChildren(const Window &other, utils::TIntRegion &region, const utils::TIntPoint &offset) const
+    void PlainWindow::DoGetUpdateRegionExcludingChildren(const Window &other, utils::TIntRegion &region, const utils::TIntPoint &offset, const utils::TIntPoint &otheroffset) const
     {
         if(auto otherplainwindow = dynamic_cast<const PlainWindow*>(&other); otherplainwindow)
         {
@@ -149,14 +165,14 @@ namespace simplegui
             {
                 // we only need to redraw the non-overlapping parts:
                 utils::TIntRegion r1(Rectangle() + offset);
-                utils::TIntRegion r2(otherplainwindow->Rectangle() + offset);
+                utils::TIntRegion r2(otherplainwindow->Rectangle() + otheroffset);
                 auto inverseintersection = r1.Union(r2).Subtract(r1.Intersection(r2));
                 region = region.Union(inverseintersection);
                 return;
             }
         }
         // fallback:
-        Window::DoGetUpdateRegionExcludingChildren(other, region, offset);
+        Window::DoGetUpdateRegionExcludingChildren(other, region, offset, otheroffset);
     }
 
     TextWindow::TextWindow(Window *parent, const utils::TIntRect &rect, std::string_view text, const utils::TFloatColor &color, int fontsize, THalign halign) : Window(parent, rect), m_Text(text), m_Color(color), m_FontSize(fontsize), m_Halign(halign)
@@ -183,8 +199,8 @@ namespace simplegui
         }
 
         double text_y = std::round(0.0+ (Rectangle().Height() / 2) + (textheight / 2.0) - fe.descent); // Vertically centered
-        auto textcliprect_d = utils::TDoubleRect::FromTopLeftAndSize({text_x, text_y - textheight/2}, {textwidth, textheight});
-        m_TextClipRect = textcliprect_d.ToRectOuterPixels().Intersection(Rectangle());
+        auto textcliprect_d = utils::TDoubleRect::FromTopLeftAndSize({text_x, Rectangle().Height() / 2.0 - textheight/2}, {textwidth, textheight}).SymmetricalExpand({2.0});
+        m_TextClipRect = textcliprect_d.ToRectOuterPixels().Intersection(utils::TIntRect::FromSize(Rectangle().Size()));
         m_TextDrawPos = {text_x, text_y};
     }
 
@@ -194,21 +210,21 @@ namespace simplegui
         cr.set_font_size(m_FontSize);
     }
 
-    void TextWindow::DoGetUpdateRegionExcludingChildren(const Window &other, utils::TIntRegion &region, const utils::TIntPoint &offset) const
+    void TextWindow::DoGetUpdateRegionExcludingChildren(const Window &other, utils::TIntRegion &region, const utils::TIntPoint &offset, const utils::TIntPoint &otheroffset) const
     {
         if(auto othertextwindow = dynamic_cast<const TextWindow*>(&other); othertextwindow)
         {
-            if(this->Equals(&other))
+            if(this->Equals(&other) && (offset == otheroffset))
             {
                 return;
             }
             // only the actual painted region is dirty:
-            region = region.Union(m_TextClipRect + offset);
-            region = region.Union(othertextwindow->m_TextClipRect + offset);
+            region = region.Union(m_TextClipRect + offset + Rectangle().TopLeft());
+            region = region.Union(othertextwindow->m_TextClipRect + otheroffset + othertextwindow->Rectangle().TopLeft());
             return;
         }
         // fallback:
-        Window::DoGetUpdateRegionExcludingChildren(other, region, offset);
+        Window::DoGetUpdateRegionExcludingChildren(other, region, offset, otheroffset);
     }
 
     void TextWindow::DoPaint(Cairo::Context &cr) const

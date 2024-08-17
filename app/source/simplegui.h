@@ -32,9 +32,12 @@ namespace simplegui
         }
         bool Equals(const Window *other) const
         {
-            return DoGetEquals(other);
+            // we need to check both ways, because the other window might be a descendant of this one
+            if(!DoGetEquals(other)) return false;
+            if(!other->DoGetEquals(this)) return false;
+            return true;
         }
-        void GetUpdateRegion(const Window *other, utils::TIntRegion &region, const utils::TIntPoint &offset) const;
+        void GetUpdateRegion(const Window *other, utils::TIntRegion &region, const utils::TIntPoint &offset, const utils::TIntPoint &otheroffset) const;
         const std::vector<std::unique_ptr<Window>> &Children() const
         {
             return m_Children;
@@ -51,7 +54,7 @@ namespace simplegui
             if(Rectangle() != other->Rectangle()) return false;
             return true;
         }
-        virtual void DoGetUpdateRegionExcludingChildren(const Window &other, utils::TIntRegion &region, const utils::TIntPoint &offset) const;
+        virtual void DoGetUpdateRegionExcludingChildren(const Window &other, utils::TIntRegion &region, const utils::TIntPoint &offset, const utils::TIntPoint &otheroffset) const;
 
     private:
         utils::TIntRect m_Rectangle;
@@ -82,7 +85,7 @@ namespace simplegui
                 return false;
             }
         }
-        virtual void DoGetUpdateRegionExcludingChildren(const Window &other, utils::TIntRegion &region, const utils::TIntPoint &offset) const override;
+        virtual void DoGetUpdateRegionExcludingChildren(const Window &other, utils::TIntRegion &region, const utils::TIntPoint &offset, const utils::TIntPoint &otheroffset) const override;
 
     private:
         void DoPaint(Cairo::Context &cr) const override;
@@ -109,7 +112,7 @@ namespace simplegui
             if(m_Text != otherOurs->m_Text) return false;
             return true;
         }
-        virtual void DoGetUpdateRegionExcludingChildren(const Window &other, utils::TIntRegion &region, const utils::TIntPoint &offset) const override;
+        virtual void DoGetUpdateRegionExcludingChildren(const Window &other, utils::TIntRegion &region, const utils::TIntPoint &offset, const utils::TIntPoint &otheroffset) const override;
 
     private:
         void DoPaint(Cairo::Context &cr) const override;

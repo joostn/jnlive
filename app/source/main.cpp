@@ -19,15 +19,11 @@ public:
     ~Application() noexcept override = default;
     Application(int argc, char** argv) : m_Engine(cMaxBlockSize, argc, argv, GetProjectDir(), m_MainEventLoop), Gtk::Application("nl.newhouse.jnlive")
     {
-        // auto mainwindow = std::make_unique<simplegui::PlainWindow>(nullptr, utils::TIntRect(20, 10, 200, 150), utils::TFloatColor(1, 0, 0));
-        // mainwindow->AddChild<simplegui::PlainWindow>(utils::TIntRect(2, 2, 196, 146), utils::TFloatColor(0.2, 0.2, 0.2));
-        // mainwindow->AddChild<simplegui::TextWindow>(utils::TIntRect(2, 2, 192, 146), "Hello, world!", utils::TFloatColor(1, 1, 1), 15);
-        // m_KompleteGui.SetWindow(std::move(mainwindow));
     }
     void on_activate() override {
         auto window = guiCreateApplicationWindow(m_Engine);
         add_window(*window);
-        window->show_all();
+        window->show();
 
         // Set up a timeout signal to call ProcessEvents every 1ms
         Glib::signal_timeout().connect([this]() -> bool {
@@ -62,6 +58,9 @@ int main(int argc, char** argv)
     {
         throw std::runtime_error("CPU does not support AVX2");
     }
+
+    // we must use X11, because the suil doesn't support wayland
+    g_setenv("GDK_BACKEND", "x11", TRUE);
 
     auto app = Glib::RefPtr<Application>(new Application(argc, argv));
     return app->run(argc, argv);

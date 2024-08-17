@@ -350,6 +350,18 @@ namespace project
         return TReverb(v["presetdir"].asString(), v["pluginuri"].asString(), v["mixlevel"].asFloat());
     }
 
+    bool TProject::HasAPreset() const
+    {
+        for(const auto &preset: Presets())
+        {
+            if(preset)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     TProject TProject::DeleteInstrument(size_t index) const
     {
         std::vector<std::optional<TPreset>> newPresets;

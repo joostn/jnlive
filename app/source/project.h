@@ -395,6 +395,7 @@ namespace project
         const std::vector<TInstrument>& Instruments() const { return m_Instruments; }
         const std::vector<TPart>& Parts() const { return m_Parts; }
         const std::vector<std::optional<TPreset>>& Presets() const { return m_Presets; }
+        bool HasAPreset() const;
         TProject ChangeReverb(TReverb &&reverb) const
         {
             auto result = *this;
