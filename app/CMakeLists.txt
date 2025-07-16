@@ -106,3 +106,5 @@ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
     # target_compile_options(jnlive PRIVATE -fsanitize=address)
     # target_link_options(jnlive PRIVATE -fsanitize=address)
 endif()
+
+install(TARGETS jnlive RUNTIME)
