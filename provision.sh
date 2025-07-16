@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# For Arch linux: install all prerequisites and build the app
+
 set -e
 set -x
 
