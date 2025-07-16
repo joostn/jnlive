@@ -8,7 +8,9 @@ To use the komplete kontrol mk2 as a control service, udev rules need to be adde
 Create a file in /etc/udev/rules.d/, for example: /etc/udev/rules.d/99-local.rules 
 with the following contents:
 
+```
 SUBSYSTEM=="usb", ATTRS{idVendor}=="17cc", MODE="0660", GROUP="users"
 KERNEL=="hiddev*", ATTRS{idVendor}=="17cc", MODE="0660", GROUP="users"
+```
 
 Assuming you are part of the 'users' group. 17cc is the vendor id for Native Instruments.
