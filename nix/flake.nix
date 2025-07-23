@@ -44,7 +44,7 @@
             xorg.libX11
           ];
           shellHook = ''
-            jnlive build shell started.
+            echo "jnlive build shell started."
           ''  ;
         };
     

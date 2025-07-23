@@ -1325,6 +1325,29 @@ namespace engine
         }
 
     }
+    std::optional<size_t> Engine::ActivePartIndex() const
+    {
+        if(Data().GuiFocusedPart() && (*Data().GuiFocusedPart() < Project().Parts().size()))
+        {
+            return *Data().GuiFocusedPart();
+        }
+        return std::nullopt;
+    }
+
+    std::optional<size_t> Engine::ActivePresetIndex() const
+    {
+        auto activepartindex = ActivePartIndex();
+        if(activepartindex)
+        {
+            const auto &part = Project().Parts().at(*activepartindex);
+            auto presetindex = part.ActivePresetIndex();
+            if(presetindex && (*presetindex < Project().Presets().size()))
+            {
+                return *presetindex;
+            }
+        }
+        return std::nullopt;
+    }
 
     void Engine::ProcessMessages()
     {

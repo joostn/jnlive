@@ -8,13 +8,23 @@
   "include": [],
   "configurePresets": [
     {
-      "name": "linux_release",
-      "displayName": "Linux Release",
+      "name": "release",
+      "displayName": "Release",
       "cacheVariables": {
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "CMAKE_BUILD_TYPE": {
           "type": "STRING",
           "value": "RelWithDebInfo"
+        }
+      },
+      "binaryDir": "${sourceDir}/build"
+    },
+    {
+      "name": "debug",
+      "displayName": "Debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": {
+          "type": "STRING",
+          "value": "Debug"
         }
       },
       "binaryDir": "${sourceDir}/build"
@@ -22,24 +32,31 @@
   ],
   "buildPresets": [
     {
-      "name": "linux_release",
-      "displayName": "Linux Release",
-      "configurePreset": "linux_release",
+      "name": "release",
+      "displayName": "Release",
+      "configurePreset": "release",
+      "targets": ["jnlive"],
+      "jobs": 8
+    },
+    {
+      "name": "debug",
+      "displayName": "Debug",
+      "configurePreset": "debug",
       "targets": ["jnlive"],
       "jobs": 8
     }
   ],
   "workflowPresets": [
     {
-      "name": "build_linux_release",
+      "name": "build_release",
       "steps": [
         {
           "type": "configure",
-          "name": "linux_release"
+          "name": "release"
         },
         {
           "type": "build",
-          "name": "linux_release"
+          "name": "release"
         }
       ]
     }

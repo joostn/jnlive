@@ -371,6 +371,8 @@ namespace engine
         utils::TEventLoop &EventLoop() const { return m_EventLoop; }
         void PresetLoaderFinished(TPresetLoader *loader);
         bool IsPluginLoading(PluginInstanceForPart *plugin) const;
+        std::optional<size_t> ActivePartIndex() const;
+        std::optional<size_t> ActivePresetIndex() const;
 
     private:
         void LoadPresetForPart(size_t partindex);

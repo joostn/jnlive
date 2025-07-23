@@ -81,6 +81,9 @@ target_link_options(jnlive PRIVATE
 # enable AVX2 optimizations:
 target_compile_options(jnlive PRIVATE -mavx2 )
 
+# for clangd:
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # if compiler is clang:
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
     target_link_options(jnlive PRIVATE -fuse-ld=lld)

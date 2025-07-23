@@ -4,6 +4,7 @@
 #include "project.h"
 #include <filesystem>
 #include <gtkmm.h>
+#include <optional>
 #include "lilvutils.h"
 
 namespace 
@@ -671,8 +672,8 @@ private:
     Gtk::Label m_MidiChanLabel;
     Gtk::Entry m_MidiChanEntry;
     Gtk::Label m_MidiInPortsLabel;
-    Gtk::Button m_OkButton;
-    Gtk::Button m_CancelButton;
+    Gtk::Button m_OkButton {"OK"};
+    Gtk::Button m_CancelButton {"Cancel"};
     TEditPortsPanel m_EditPortsPanel;
     bool m_Destroying = false;
 };
@@ -981,7 +982,7 @@ class PresetSelectorDialog : public Gtk::Dialog
 public:
     PresetSelectorDialog(PresetSelectorDialog &&other) = delete;
     PresetSelectorDialog(const PresetSelectorDialog &other) = delete;
-    PresetSelectorDialog(const project::TProject &project) : m_Project(project)
+    PresetSelectorDialog(const project::TProject &project, std::optional<size_t> preselectedindex) : m_Project(project)
     {
         set_title("Select Preset");
         set_default_size(400, 300);
@@ -1038,6 +1039,26 @@ public:
         });
         Populate();
         enableItems();
+        if(preselectedindex)
+        {
+            selectPreset(*preselectedindex);
+        }
+    }
+    void selectPreset(size_t presetindex)
+    {
+        for (auto iter = m_ListStore->children().begin(); iter != m_ListStore->children().end(); ++iter)
+        {
+            if ((*iter)[m_Columns.m_Number] == presetindex)
+            {
+                m_PresetList.get_selection()->select(iter);
+                m_PresetList.scroll_to_row(m_ListStore->get_path(iter), 0.5);
+                std::string name = (*iter)[m_Columns.m_Name];
+                m_PresetNameEntry.set_text(name);
+                m_SelectedPreset = presetindex;
+                enableItems();
+                break;
+            }
+        }
     }
     void enableItems()
     {
@@ -1057,7 +1078,7 @@ public:
     void Populate()
     {
         m_ListStore->clear();
-        size_t numpresets = std::max((size_t)128, m_Project.Presets().size());
+        size_t numpresets = std::max((size_t)128, m_Project.Presets().size()+32);
         for(size_t i = 0; i < numpresets; i++)
         {
             const project::TPreset *preset = nullptr;
@@ -1409,8 +1430,9 @@ public:
 
             m_SavePresetMenuItem.signal_activate().connect([this](){
                 DoAndShowException([this](){
+                    auto presetindex = m_Engine.ActivePresetIndex();
                     auto project_copy = m_Engine.Project();
-                    PresetSelectorDialog dialog(project_copy);
+                    PresetSelectorDialog dialog(project_copy, presetindex);
                     int result = dialog.run();
                     if(result == Gtk::RESPONSE_OK)
                     {
