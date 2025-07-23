@@ -146,7 +146,8 @@ private:
 class TEditSettingsDialog : public Gtk::Dialog
 {
 public:
-    TEditSettingsDialog(project::TJackConnections &&conn) : m_JackConnections(std::move(conn)), m_AudioOutPortPanels({TEditPortsPanel(std::vector<std::string>{m_JackConnections.AudioOutputs()[0]}, jackutils::PortKind::Audio, jackutils::PortDirection::Input), TEditPortsPanel(std::vector<std::string>{m_JackConnections.AudioOutputs()[1]}, jackutils::PortKind::Audio, jackutils::PortDirection::Input)}), m_VocoderInputPanel(std::vector<std::string>{m_JackConnections.VocoderInput()}, jackutils::PortKind::Audio, jackutils::PortDirection::Output)
+    TEditSettingsDialog(const TEditSettingsDialog&) = delete;
+    TEditSettingsDialog(project::TJackConnections &&conn) : m_JackConnections(std::move(conn)), m_AudioOutPortPanels(std::array<TEditPortsPanel, 2>{TEditPortsPanel(std::vector<std::string>{m_JackConnections.AudioOutputs()[0]}, jackutils::PortKind::Audio, jackutils::PortDirection::Input), TEditPortsPanel(std::vector<std::string>{m_JackConnections.AudioOutputs()[1]}, jackutils::PortKind::Audio, jackutils::PortDirection::Input)}), m_VocoderInputPanel(std::vector<std::string>{m_JackConnections.VocoderInput()}, jackutils::PortKind::Audio, jackutils::PortDirection::Output)
     {
         set_title("Settings");
         set_modal(true);

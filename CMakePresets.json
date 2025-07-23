@@ -1,0 +1,47 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 26,
+    "patch": 0
+  },
+  "include": [],
+  "configurePresets": [
+    {
+      "name": "linux_release",
+      "displayName": "Linux Release",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_BUILD_TYPE": {
+          "type": "STRING",
+          "value": "RelWithDebInfo"
+        }
+      },
+      "binaryDir": "${sourceDir}/build"
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "linux_release",
+      "displayName": "Linux Release",
+      "configurePreset": "linux_release",
+      "targets": ["jnlive"],
+      "jobs": 8
+    }
+  ],
+  "workflowPresets": [
+    {
+      "name": "build_linux_release",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "linux_release"
+        },
+        {
+          "type": "build",
+          "name": "linux_release"
+        }
+      ]
+    }
+  ]
+}

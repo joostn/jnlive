@@ -3,7 +3,6 @@
 #include "engine.h"
 #include "project.h"
 #include "komplete.h"
-#include "conspiracy.h"
 #include "kompletegui.h"
 #include <filesystem>
 #include <gtkmm.h>
@@ -47,7 +46,6 @@ public:
 private:
     utils::TGtkAppEventLoop m_MainEventLoop;
     engine::Engine m_Engine;
-    conspiracy::Controller m_ConspiracyController { m_Engine };
     komplete::TGuiPool m_KompleteGuiPool { m_Engine };
 };
 

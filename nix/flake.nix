@@ -14,8 +14,9 @@
             allowUnfree = true;
           };
         };
+        llvmPackagesToUse = pkgs.llvmPackages_20;
       in 
-        pkgs.stdenvNoCC.mkDerivation {
+        llvmPackagesToUse.stdenv.mkDerivation {
           name = "jnlive dev shell";
           nativeBuildInputs = with pkgs; [
             cmake
@@ -24,6 +25,10 @@
             git
             less
             which
+            ninja
+            llvmPackagesToUse.bintools
+            llvmPackagesToUse.clang-tools # for clangd
+            #clangd-in-path
           ];
 
           buildInputs = with pkgs; [
@@ -36,7 +41,7 @@
             suil
             gtk3
             gtkmm3
-            libX11
+            xorg.libX11
           ];
           shellHook = ''
             jnlive build shell started.
