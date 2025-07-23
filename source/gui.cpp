@@ -988,6 +988,7 @@ public:
         set_default_size(400, 300);
         add_button("Cancel", Gtk::RESPONSE_CANCEL);
         m_OkButton = add_button("OK", Gtk::RESPONSE_OK);
+        m_OkButton->set_can_default(true);  // for enter key
         m_PresetListScrolledWindow.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC);
         m_PresetListScrolledWindow.add(m_PresetList);
 
