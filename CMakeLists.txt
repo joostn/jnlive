@@ -81,8 +81,12 @@ target_link_options(jnlive PRIVATE
 # enable AVX2 optimizations:
 target_compile_options(jnlive PRIVATE -mavx2 )
 
+set(CMAKE_C_FLAGS_DEBUG "-g -O0 -DDEBUG")
+set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DDEBUG")
+
 # for clangd:
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+#set(CMAKE_VERBOSE_MAKEFILE ON)
 
 # if compiler is clang:
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")

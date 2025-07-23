@@ -988,7 +988,6 @@ public:
         set_default_size(400, 300);
         add_button("Cancel", Gtk::RESPONSE_CANCEL);
         m_OkButton = add_button("OK", Gtk::RESPONSE_OK);
-        m_OkButton->set_can_default(true);  // for enter key
         m_PresetListScrolledWindow.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC);
         m_PresetListScrolledWindow.add(m_PresetList);
 
@@ -1044,6 +1043,22 @@ public:
         {
             selectPreset(*preselectedindex);
         }
+        m_PresetNameEntry.signal_activate().connect([this]() {
+            // enter key
+            if (m_OkButton->get_sensitive())
+                response(Gtk::RESPONSE_OK);
+        });
+        m_PresetList.signal_key_press_event().connect([this](GdkEventKey* event) -> bool {
+            if (event->keyval == GDK_KEY_Return || event->keyval == GDK_KEY_KP_Enter)
+            {
+                if (m_OkButton->get_sensitive())
+                {
+                    response(Gtk::RESPONSE_OK);
+                    return true; // event handled
+                }
+            }
+            return false; // propagate further
+        }, false); // `false` = after = run before default handler
     }
     void selectPreset(size_t presetindex)
     {
@@ -1431,7 +1446,7 @@ public:
 
             m_SavePresetMenuItem.signal_activate().connect([this](){
                 DoAndShowException([this](){
-                    auto presetindex = m_Engine.ActivePresetIndex();
+                    auto presetindex = m_Engine.GuiActivePresetIndex();
                     auto project_copy = m_Engine.Project();
                     PresetSelectorDialog dialog(project_copy, presetindex);
                     int result = dialog.run();

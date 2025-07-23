@@ -1,4 +1,5 @@
 #include "engine.h"
+#include "project.h"
 #include <filesystem>
 
 namespace
@@ -905,8 +906,15 @@ namespace engine
     {
         if( (partindex < Project().Parts().size()) && Project().Parts()[partindex].ActiveInstrumentIndex())
         {
+            const auto &part = Project().Parts().at(partindex);
             const auto &instrumentindex2ownedpluginindex = m_Parts[partindex].PluginIndices();
-            auto instrindex = *Project().Parts()[partindex].ActiveInstrumentIndex();
+            auto instrindex = *part.ActiveInstrumentIndex();
+            auto activepresetindex = part.ActivePresetIndex();
+            std::optional<std::vector<project::TInstrument::TParameter>> overrideparameters;
+            if(activepresetindex && (*activepresetindex < Project().Presets().size()))
+            {
+                overrideparameters = Project().Presets().at(*activepresetindex)->OverrideParameters();
+            }
             if( (instrindex >= 0) && (instrindex < instrumentindex2ownedpluginindex.size()) )
             {
                 auto ownedpluginindex = instrumentindex2ownedpluginindex[instrindex];
@@ -938,7 +946,7 @@ namespace engine
                             oldpresetdir = presets[presetindex]->PresetSubDir();
                         }
                     }
-                    presets[presetindex] = project::TPreset(instrindex, std::string(name), std::move(relativePresetDir), std::nullopt);
+                    presets[presetindex] = project::TPreset(instrindex, std::string(name), std::move(relativePresetDir), std::move(overrideparameters));
                     newproject.SetPresets(std::move(presets));
                     auto newpart = newproject.Parts().at(partindex).ChangeActivePresetIndex(presetindex).ChangeActiveInstrumentIndex(instrindex);
                     newproject = newproject.ChangePart(partindex, std::move(newpart));
@@ -1325,7 +1333,7 @@ namespace engine
         }
 
     }
-    std::optional<size_t> Engine::ActivePartIndex() const
+    std::optional<size_t> Engine::GuiActivePartIndex() const
     {
         if(Data().GuiFocusedPart() && (*Data().GuiFocusedPart() < Project().Parts().size()))
         {
@@ -1334,9 +1342,9 @@ namespace engine
         return std::nullopt;
     }
 
-    std::optional<size_t> Engine::ActivePresetIndex() const
+    std::optional<size_t> Engine::GuiActivePresetIndex() const
     {
-        auto activepartindex = ActivePartIndex();
+        auto activepartindex = GuiActivePartIndex();
         if(activepartindex)
         {
             const auto &part = Project().Parts().at(*activepartindex);
@@ -1344,6 +1352,19 @@ namespace engine
             if(presetindex && (*presetindex < Project().Presets().size()))
             {
                 return *presetindex;
+            }
+        }
+        return std::nullopt;
+    }
+    std::optional<size_t> Engine::GuiActiveInstrumentIndex() const
+    {
+        auto activepartindex = GuiActivePartIndex();
+        if(activepartindex)
+        {
+            const auto &part = Project().Parts().at(*activepartindex);
+            if(part.ActiveInstrumentIndex())
+            {
+                return *part.ActiveInstrumentIndex();
             }
         }
         return std::nullopt;

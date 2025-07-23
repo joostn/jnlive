@@ -46,6 +46,7 @@
           shellHook = ''
             echo "jnlive build shell started."
           ''  ;
+          NIX_HARDENING_ENABLE = "";
         };
     
     in {
