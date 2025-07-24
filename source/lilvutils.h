@@ -22,7 +22,8 @@
 #include "lv2/data-access/data-access.h"
 #include <gtkmm.h>
 #include "lv2_external_ui.h"
-#include "midi.h"
+
+import midi;
 
 namespace lilvutils
 {

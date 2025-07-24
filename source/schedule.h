@@ -1,10 +1,12 @@
 #pragma once
 #include "lv2/state/state.h"
 #include "lv2/worker/worker.h"
-#include "ringbuf.h"
+//#include "ringbuf.h"
 #include <thread>
 #include <condition_variable>
 #include <mutex>
+
+import ringbuf;
 
 namespace lilvutils
 {

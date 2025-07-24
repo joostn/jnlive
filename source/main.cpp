@@ -1,12 +1,13 @@
 #include "gui.h"
 #include "utils.h"
 #include "engine.h"
-#include "project.h"
 #include "komplete.h"
 #include "kompletegui.h"
 #include <filesystem>
 #include <gtkmm.h>
 #include "simplegui.h"
+
+import project;
 
 using namespace std::string_literals;
 using namespace std::chrono_literals;

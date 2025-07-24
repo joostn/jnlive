@@ -1,4 +1,5 @@
-#pragma once
+module;
+
 #include <array>
 #include <algorithm>
 #include <stdexcept>
@@ -7,13 +8,15 @@
 #include <vector>
 #include <optional>
 
-namespace midi
+export module midi;
+
+export namespace midi
 {
-    static constexpr int ccSustainPedal = 64;
-    static constexpr int ccModWheel = 1;
-    static constexpr int ccVolume = 7;
-    static constexpr int ccPan = 10;
-    static constexpr int ccExpression = 11;
+    constexpr int ccSustainPedal = 64;
+    constexpr int ccModWheel = 1;
+    constexpr int ccVolume = 7;
+    constexpr int ccPan = 10;
+    constexpr int ccExpression = 11;
     class SimpleEvent
     {
     public:

@@ -1,7 +1,11 @@
 cmake_minimum_required(VERSION 3.28)
 set(CMAKE_CXX_STANDARD 23)
 
-project(jnlive)
+project(jnlive LANGUAGES C CXX)
+
+# Enable C++ modules
+#set(CMAKE_EXPERIMENTAL_CXX_MODULE_CMAKE_API "TRUE")
+#set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 
 add_executable (jnlive 
     source/main.cpp
@@ -12,14 +16,19 @@ add_executable (jnlive
     source/komplete.cpp
     source/project.cpp
     source/engine.cpp
-    source/ringbuf.cpp
     source/realtimethread.cpp
     source/log.cpp
     source/schedule.cpp
     source/gui.cpp
-    source/midi.cpp
     source/kompletegui.cpp
     source/simplegui.cpp
+    source/midi.cpp
+)
+
+target_sources(jnlive PUBLIC FILE_SET CXX_MODULES FILES
+    source/ringbuf.cpp
+    source/midi.cppm
+    source/project.cppm
 )
 
 target_include_directories (jnlive PRIVATE 

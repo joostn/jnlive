@@ -1,11 +1,12 @@
 #include <iostream>
 #include "utils.h"
 #include "engine.h"
-#include "project.h"
 #include <filesystem>
 #include <gtkmm.h>
 #include <optional>
 #include "lilvutils.h"
+
+import project;
 
 namespace 
 {

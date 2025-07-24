@@ -12,7 +12,8 @@
 #include "lv2_external_ui.h"
 #include <iostream>
 #include <cstring>
-#include "midi.h"
+
+import midi;
 
 namespace 
 {

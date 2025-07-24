@@ -1,11 +1,7 @@
 #include "engine.h"
-#include "project.h"
 #include <filesystem>
 
-namespace
-{
-    
-}
+import project;
 
 namespace engine
 {

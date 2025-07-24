@@ -3,14 +3,15 @@
 #include <memory>
 #include <vector>
 #include "lilvutils.h"
-#include "project.h"
 #include "jackutils.h"
 #include "realtimethread.h"
 #include "engine.h"
-#include "midi.h"
 #include "utils.h"
 #include <chrono>
 #include <iostream>
+
+import midi;
+import project;
 
 namespace engine
 {

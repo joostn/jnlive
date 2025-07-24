@@ -1,11 +1,14 @@
-#pragma once
+module;
+
 #include <vector>
 #include <string>
 #include <fstream>
 #include <optional>
 #include "json/json.h"
 
-namespace project
+export module project;
+
+export namespace project
 {
     class THammondData
     {

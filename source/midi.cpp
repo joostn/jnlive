@@ -1,5 +1,8 @@
-#include "midi.h"
+module;
+
 #include <sstream>
+
+module midi;
 
 namespace midi {
     bool SimpleEvent::IsSupported(const void *buf, size_t size)

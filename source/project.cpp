@@ -1,4 +1,12 @@
-#include "project.h"
+module;
+
+#include <optional>
+#include <vector>
+#include <string>
+#include <fstream>
+#include "json/json.h"
+
+module project;
 
 namespace project
 {

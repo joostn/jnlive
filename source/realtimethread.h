@@ -1,10 +1,13 @@
 #pragma once
 #include "lilvutils.h"
 #include "jackutils.h"
-#include "ringbuf.h"
+// #include "ringbuf.h"
 #include <jack/midiport.h>
 #include "lv2/midi/midi.h"
-#include "midi.h"
+
+import midi;
+
+import ringbuf;
 
 namespace realtimethread
 {
