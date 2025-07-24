@@ -15,6 +15,16 @@
           };
         };
         llvmPackagesToUse = pkgs.llvmPackages_20;
+
+#   libcxxCairomm = pkgs.callPackage (pkgs.path + "/pkgs/development/libraries/cairomm") {
+#     stdenv = pkgs.llvmPackages_20.libcxxStdenv;
+#     libsigcxx = pkgs.libsigcxx.override { stdenv = pkgs.llvmPackages_20.libcxxStdenv; };
+#     boost = pkgs.boost.override { stdenv = pkgs.llvmPackages_20.libcxxStdenv; };
+#   };
+#   libcxxCairomm = pkgs.callPackage (pkgs.path + "/pkgs/development/libraries/cairomm") {
+#     stdenv = pkgs.llvmPackages_20.libcxxStdenv;
+# ` };
+
       in 
         llvmPackagesToUse.stdenv.mkDerivation {
           name = "jnlive dev shell";
@@ -41,6 +51,7 @@
             suil
             gtk3
             gtkmm3
+            #libcxxCairomm
             xorg.libX11
           ];
           shellHook = ''

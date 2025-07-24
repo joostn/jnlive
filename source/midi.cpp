@@ -1,6 +1,7 @@
 module;
 
 #include <sstream>
+#include <optional>
 
 module midi;
 
